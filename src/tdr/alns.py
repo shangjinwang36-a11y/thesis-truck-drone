@@ -349,6 +349,12 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
     s_d = {k: 0.0 for k in destroy_ops}
     s_r = {k: 0.0 for k in repair_ops}
     stagnation = 0
+    # 变体 A：学习式选择器（None = 基线轮盘赌，行为完全不变）
+    from .selector import QSelector, failure_type, get_selector
+    sel = get_selector(alg, destroy_ops, repair_ops) if ctx.mode == "recovery" else None
+    pend: tuple[str, int, float] | None = None       # 上一轮 (状态, 动作, 奖励)，下一轮开头再更新 Q
+    frag0 = plan.sorties.get(ctx.frag_sid) if ctx.frag_sid is not None else None
+    ftype = failure_type(len(ctx.ground_required), bool(frag0 is not None and frag0.air))
     last_mip_round = -10**9
     window_cursor = 0
     stats.stop_reason = "BUDGET"
@@ -365,8 +371,15 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         stats.iterations += 1
         stats.rounds += 1
         # 选算子
-        op = _roulette(w_d, rng_op)
-        rep = _roulette(w_r, rng_op)
+        if sel is None:
+            op = _roulette(w_d, rng_op)
+            rep = _roulette(w_r, rng_op)
+        else:
+            skey = QSelector.key(stagnation, _progress(stats, budget), ftype)
+            if pend is not None:
+                sel.update(pend[0], pend[1], pend[2], skey)
+                pend = None
+            op, rep, sact = sel.choose(skey, rng_op)
         n_d[op] += 1
         n_r[rep] += 1
         stats.destroy_used[op] = stats.destroy_used.get(op, 0) + 1
@@ -383,6 +396,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         if not freed:
             _reward(s_d, op, 0.0)
             _reward(s_r, rep, 0.0)
+            if sel is not None:
+                pend = (skey, sact, 0.0)
             continue
         if rep == "GREEDY_PROXY":
             from .moves import repair_greedy as _rep
@@ -394,6 +409,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         if leftover:
             _reward(s_d, op, 0.0)
             _reward(s_r, rep, 0.0)
+            if sel is not None:
+                pend = (skey, sact, 0.0)
             stagnation += 1
             _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg)
             continue
@@ -402,6 +419,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         if cand_ev is None:
             _reward(s_d, op, 0.0)
             _reward(s_r, rep, 0.0)
+            if sel is not None:
+                pend = (skey, sact, 0.0)
             stagnation += 1
             _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg)
             continue
@@ -444,6 +463,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             cur_plan, cur_ev = cand_plan.clone(), cand_ev
         _reward(s_d, op, reward)
         _reward(s_r, rep, reward)
+        if sel is not None:
+            pend = (skey, sact, reward / alg.score_global_best)
         # 连续位置细化：新最好解，或每 10 轮
         do_polish = variant != "no_coordinate_polish" and (
             (best_ev is cand_ev) or stats.iterations % alg.coordinate_polish_every_alns_iterations == 0)
@@ -474,6 +495,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                     best_ev, best_plan = e3, p3.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg, variant)
+    if sel is not None and pend is not None:
+        sel.update(pend[0], pend[1], pend[2], None)
     if ctx.catalog is not None:
         stats.cover_trucks = set(getattr(ctx.catalog, "covered_trucks", set()))
         stats.cover_customers = set(getattr(ctx.catalog, "covered_customers", set()))
@@ -483,6 +506,9 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                     "n_alns_iterations": stats.iterations,
                     "n_lp_calls": stats.lp_calls,
                     "n_destroy_fallback": sum(stats.destroy_fallback.values()),
+                    "operator_selector": "qlearn" if sel is not None else "roulette",
+                    "destroy_used": dict(stats.destroy_used),
+                    "repair_used": dict(stats.repair_used),
                     "n_cover_trucks": len(stats.cover_trucks),
                     "n_cover_customers": len(stats.cover_customers),
                     "n_cover_subsets": len(stats.cover_subsets),
