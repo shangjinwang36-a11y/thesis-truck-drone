@@ -734,6 +734,7 @@ class EpisodeResult:
     history: list[dict[str, Any]] = field(default_factory=list)
     segments: list[dict] = field(default_factory=list)
     replay: Any = None
+    failed_sids: list[int] = field(default_factory=list)   # 每次失败对应的（被恢复的）航次号
 
 
 def derive_rngs(base_seed: int, case_id: str, phase: str, replan_index: int) -> dict[str, random.Random]:
@@ -827,6 +828,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             break
         a, obs = fail
         ground_required.add(a.parcel)
+        res.failed_sids.append(a.sid)
         if cut_mode == "cascade":          # 旧口径(第三轮及以前)：对照用
             t_cut, T_truck, T_drone = compute_cut(tl, a.time, a.drone), {}, {}
         else:                              # 规范：快照取失败时刻，在途动作按各自剩余时长承诺完成
@@ -877,7 +879,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
         ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state2, H=H, mode="recovery",
                            affected_drones={a.drone}, affected_sorties={a.sid},
                            ground_required=set(ground_required), replan_index=replan_index + 1,
-                           rngs=rr, catalog=catalog, frag_sid=a.sid)
+                           rngs=rr, catalog=catalog, frag_sid=a.sid, strategy=strategy)
         t_r = time.perf_counter()
         budget = Budget(main_limit, recovery_wall_s, start=t_budget0)   # 主循环预算
         stats = SearchStats()

@@ -205,6 +205,11 @@ class AlgorithmConfig:
     nominal_start_trucks: int | None = None  # 第三轮：指定名义初解启用的车数(其余车保留空路线)；None=满车队
     nominal_final_descent_frac: float = 0.15  # 第三轮：名义预算末尾留出此比例做一次"转空送"下降收尾（0=关闭）
     max_search_rounds: int = 2000
+    # 第四轮：恢复目标重定位算子（在“当前最优计划”上重选接机车/接机点；S 只可选原放飞车的停靠点，
+    # X 可选任意车——同一算子、同一评价次数/频率，仅资格不同；X 的跨车重定位即“X 专用部分”）
+    recovery_retarget: bool = False
+    retarget_period: int = 10
+    retarget_n: int = 2
     geometry_base_starts: int = 5
     coordinate_polish_every_alns_iterations: int = 10
     coordinate_extra_eval_cap: int = 40

@@ -200,7 +200,19 @@ def episode_metrics(ep) -> dict:
     ok = ep.evaluation is not None and ep.evaluation.feasible
     tf = (ep.evaluation.counts or {}).get("truck_finish", {}) if ok else {}
     stop = [n[:300] for n in ep.notes if n.startswith(("STOP_CONTEXT", "INITIAL_RECOVERY_FAILED", "MAX_REPLANS"))]
+    # 第四轮：失败触发的回收(被恢复的失败航次的 R 动作)与其中的跨车比例；例行回收不计入
+    fsids = {f"S{sid}" for sid in getattr(ep, "failed_sids", [])}
+    rec_f: dict[str, dict] = {}
+    for seg in ep.segments:
+        for a in seg["actions"]:
+            if a["kind"] == "R" and a.get("ref") in fsids:
+                rec_f[a["ref"]] = a
+    n_fail_rec = len(rec_f)
+    n_fail_cross = sum(1 for a in rec_f.values() if (a.get("launch_truck") or a["actor"]) != a["actor"])
     return {
+        "n_fail_events": len(getattr(ep, "failed_sids", [])),
+        "n_fail_rec": n_fail_rec,
+        "n_fail_cross": n_fail_cross,
         "failed_delivery_delays_s": delays,
         "failed_delivery_delay_mean_s": (sum(delays) / len(delays)) if delays else None,
         "failed_delivery_delay_max_s": max(delays) if delays else None,

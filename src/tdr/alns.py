@@ -315,6 +315,8 @@ class SolveContext:
     frag_sid: int | None = None
     replan_index: int = 0
     rngs: dict[str, random.Random] = field(default_factory=dict)
+    strategy: str = "X"
+    retarget_tried: set = field(default_factory=set)
 
 
 # ---------------------------------------------------------------------------
@@ -534,6 +536,16 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 if _better(e_r, best_ev, alg):
                     best_ev, best_plan = e_r, p_r.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+        # 第四轮：恢复目标重定位（当前最优计划上；S/X 同算子同预算，资格不同）
+        if (alg.recovery_retarget and ctx.mode == "recovery" and ctx.frag_sid is not None
+                and stats.iterations % alg.retarget_period == alg.retarget_period // 2
+                and budget.evals_left() > 0):
+            p_t, e_t = try_recovery_retarget(cur_plan, ctx, budget, stats)
+            if p_t is not None and e_t is not None and _better(e_t, cur_ev, alg):
+                cur_plan, cur_ev = p_t, e_t
+                if _better(e_t, best_ev, alg):
+                    best_ev, best_plan = e_t, p_t.clone()
+                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 局部事件重排
         if variant != "no_local_mip" and (stats.iterations % alg.mip_period_rounds == 0
                                           or stagnation >= alg.mip_stagnation_rounds):
@@ -719,6 +731,90 @@ def coordinate_polish(plan: Plan, ctx: SolveContext, stats: SearchStats,
             h *= alg.coordinate_shrink
         stats.counts["coordinate_extra"] = stats.counts.get("coordinate_extra", 0) + 1
     return cur, cur_ev
+
+
+def _retarget_entries(plan: Plan, ctx: SolveContext, k: int) -> list[dict]:
+    """在当前计划上，按代理成本排序给出至多 k 个“新的”接机目标(车, 访问/支援点)，保持当前继续空送的票不变.
+
+    S 只考虑原放飞车的停靠点；X 考虑全部在班车辆（含支援访问，即另一辆车绕路来接 = CROSS_TRUCK_DETOUR）。
+    已经试过的目标不重复(ctx.retarget_tried)。"""
+    from .recovery_milp import _d, _ground_cost, build_stops
+    inst, phys, state = ctx.inst, ctx.phys, ctx.state
+    frag = plan.sorties.get(ctx.frag_sid)
+    if frag is None or not frag.started or frag.start_pos is None:
+        return []
+    cur_rec = plan.visits.get(frag.rec_vid)
+    cur_key = (cur_rec.truck, frag.rec_vid) if cur_rec is not None else None
+    served = list(frag.air)
+    hand = list(frag.handover)
+    mass = {p: inst.parcel_mass[p] for p in served + hand}
+    m_tot = sum(mass.values())
+    ds = state.drone_start.get(frag.drone)
+    e0 = ds.energy if ds is not None else state.drone_energy.get(frag.drone, phys.e_cap)
+    stops = build_stops(plan, frag, inst, phys, state, ctx.strategy)
+    items = []
+    for st in stops:
+        if not st.support and (st.truck, st.ref) == cur_key:
+            continue
+        key = (st.truck, st.ref, st.support, tuple(served))
+        if key in ctx.retarget_tried:
+            continue
+        cost = st.cost
+        for p in hand:
+            c = inst.customer(inst.parcel_to_customer[p])
+            cost += _ground_cost(st, c.customer_id, (c.x, c.y), phys)
+        cur, m_cur, t_d, en = frag.start_pos, m_tot, 0.0, 0.0
+        for p in served:
+            c = inst.customer(inst.parcel_to_customer[p])
+            d = _d(cur, (c.x, c.y))
+            en += phys.fly_energy_kwh(d, m_cur) + phys.hover_energy_kwh(phys.air_service_s, m_cur)
+            t_d += d / phys.drone_speed_m_s + phys.air_service_s
+            m_cur = max(0.0, m_cur - mass[p])
+            cur = (c.x, c.y)
+        d = _d(cur, st.pos)
+        en += phys.fly_energy_kwh(d, m_cur)
+        t_d += d / phys.drone_speed_m_s
+        a = st.arrival - state.t0
+        cost += phys.cost_depot_kwh * (en + phys.hover_power(m_tot) * max(0.0, a - t_d) / 3600.0)
+        cost += phys.wage_per_s * max(0.0, t_d - a)
+        if en > e0 - phys.e_min + phys.energy_tol:
+            continue
+        items.append((cost, st.truck, str(st.ref), key, st))
+    items.sort(key=lambda x: (x[0], x[1], x[2]))
+    out = []
+    for c_, tk_, rf, key, st in items[:k]:
+        ctx.retarget_tried.add(key)
+        out.append({"truck": st.truck, "kind": "support" if st.support else "visit", "ref": st.ref,
+                    "support": st.support, "served": list(served), "est": c_})
+    return out
+
+
+def try_recovery_retarget(plan: Plan, ctx: SolveContext, budget: Budget, stats: SearchStats):
+    """RECOVERY_RETARGET：在当前最优计划上重选接机车/接机点（保留别处已找到的改进）.
+
+    S/X 同一算子、同样的评价次数 retarget_n 与频率；X 的候选可含其他车辆绕路来接(CROSS_TRUCK_DETOUR)。"""
+    from .recovery import build_residual_candidate
+    if ctx.frag_sid is None:
+        return None, None
+    best_p, best_ev = None, None
+    for entry in _retarget_entries(plan, ctx, ctx.alg.retarget_n):
+        if budget.evals_left() <= 0:
+            break
+        cands = build_residual_candidate(plan, ctx.frag_sid, entry, ctx.inst, ctx.phys, ctx.state,
+                                         ctx.ground_required, ctx.strategy)
+        for cand in cands:
+            if budget.evals_left() <= 0:
+                break
+            ev = eval_counted(cand, ctx.inst, ctx.phys, ctx.state, ctx.H, "RECOVERY_RETARGET", stats, budget)
+            if ev is None:
+                break
+            f_ = plan.sorties[ctx.frag_sid]
+            tag = "RETARGET_CROSS" if entry["truck"] != (f_.launch_truck or f_.truck) else "RETARGET_SAME"
+            stats.destroy_used[tag] = stats.destroy_used.get(tag, 0) + 1
+            if ev.feasible and (best_ev is None or _better(ev, best_ev, ctx.alg)):
+                best_p, best_ev = cand, ev
+            break
+    return best_p, best_ev
 
 
 def try_recovery_reassign(plan: Plan, ctx: SolveContext, budget: Budget,
