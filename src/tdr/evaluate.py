@@ -172,7 +172,7 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
     for d, stages in tl.drone_stages.items():
         e = tl.drone_energy.get(d, [])
         for i, st in enumerate(stages):
-            if st.kind == "R":
+            if st.kind == "R" and not st.landed:
                 if i + 1 < len(e) and e[i + 1] < phys.e_min - phys.energy_tol:
                     viol.append(f"E_MIN_AT_R:{d}@{st.start:.1f}")
     if viol:
@@ -249,7 +249,7 @@ def _plan_energy_waits(tl: Timeline, plan: Plan, phys: PhysicalConfig, state: St
         e = state.drone_energy.get(d, phys.e_cap)
         for i, st in enumerate(stages):
             e -= stage_energy(st, phys)
-            req = phys.e_min if st.kind == "R" else 0.0
+            req = phys.e_min if (st.kind == "R" and not st.landed) else 0.0
             if e - req < -phys.energy_tol:
                 bad_idx = i
                 break

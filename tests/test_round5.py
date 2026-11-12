@@ -409,3 +409,71 @@ def test_soft_h_overtime_cost_and_default_hard():
     # H 足够大 → 软/硬一致
     big = evaluate_plan(plan, inst, soft_phys, st, max(fin.values()) + 1.0, "NOMINAL")
     assert big.cost == pytest.approx(base.cost)
+
+
+def test_landed_flag_zero_energy_and_clone():
+    """v6 变体(a)：landed 阶段零能耗(WAIT/R)、Sortie.clone 保留、默认关."""
+    import dataclasses
+    from tdr.schedule import DroneStage, stage_energy
+    from tdr.plan import Sortie
+    inst, phys, plan = _light_plan()
+    assert phys.land_and_wait is False and phys.soft_h is False
+    for kind in ("WAIT", "R"):
+        a = DroneStage(kind, 0.0, 100.0, mass=1.0)
+        b = DroneStage(kind, 0.0, 100.0, mass=1.0, landed=True)
+        assert stage_energy(a, phys) > 0 and stage_energy(b, phys) == 0.0
+    c = DroneStage("CRUISE", 0.0, 10.0, mass=1.0, dist=100.0, landed=True)
+    assert stage_energy(c, phys) > 0           # 只有 WAIT/R 受 landed 影响
+    s0 = next(iter(plan.sorties.values()))
+    s0.landed = True
+    assert s0.clone().landed is True
+    s0.landed = False
+
+
+def test_land_and_wait_candidates_symmetric_and_flagged():
+    """S 的降落候选只在原放飞车上，X 可任意车；候选的该航次 landed=True，且接机客户=下一空送客户点."""
+    import dataclasses, random, zlib
+    from tdr.recovery import _landing_candidates
+    from tdr.config import AlgorithmConfig
+    from tdr.evaluate import evaluate_plan
+    from tdr.experiment import load_case_nominal
+    from tdr.schedule import initial_state
+    from tdr import simulate
+    inst, phys, plan = _light_plan()
+    phys = dataclasses.replace(phys, land_and_wait=True)
+    pkg = json.load(open(ROOT / "data" / "package_light.json"))
+    alg = AlgorithmConfig.from_dict(pkg["algorithm_protocol"]["default_parameters"])
+    alg.recovery_eval_budget_override = 60; alg.recovery_time_limit_override_s = None
+    alg.recovery_decision = "milp"
+    _, _, H = load_case_nominal(inst, ROOT / "tests" / "fixtures" / "light" / "C50")
+    nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
+    cap = []
+    orig = simulate.initial_recovery
+
+    def wrap(new_plan, state2, *a, **kw):
+        cap.append((new_plan.clone(), state2))
+        return orig(new_plan, state2, *a, **kw)
+    simulate.initial_recovery = wrap
+    try:
+        simulate.run_episode(inst, plan, nom, H, phys, BernoulliWorld(inst, "C50", 3, 0.3), "X", alg,
+                             simulate.derive_rngs(alg.base_algorithm_seed, "C50", "recovery", 0),
+                             recovery_eval_budget=60, max_replans=3)
+    finally:
+        simulate.initial_recovery = orig
+    assert cap
+    n = 0
+    for pl, st in cap:
+        for so in pl.sorties.values():
+            if not so.started:
+                continue
+            launch = so.launch_truck or so.truck
+            S = _landing_candidates(pl, so.sid, inst, phys, st, set(), "S", 10)
+            X = _landing_candidates(pl, so.sid, inst, phys, st, set(), "X", 10, max_n=50)
+            for c in S:
+                f = c.sorties[so.sid]
+                assert f.landed and c.visits[f.rec_vid].truck == launch
+                assert len(f.air) <= 1
+            for c in X:
+                assert c.sorties[so.sid].landed and len(c.sorties[so.sid].air) <= 1
+            n += 1
+    assert n >= 1

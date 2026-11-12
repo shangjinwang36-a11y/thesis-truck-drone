@@ -75,6 +75,9 @@ class PhysicalConfig:
     # 第五轮 v5 变体(b)：软 H(加班)。soft_h=True 时 H_EXCEEDED 不再是违规，超出 H 的每车时间按 overtime_mult×时薪的
     # 加班工资计价(基础工资已按 1× 计入，故附加 (mult-1)×)；默认 False(基线模型不变)。劳动法第44条(一)：不低于 150%。
     soft_h: bool = False
+    # 第五轮 v6 变体(a)：降落等待。回收阶段无法带备用电量抵达任何车的在飞/失败机，可降落在其下一个/当前客户点，
+    # 落地等待零能耗、回收不要求备用电量(E_min)，由合格车辆(S 仅原放飞车，X 任意车)到该点接回；默认关。
+    land_and_wait: bool = False
     overtime_mult: float = 1.5
 
     # ---- derived ----

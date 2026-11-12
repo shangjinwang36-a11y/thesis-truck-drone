@@ -484,6 +484,7 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
                 rec_keep = o.rec_vid if o.rec_vid in new.visits else -1
                 frag = Sortie(cur, d, o.truck, None, "AIR", 0.0, remain_air, rec_keep,
                               hand, True, t_d, pos, 0, 0, o.launch_truck or o.truck)
+            frag.landed = bool(o.landed)           # v6：降落等待标记随截断延续(落地等待期间被截断仍不耗电)
             new.sorties[frag.sid] = frag
             st.drone_start[d] = DroneStart("AIRBORNE", None, t_d, pos, energy)
             if (cur != failed_sid and stage is not None and stage.kind == "SERVICE" and stage.parcel
@@ -630,6 +631,8 @@ def collect_segment(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConf
             if so0 is not None:
                 rec["launch_truck"] = so0.launch_truck or so0.truck
                 if a.kind == "R":
+                    if so0.landed:
+                        rec["landed"] = True
                     rec["onboard"] = list(so0.air) + list(so0.handover)
                     rec["handover"] = list(so0.handover)
             if a.kind == "U":
@@ -672,6 +675,8 @@ def collect_segment(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConf
             frac = 0.0 if st.end - st.start < 1e-12 else (end - start) / (st.end - st.start)
             rec = {"kind": st.kind, "drone": d, "start": start, "end": end,
                    "truck": st.truck, "mass": st.mass}
+            if st.landed:
+                rec["landed"] = True
             if end < st.end - 1e-9 and st.kind in ("R", "L"):
                 # 跨段截断的回收/放飞只记悬停能耗，不改变 custody/机位状态
                 rec["kind"] = "WAIT"
@@ -910,6 +915,9 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             "joint_retargets": init_info.get("joint_retargets", 0),
             "slot_relief_tries": init_info.get("slot_relief_tries", 0),
             "slot_relief_ok": init_info.get("slot_relief_ok", 0),
+            "landing_tries": init_info.get("landing_tries", 0),
+            "landing_ok": init_info.get("landing_ok", 0),
+            "landing_seeds": init_info.get("landing_seeds", 0),
             "init_cost": init_info.get("init_cost"),
             "residual_feasible": init_info.get("residual_feasible"),
             "residual_cost": res_cost,

@@ -40,12 +40,13 @@ class Sortie:
     rec_priority: int = 0      # 同一访问的回收顺序（局部事件重排）
     launch_priority: int = 0   # 同一访问的放飞顺序
     launch_truck: str | None = None  # 原放飞车（跨车回收统计用，不随承运车改写）
+    landed: bool = False       # 降落等待：回收访问处落地等待(零能耗、免 E_min 备用电量)，v6 变体 a
 
     def clone(self) -> "Sortie":
         return Sortie(self.sid, self.drone, self.truck, self.launch_vid, self.mode, self.lam,
                       list(self.air), self.rec_vid, list(self.handover), self.started,
                       self.start_time, self.start_pos, self.rec_priority, self.launch_priority,
-                      self.launch_truck)
+                      self.launch_truck, self.landed)
 
     @property
     def payload_ids(self) -> list[str]:

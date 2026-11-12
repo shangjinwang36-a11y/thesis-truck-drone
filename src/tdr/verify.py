@@ -92,7 +92,7 @@ def verify_plan(inst: Instance, state: StartState | None, plan: Plan, strategy: 
         for i, st in enumerate(stages):
             if i + 1 < len(energies) and energies[i + 1] < -phys.energy_tol:
                 rep.violations.append(f"NEGATIVE_SOC:{d}@{st.start:.1f}")
-            if st.kind == "R" and i + 1 < len(energies) and energies[i + 1] < phys.e_min - phys.energy_tol:
+            if st.kind == "R" and not st.landed and i + 1 < len(energies) and energies[i + 1] < phys.e_min - phys.energy_tol:
                 rep.violations.append(f"RESERVE_VIOLATION:{d}@{st.start:.1f}")
     # ---- 交付与终端 ----
     delivered = set(state.delivered)

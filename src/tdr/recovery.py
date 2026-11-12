@@ -149,6 +149,7 @@ def _set_recovery(plan: Plan, frag: Sortie, rec_truck: str, rec_vid: int,
     frag.air = [p for p in remain if p in served_set]
     frag.handover = handover
     frag.rec_vid = rec_vid
+    frag.landed = False                  # 改派回收后默认不是降落等待(由 _landing_candidates 显式置位)
     if frag.launch_truck is None:
         frag.launch_truck = frag.truck
     frag.truck = rec_truck
@@ -606,6 +607,38 @@ def _slot_relief_candidates(plan: Plan, ev: Evaluation, frag_sid: int, state: St
     return out
 
 
+
+def _landing_candidates(plan: Plan, tgt_sid: int, inst: Instance, phys: PhysicalConfig,
+                        state: StartState, ground_required: set[str], strategy: str,
+                        guard_n: int, n_scan: int = 200, max_n: int = 4) -> list[Plan]:
+    """v6 变体(a) 降落等待候选（S/X 同一规则）：在飞/失败机降落在“下一个空送客户点”(无剩余空送票则取离当前位置最近的客户点)，
+    回收访问就设在该客户点(由目录给出的接机车辆：S 仅原放飞车，X 任意车)，继续空送子集只能是 ∅ 或首票；
+    落地等待零能耗、回收免 E_min 备用电量(电量仍须 ≥0)。候选交完整评价器核验。"""
+    so = plan.sorties.get(tgt_sid)
+    if so is None or not so.started:
+        return []
+    rem = [p for p in so.air if p not in ground_required]
+    if rem:
+        land_c = inst.parcel_to_customer[rem[0]]
+    else:
+        pos = so.start_pos or (inst.depot_x, inst.depot_y)
+        land_c = min(inst.customers, key=lambda c: (math.hypot(c.x - pos[0], c.y - pos[1]), c.customer_id)).customer_id
+    allowed = [[]] + ([[rem[0]]] if rem else [])
+    cat = RecoveryCatalog(plan, so, inst, strategy, state, ground_required, phys=phys, guard_n=guard_n)
+    out: list[Plan] = []
+    for ent in cat.next_entries(n_scan):
+        rc = ent["ref"] if ent["support"] else (plan.visits[ent["ref"]].customer if ent["ref"] in plan.visits else None)
+        if rc != land_c or list(ent["served"]) not in allowed:
+            continue
+        for c in build_residual_candidate(plan, tgt_sid, ent, inst, phys, state, ground_required, strategy)[:2]:
+            if tgt_sid in c.sorties:
+                c.sorties[tgt_sid].landed = True
+                out.append(c)
+        if len(out) >= max_n:
+            break
+    return out
+
+
 def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfig, state: StartState,
                     H: float | None, ground_required: set[str], strategy: str, stats, budget,
                     tried_entries: list[dict], info: dict, consider, guard_n: int,
@@ -618,6 +651,10 @@ def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfi
         for c in build_residual_candidate(res, frag.sid, ent, inst, phys, state, ground_required, strategy)[:2]:
             seeds.append(c)
     seeds = seeds[:4]
+    if phys.land_and_wait:
+        for c in _landing_candidates(res, frag.sid, inst, phys, state, ground_required, strategy, guard_n)[:2]:
+            seeds.append(c)
+            info['landing_seeds'] = info.get('landing_seeds', 0) + 1
     if not seeds or budget is None:
         return False
     budget.eval_limit = (budget.eval_limit or 0) + JOINT_EXTRA_EVALS
@@ -677,6 +714,23 @@ def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfi
                         fs = cnd.sorties[frag.sid]
                         consider(cnd, ev2, {"truck": cnd.visits[fs.rec_vid].truck, "kind": "visit",
                                             "ref": fs.rec_vid, "support": False, "served": list(fs.air)}, "JOINT")
+                        return True
+                    if first_inf is None:
+                        first_inf = cnd
+            if phys.land_and_wait:
+                for cnd in _landing_candidates(plan_j, tgt, inst, phys, state, ground_required, strategy,
+                                               guard_n)[:3]:
+                    if budget.evals_left() <= 0:
+                        return False
+                    ev2 = eval_counted(cnd, inst, phys, state, H, "RECOVERY_INITIAL_BASE", stats, budget)
+                    if ev2 is None:
+                        return False
+                    info["landing_tries"] = info.get("landing_tries", 0) + 1
+                    if ev2.feasible:
+                        fs = cnd.sorties[frag.sid]
+                        info["landing_ok"] = info.get("landing_ok", 0) + 1
+                        consider(cnd, ev2, {"truck": cnd.visits[fs.rec_vid].truck, "kind": "visit",
+                                            "ref": fs.rec_vid, "support": False, "served": list(fs.air)}, "JOINT_LAND")
                         return True
                     if first_inf is None:
                         first_inf = cnd
@@ -864,7 +918,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                 break
 
     # ②-J 第五轮：联合重选所有在飞无人机的接机（S/X 同一路径）；仅当仍无任何可行解时启用
-    if joint and best is None and budget is not None:
+    if (joint or phys.land_and_wait) and best is None and budget is not None:
         _joint_retarget(res, frag, inst, phys, state, H, ground_required, strategy, stats, budget,
                         tried_entries, info, _consider, catalog.guard_n, slot_aware)
 
