@@ -123,3 +123,65 @@ def test_reassign_flag_never_adopts_worse_than_best(strat):
 def test_reassign_flag_default_false():
     from tdr.config import AlgorithmConfig
     assert AlgorithmConfig().reassign_adopt_only_if_best is False
+
+
+def _light_plan():
+    from tdr.experiment import load_case_nominal
+    pkg = json.load(open(ROOT / "data" / "package_light.json"))
+    fx = ROOT / "tests" / "fixtures" / "light"
+    case = "C50"
+    if not (fx / case).exists():
+        pytest.skip("fixture missing")
+    from tdr.config import PhysicalConfig
+    phys = PhysicalConfig.from_dict(dict(pkg["config"])).for_case(pkg.get("case_fleet"), case)
+    inst = load_instance(pkg, case)
+    plan, _, H = load_case_nominal(inst, fx / case)
+    return inst, phys, plan
+
+
+def _overlaps(plan):
+    from tdr.moves import drone_chain
+    bad = []
+    for d in plan.drone_sorties:
+        ch = drone_chain(plan, d)
+        for i in range(len(ch)):
+            for j in range(i + 1, len(ch)):
+                _, li, ri = ch[i]; _, lj, rj = ch[j]
+                if not (ri < lj or li > rj):
+                    bad.append((d, ch[i], ch[j]))
+    return bad
+
+
+@pytest.mark.parametrize("recheck", [True, False])
+def test_apply_air_recheck_prevents_overlapping_chain(recheck):
+    """贪心修复里两个 NEW 候选在修复开始时选了同一机体同一区间：应用第二个时必须重新核对机位."""
+    from tdr import moves
+    from tdr.moves import AirCandidate, apply_air, drones_on_truck, sortie_slot_free
+    inst, phys, plan = _light_plan()
+    plan = plan.clone()
+    # 清空某车的全部航次以制造空闲机位
+    truck = max(sorted(plan.routes), key=lambda t: len(plan.routes[t]))
+    for sid in [s.sid for s in plan.sorties.values() if s.truck == truck and not s.started]:
+        plan.remove_sortie(sid)
+    route = plan.routes[truck]
+    assert len(route) >= 4
+    drones = drones_on_truck(plan, truck)
+    assert len(drones) >= 1
+    d0 = drones[0]
+    a, b = 1, 3
+    assert sortie_slot_free(plan, d0, a, b)
+    parcels = [p for p in inst.parcel_mass][:2]
+    old = moves.CHAIN_RECHECK
+    moves.CHAIN_RECHECK = recheck
+    try:
+        oks = []
+        for p in parcels:
+            cand = AirCandidate("NEW", truck, route[a], "ARC", 0.5, route[b], proxy=0.0, energy=0.0, drone=d0)
+            oks.append(apply_air(plan, inst, p, cand, phys=phys))
+    finally:
+        moves.CHAIN_RECHECK = old
+    if recheck:
+        assert _overlaps(plan) == []                    # 无重叠：第二个换机体或失败
+        assert oks[0] is True
+    else:
+        assert len(_overlaps(plan)) >= 1                # 旧行为复现：同机体区间重叠
