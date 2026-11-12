@@ -11,7 +11,7 @@ ap.add_argument('--budget', type=int, default=1000)
 ap.add_argument('--cases', default='C50,R50,RC50,C100,R100,RC100')
 ap.add_argument('--package', default='data/package_light.json')
 ap.add_argument('--workers', type=int, default=4); ap.add_argument('--strats', default='S,X')
-ap.add_argument('--alg-json', default=None)
+ap.add_argument('--alg-json', default=None); ap.add_argument('--b', type=int, default=None, help='两阶段共享随机流：最后 b 次评价才对 X 开跨车')
 args = ap.parse_args()
 OUT = Path(ROOT) / 'r6' / 'nominal' / args.tag
 
@@ -31,7 +31,7 @@ def task(t):
     d = OUT / f'{strat}_seed{seed}' / case
     t0 = time.time()
     try:
-        m = build_case_nominal(inst, phys, alg, d, eval_budget=args.budget, cross_launch=(strat == 'X'))
+        m = build_case_nominal(inst, phys, alg, d, eval_budget=args.budget, cross_launch=(strat == 'X'), two_phase_b=args.b)
     except Exception as e:
         m = dict(case_id=case, status='ERROR', error=repr(e)[:300])
     m.update(strat=strat, seed=seed, n_cust=len(inst.customers), wall=time.time() - t0)

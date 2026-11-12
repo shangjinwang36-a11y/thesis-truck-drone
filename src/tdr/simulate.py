@@ -496,11 +496,23 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
             stage = stages[idx] if 0 <= idx < len(stages) else None
             if stage is not None and stage.truck:
                 carrier = stage.truck
+            elif (stage is not None and stage.kind == "R" and stage.sid in plan.sorties
+                  and plan.sorties[stage.sid].rec_vid in plan.visits):
+                # 第六轮：截断时刻恰在(已承诺的)回收 R 内/末——承运车 = 该航次回收车（名义跨车航次的回收车≠放飞车，
+                # 旧逻辑取“最后一个有车的阶段”会取到整班最终承运车而不是当前承运车）
+                carrier = plan.visits[plan.sorties[stage.sid].rec_vid].truck
             if carrier is None:
-                for sd in reversed(stages):
+                # 第六轮：按当前阶段位置向前找最近的有车阶段（同车链上与旧逻辑等价）
+                lo = idx if 0 <= idx < len(stages) else len(stages) - 1
+                for sd in reversed(stages[:lo + 1]):
                     if sd.truck:
                         carrier = sd.truck
                         break
+                if carrier is None:
+                    for sd in stages:
+                        if sd.truck:
+                            carrier = sd.truck
+                            break
             carrier = carrier or home_truck(d)
             st.drone_start[d] = DroneStart("ON_TRUCK", carrier, t_d,
                                            st.truck_start_pos.get(carrier), energy)

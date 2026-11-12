@@ -1,0 +1,254 @@
+{
+ "case_id": "RC100",
+ "status": "FEASIBLE",
+ "plan_id": "RC100-nominal-1.0.0",
+ "H_s": 6082.476797752773,
+ "cost": 662.4669182849656,
+ "z_s": 4282.476797752773,
+ "n_sorties": 26,
+ "n_air_parcels": 65,
+ "n_visits": 42,
+ "eval_requests": 1000,
+ "wall_s": 22.653696665001917,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 662.4669182849656
+ },
+ "distance_km": 168.12902080839774,
+ "cost_breakdown": {
+  "truck_km": 168.12902080839774,
+  "c_km": 281.94059886422644,
+  "driver_s": 26570.860462890214,
+  "c_driver": 374.6106732140343,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 7.283165783919159,
+  "c_depot": 5.915646206704791,
+  "swaps": 7.0
+ },
+ "n_cross_sorties": 6,
+ "cross_launch": true,
+ "audit": {
+  "SORTIE_REGROUP": {
+   "calls": 12,
+   "infeasible": 5,
+   "feasible": 7,
+   "best": 3,
+   "accepted": 3
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 19,
+   "infeasible": 13,
+   "feasible": 6,
+   "best": 3,
+   "accepted": 3
+  },
+  "CROSS_REPAIR_TRIALS": {
+   "gen": 49,
+   "feasible": 20,
+   "best": 7,
+   "accepted": 7
+  },
+  "SUPPORT_VISIT": {
+   "calls": 9,
+   "feasible": 6,
+   "best": 2,
+   "accepted": 2,
+   "infeasible": 3
+  },
+  "R:AIR_FIRST": {
+   "calls": 20,
+   "feasible": 8,
+   "infeasible": 12
+  },
+  "CROSS_CONVERT": {
+   "calls": 16,
+   "feasible": 12,
+   "infeasible": 4,
+   "cur_improve": 3,
+   "best": 3
+  },
+  "GROUND_TO_AIR": {
+   "calls": 13,
+   "infeasible": 12,
+   "feasible": 1
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 31,
+   "infeasible": 17,
+   "feasible": 14,
+   "best": 7,
+   "accepted": 7
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 15,
+   "feasible": 6,
+   "best": 3,
+   "accepted": 3,
+   "infeasible": 9
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 7,
+   "feasible": 3,
+   "infeasible": 4
+  },
+  "ENERGY_CHAIN": {
+   "calls": 7,
+   "feasible": 3,
+   "infeasible": 4,
+   "best": 1,
+   "accepted": 1
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 7,
+   "feasible": 2,
+   "best": 1,
+   "accepted": 1,
+   "infeasible": 5
+  }
+ },
+ "reject": {
+  "NOMINAL_AIR_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 9,
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 243,
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 2,
+  "CROSS_CONVERT|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 2,
+  "COORDINATE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 5
+ },
+ "last_improvement_iter": 52,
+ "n_iterations": 70,
+ "best_trace": [
+  [
+   0,
+   745.2413062822277,
+   4207.640838812633
+  ],
+  [
+   387,
+   744.984457344162,
+   4207.640838812633
+  ],
+  [
+   399,
+   744.5504311740892,
+   4205.657180899797
+  ],
+  [
+   404,
+   742.8455988191196,
+   4355.292542259907
+  ],
+  [
+   416,
+   742.5531511327043,
+   4355.292542259907
+  ],
+  [
+   433,
+   738.3519854685525,
+   4382.231478194094
+  ],
+  [
+   445,
+   737.7619117046773,
+   4374.002848593716
+  ],
+  [
+   472,
+   736.169899046716,
+   4408.734240923821
+  ],
+  [
+   484,
+   735.9465759562787,
+   4408.734240923821
+  ],
+  [
+   499,
+   725.7929920661504,
+   4181.213314312012
+  ],
+  [
+   511,
+   725.5279455046731,
+   4181.213314312012
+  ],
+  [
+   514,
+   719.0694176287825,
+   4181.213314312012
+  ],
+  [
+   0,
+   762.0989836178554,
+   4315.966560031118
+  ],
+  [
+   525,
+   755.6033736776157,
+   4400.326817983824
+  ],
+  [
+   537,
+   755.3903066146916,
+   4400.326817983824
+  ],
+  [
+   564,
+   728.9191923423379,
+   4258.440553776426
+  ],
+  [
+   576,
+   728.7061252794138,
+   4258.440553776426
+  ],
+  [
+   578,
+   714.239061336871,
+   4258.440553776426
+  ],
+  [
+   605,
+   706.3119210842194,
+   4258.440553776426
+  ],
+  [
+   617,
+   706.092658466427,
+   4258.440553776426
+  ],
+  [
+   619,
+   702.6397406424649,
+   5125.988517331245
+  ],
+  [
+   646,
+   702.6384346519279,
+   5125.988517331245
+  ],
+  [
+   664,
+   679.9449597924814,
+   4279.322058363035
+  ],
+  [
+   0,
+   679.9449597924814,
+   4279.322058363035
+  ],
+  [
+   751,
+   679.735633862554,
+   4279.322058363035
+  ],
+  [
+   807,
+   679.7314355337297,
+   4279.322058363035
+  ]
+ ]
+}

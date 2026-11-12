@@ -82,7 +82,8 @@ def _write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
 # ---------------------------------------------------------------------------
 def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                        out_dir: str | Path, eval_budget: int | None = None,
-                       variant: str = "full", cross_launch: bool = False) -> dict:
+                       variant: str = "full", cross_launch: bool = False,
+                       two_phase_b: int | None = None) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     rngs = derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0)
@@ -98,7 +99,7 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
     for ns in starts:
         r_ = build_nominal(inst, phys_nom, alg, derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0),
                            eval_budget=eval_budget, variant=variant, n_used=ns,
-                           cross_launch=cross_launch)
+                           cross_launch=cross_launch, two_phase_b=two_phase_b)
         c_ = r_.evaluation.cost if (r_.plan is not None and r_.evaluation is not None and r_.evaluation.feasible) else None
         start_costs[str(ns)] = c_
         if c_ is not None and (res is None or c_ < res.evaluation.cost):
@@ -178,6 +179,8 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         "last_improvement_iter": res.stats.counts.get("last_improvement_iter"),
         "n_iterations": res.stats.counts.get("n_alns_iterations"),
         "best_trace": res.stats.counts.get("best_trace"),
+        "two_phase_b": two_phase_b, "phase1_evals": res.stats.counts.get("phase1_evals"),
+        "phase1_cost": res.stats.counts.get("phase1_cost"),
     }
     _write_json(out / "result.json", meta)
     return meta

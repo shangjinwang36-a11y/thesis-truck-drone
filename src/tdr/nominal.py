@@ -207,10 +207,48 @@ def descent_pass(plan: Plan, inst: Instance, phys: PhysicalConfig, alg: Algorith
     return plan, best_ev, spent
 
 
+def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_launch, b):
+    """第六轮：共享随机流的两阶段设计（CRN）.
+
+    阶段1（预算 B−b）：S 与 X **完全相同**的同车流程(含初始构造、转换启动、ALNS、末尾下降、坐标细化)，同种子同随机流 → 结果逐位相同；
+    阶段2（剩余预算 b'=B−阶段1实际用量）：从阶段1的最优解出发继续 ALNS，随机流接着阶段1的状态；
+        S：照旧同车算子；X：打开跨车候选与 CROSS_CONVERT。总预算 S/X 相同(B)。
+    X 的可行域包含 S 的；两者在 X 第一次选到跨车候选之前轨迹逐步相同。"""
+    from copy import deepcopy
+    t0 = time.perf_counter()
+    B = eval_budget if eval_budget is not None else alg.nominal_eval_budget
+    r1 = build_nominal(inst, phys, alg, rngs, eval_budget=B - b, variant=variant, n_used=n_used,
+                       cross_launch=False)
+    if r1.plan is None or r1.evaluation is None or not r1.evaluation.feasible:
+        return r1
+    used1 = r1.stats.eval_requests
+    state = initial_state(inst, phys)
+    state.nominal_cross = bool(cross_launch)
+    stats2 = SearchStats()
+    budget2 = Budget(max(1, B - used1), None)
+    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=None, mode="nominal", rngs=rngs)
+    res = optimize(r1.plan, ctx, budget2, variant=variant, stats=stats2)
+    best_plan, best_ev = r1.plan, r1.evaluation
+    from .alns import _better
+    if res.plan is not None and res.evaluation is not None and res.evaluation.feasible \
+            and _better(res.evaluation, best_ev, alg):
+        best_plan, best_ev = res.plan, res.evaluation
+    stats2.eval_requests = used1 + stats2.eval_requests
+    stats2.wall_s = time.perf_counter() - t0
+    stats2.counts = dict(res.stats.counts)
+    stats2.counts["phase1_evals"] = used1
+    stats2.counts["phase1_cost"] = r1.evaluation.cost
+    stats2.counts["phase1_audit"] = r1.stats.counts.get("audit")
+    stats2.stop_reason = res.stats.stop_reason
+    return SolveResult(best_plan, best_ev, "FEASIBLE_LIMIT", stats2)
+
+
 def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                   rngs: dict[str, random.Random], eval_budget: int | None = None,
                   variant: str = "full", n_used: int | None = None,
-                  cross_launch: bool = False) -> SolveResult:
+                  cross_launch: bool = False, two_phase_b: int | None = None) -> SolveResult:
+    if two_phase_b:
+        return _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_launch, two_phase_b)
     t0 = time.perf_counter()
     state = initial_state(inst, phys)
     state.nominal_cross = bool(cross_launch)     # 第六轮：True=X（名义阶段允许跨车航次）；False=S（行为与之前完全一致）
