@@ -1,0 +1,227 @@
+{
+ "case_id": "R100",
+ "status": "FEASIBLE",
+ "plan_id": "R100-nominal-1.0.0",
+ "H_s": 6030.079071780947,
+ "cost": 711.7762898290581,
+ "z_s": 4230.079071780947,
+ "n_sorties": 28,
+ "n_air_parcels": 81,
+ "n_visits": 43,
+ "eval_requests": 951,
+ "wall_s": 19.809276807995047,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 711.7762898290581
+ },
+ "distance_km": 178.64913975754013,
+ "cost_breakdown": {
+  "truck_km": 178.64913975754013,
+  "c_km": 299.5821019336118,
+  "driver_s": 28780.09693664131,
+  "c_driver": 405.7577097910679,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 7.924398360000291,
+  "c_depot": 6.436478104378369,
+  "swaps": 7.0
+ },
+ "n_cross_sorties": 0,
+ "cross_launch": false,
+ "audit": {
+  "AFFECTED_SORTIE": {
+   "calls": 26,
+   "infeasible": 11,
+   "feasible": 15,
+   "best": 6,
+   "accepted": 6
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 24,
+   "infeasible": 15,
+   "feasible": 9,
+   "best": 2,
+   "accepted": 2
+  },
+  "SUPPORT_VISIT": {
+   "calls": 9,
+   "feasible": 5,
+   "best": 2,
+   "accepted": 2,
+   "infeasible": 4
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 11,
+   "infeasible": 10,
+   "feasible": 1
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 26,
+   "infeasible": 23,
+   "feasible": 3,
+   "best": 2,
+   "accepted": 2
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 9,
+   "infeasible": 6,
+   "feasible": 3
+  },
+  "ENERGY_CHAIN": {
+   "calls": 9,
+   "feasible": 3,
+   "infeasible": 6,
+   "best": 1,
+   "accepted": 1
+  },
+  "R:AIR_FIRST": {
+   "calls": 30,
+   "feasible": 25,
+   "best": 7,
+   "accepted": 8,
+   "infeasible": 5
+  },
+  "SORTIE_REGROUP": {
+   "calls": 9,
+   "feasible": 6,
+   "best": 1,
+   "accepted": 2,
+   "infeasible": 3
+  },
+  "GROUND_TO_AIR": {
+   "calls": 7,
+   "feasible": 4,
+   "best": 1,
+   "accepted": 1,
+   "infeasible": 3
+  }
+ },
+ "reject": {
+  "NOMINAL_AIR_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 19,
+  "ALNS_BASE|INVALID_STRUCTURE|drone d#: 航次 # 放飞访问早于上一航次回收访问(链次序)": 170,
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 122,
+  "COORDINATE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 17
+ },
+ "last_improvement_iter": 72,
+ "n_iterations": 80,
+ "best_trace": [
+  [
+   0,
+   813.5794193691876,
+   4321.36199280935
+  ],
+  [
+   333,
+   793.45142986548,
+   4236.450861738265
+  ],
+  [
+   345,
+   792.9816827709892,
+   4236.450861738265
+  ],
+  [
+   375,
+   774.3068337879203,
+   4287.738901770882
+  ],
+  [
+   387,
+   774.2318337496991,
+   4287.738901770882
+  ],
+  [
+   427,
+   747.6762767886108,
+   4287.734399102959
+  ],
+  [
+   439,
+   746.6752331696308,
+   4287.734399102959
+  ],
+  [
+   444,
+   733.2350673358227,
+   4205.273586164014
+  ],
+  [
+   0,
+   800.6641506701598,
+   4630.9213209324935
+  ],
+  [
+   488,
+   789.1740849036761,
+   4507.680348251221
+  ],
+  [
+   500,
+   788.7723441392875,
+   4507.680348251221
+  ],
+  [
+   525,
+   783.4832584671873,
+   4475.94662242205
+  ],
+  [
+   537,
+   783.2898605834285,
+   4475.94662242205
+  ],
+  [
+   572,
+   780.2782200046041,
+   4434.462276890132
+  ],
+  [
+   584,
+   780.0818138410101,
+   4434.462276890132
+  ],
+  [
+   610,
+   779.6286377563715,
+   4420.382746557297
+  ],
+  [
+   622,
+   779.4728663930935,
+   4420.382746557297
+  ],
+  [
+   0,
+   733.2350673358227,
+   4205.273586164014
+  ],
+  [
+   633,
+   727.8787886108562,
+   4173.412036473243
+  ],
+  [
+   645,
+   727.012772664607,
+   4173.412036473243
+  ],
+  [
+   740,
+   724.7730081626217,
+   4186.659341104143
+  ],
+  [
+   798,
+   719.9382858591275,
+   4230.079071780947
+  ],
+  [
+   827,
+   719.791283773701,
+   4230.079071780947
+  ]
+ ]
+}
