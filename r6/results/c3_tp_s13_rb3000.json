@@ -1,0 +1,389 @@
+{
+ "meta": {
+  "args": {
+   "name": "c3_tp_s13_rb3000",
+   "package": "data/package_light.json",
+   "nominal_S": "r6/nominal/n3_tp/S_seed20261113",
+   "nominal_X": "r6/nominal/n3_tp/X_seed20261113",
+   "h": "common",
+   "cases": "C50,R50,RC50,C100,R100,RC100",
+   "seeds": 10,
+   "seed0": 1,
+   "forced": 0,
+   "budget": 3000,
+   "alg_json": null,
+   "phys_json": null,
+   "cut_mode": "snapshot",
+   "workers": 4,
+   "strats": "S,X",
+   "reassign_old": false
+  },
+  "start": "2026-11-13 04:54:17"
+ },
+ "runs": [
+  {
+   "case": "C100",
+   "seed": 1,
+   "n_cust": 100,
+   "H_S": 4751.329003745299,
+   "H_X": 5136.587996061056,
+   "S_nominal": {
+    "cost": 377.78189447948347,
+    "feasible": true,
+    "air": 87,
+    "H": 4751.329003745299,
+    "n_cross": 0,
+    "n_sorties": 23
+   },
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 378.23768603201,
+    "verified": true,
+    "notes": [],
+    "wall": 32.89996655900177,
+    "n_replans": 1,
+    "stop_replan": null,
+    "n_air_final": 84,
+    "n_evals": 3100,
+    "replay_viol": null,
+    "n_fail_events": 1,
+    "n_fail_rec": 1,
+    "n_fail_cross": 0,
+    "failed_delivery_delays_s": [
+     631.3748188732111
+    ],
+    "failed_delivery_delay_mean_s": 631.3748188732111,
+    "failed_delivery_delay_max_s": 631.3748188732111,
+    "makespan_s": 2887.487692515954,
+    "driver_total_s": 15794.26103891074,
+    "z_s_metric": 2887.487692515954,
+    "n_swaps": 5,
+    "stop_reason": null
+   },
+   "X_nominal": {
+    "cost": 383.56375035294303,
+    "feasible": true,
+    "air": 91,
+    "H": 4751.329003745299,
+    "n_cross": 6,
+    "n_sorties": 25
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 383.56375035294303,
+    "verified": true,
+    "notes": [],
+    "wall": 0.05123094499867875,
+    "n_replans": 0,
+    "stop_replan": null,
+    "n_air_final": 91,
+    "n_evals": 0,
+    "replay_viol": null,
+    "n_fail_events": 0,
+    "n_fail_rec": 0,
+    "n_fail_cross": 0,
+    "failed_delivery_delays_s": [],
+    "failed_delivery_delay_mean_s": null,
+    "failed_delivery_delay_max_s": null,
+    "makespan_s": 3336.587996061056,
+    "driver_total_s": 15920.608556501134,
+    "z_s_metric": 3336.587996061056,
+    "n_swaps": 6,
+    "stop_reason": null
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 5,
+   "n_cust": 100,
+   "H_S": 4751.329003745299,
+   "H_X": 5136.587996061056,
+   "S_nominal": {
+    "cost": 377.78189447948347,
+    "feasible": true,
+    "air": 87,
+    "H": 4751.329003745299,
+    "n_cross": 0,
+    "n_sorties": 23
+   },
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 413.80765867754224,
+    "verified": true,
+    "notes": [],
+    "wall": 15.702149019998615,
+    "n_replans": 2,
+    "stop_replan": null,
+    "n_air_final": 83,
+    "n_evals": 3196,
+    "replay_viol": null,
+    "n_fail_events": 2,
+    "n_fail_rec": 2,
+    "n_fail_cross": 0,
+    "failed_delivery_delays_s": [
+     591.2730688378836,
+     932.7240731976544
+    ],
+    "failed_delivery_delay_mean_s": 761.998571017769,
+    "failed_delivery_delay_max_s": 932.7240731976544,
+    "makespan_s": 3861.369887930638,
+    "driver_total_s": 16940.58194010136,
+    "z_s_metric": 3861.369887930638,
+    "n_swaps": 5,
+    "stop_reason": null
+   },
+   "X_nominal": {
+    "cost": 383.56375035294303,
+    "feasible": true,
+    "air": 91,
+    "H": 4751.329003745299,
+    "n_cross": 6,
+    "n_sorties": 25
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 385.1402581204873,
+    "verified": true,
+    "notes": [],
+    "wall": 7.515496928994253,
+    "n_replans": 1,
+    "stop_replan": null,
+    "n_air_final": 90,
+    "n_evals": 3098,
+    "replay_viol": null,
+    "n_fail_events": 1,
+    "n_fail_rec": 1,
+    "n_fail_cross": 0,
+    "failed_delivery_delays_s": [
+     386.11504372197896
+    ],
+    "failed_delivery_delay_mean_s": 386.11504372197896,
+    "failed_delivery_delay_max_s": 386.11504372197896,
+    "makespan_s": 3358.3910229082994,
+    "driver_total_s": 15942.41158334838,
+    "z_s_metric": 3358.3910229082994,
+    "n_swaps": 5,
+    "stop_reason": null
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 2,
+   "n_cust": 100,
+   "H_S": 4751.329003745299,
+   "H_X": 5136.587996061056,
+   "S_nominal": {
+    "cost": 377.78189447948347,
+    "feasible": true,
+    "air": 87,
+    "H": 4751.329003745299,
+    "n_cross": 0,
+    "n_sorties": 23
+   },
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 383.88646073909825,
+    "verified": true,
+    "notes": [],
+    "wall": 29.05114894599683,
+    "n_replans": 1,
+    "stop_replan": null,
+    "n_air_final": 86,
+    "n_evals": 3100,
+    "replay_viol": null,
+    "n_fail_events": 1,
+    "n_fail_rec": 1,
+    "n_fail_cross": 0,
+    "failed_delivery_delays_s": [
+     421.137423223051
+    ],
+    "failed_delivery_delay_mean_s": 421.137423223051,
+    "failed_delivery_delay_max_s": 421.137423223051,
+    "makespan_s": 2923.3224439858927,
+    "driver_total_s": 15883.771469370891,
+    "z_s_metric": 2923.3224439858927,
+    "n_swaps": 6,
+    "stop_reason": null
+   },
+   "X_nominal": {
+    "cost": 383.56375035294303,
+    "feasible": true,
+    "air": 91,
+    "H": 4751.329003745299,
+    "n_cross": 6,
+    "n_sorties": 25
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 399.9238601255167,
+    "verified": true,
+    "notes": [],
+    "wall": 29.45960457900219,
+    "n_replans": 1,
+    "stop_replan": null,
+    "n_air_final": 89,
+    "n_evals": 3100,
+    "replay_viol": null,
+    "n_fail_events": 1,
+    "n_fail_rec": 1,
+    "n_fail_cross": 1,
+    "failed_delivery_delays_s": [
+     811.1976100299589
+    ],
+    "failed_delivery_delay_mean_s": 811.1976100299589,
+    "failed_delivery_delay_max_s": 811.1976100299589,
+    "makespan_s": 3299.9226110026984,
+    "driver_total_s": 16476.39190320687,
+    "z_s_metric": 3299.9226110026984,
+    "n_swaps": 7,
+    "stop_reason": null
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 3,
+   "n_cust": 100,
+   "H_S": 4751.329003745299,
+   "H_X": 5136.587996061056,
+   "S_nominal": {
+    "cost": 377.78189447948347,
+    "feasible": true,
+    "air": 87,
+    "H": 4751.329003745299,
+    "n_cross": 0,
+    "n_sorties": 23
+   },
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 381.1208890761451,
+    "verified": true,
+    "notes": [],
+    "wall": 36.281138297003054,
+    "n_replans": 1,
+    "stop_replan": null,
+    "n_air_final": 82,
+    "n_evals": 3100,
+    "replay_viol": null,
+    "n_fail_events": 1,
+    "n_fail_rec": 1,
+    "n_fail_cross": 0,
+    "failed_delivery_delays_s": [
+     517.713034801255
+    ],
+    "failed_delivery_delay_mean_s": 517.713034801255,
+    "failed_delivery_delay_max_s": 517.713034801255,
+    "makespan_s": 2989.9570635566283,
+    "driver_total_s": 15887.6750115457,
+    "z_s_metric": 2989.9570635566283,
+    "n_swaps": 4,
+    "stop_reason": null
+   },
+   "X_nominal": {
+    "cost": 383.56375035294303,
+    "feasible": true,
+    "air": 91,
+    "H": 4751.329003745299,
+    "n_cross": 6,
+    "n_sorties": 25
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 399.6349387008348,
+    "verified": true,
+    "notes": [],
+    "wall": 29.815506008999364,
+    "n_replans": 1,
+    "stop_replan": null,
+    "n_air_final": 86,
+    "n_evals": 3100,
+    "replay_viol": null,
+    "n_fail_events": 1,
+    "n_fail_rec": 1,
+    "n_fail_cross": 1,
+    "failed_delivery_delays_s": [
+     1250.7451614124016
+    ],
+    "failed_delivery_delay_mean_s": 1250.7451614124016,
+    "failed_delivery_delay_max_s": 1250.7451614124016,
+    "makespan_s": 3812.581847051544,
+    "driver_total_s": 16416.602407491624,
+    "z_s_metric": 3812.581847051544,
+    "n_swaps": 4,
+    "stop_reason": null
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 7,
+   "n_cust": 100,
+   "H_S": 4751.329003745299,
+   "H_X": 5136.587996061056,
+   "S_nominal": {
+    "cost": 377.78189447948347,
+    "feasible": true,
+    "air": 87,
+    "H": 4751.329003745299,
+    "n_cross": 0,
+    "n_sorties": 23
+   },
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 376.3061251626988,
+    "verified": true,
+    "notes": [],
+    "wall": 34.91744982400269,
+    "n_replans": 1,
+    "stop_replan": null,
+    "n_air_final": 82,
+    "n_evals": 3099,
+    "replay_viol": null,
+    "n_fail_events": 1,
+    "n_fail_rec": 1,
+    "n_fail_cross": 0,
+    "failed_delivery_delays_s": [
+     100.60256802563936
+    ],
+    "failed_delivery_delay_mean_s": 100.60256802563936,
+    "failed_delivery_delay_max_s": 100.60256802563936,
+    "makespan_s": 2875.0796068548375,
+    "driver_total_s": 15547.435280619346,
+    "z_s_metric": 2875.0796068548375,
+    "n_swaps": 5,
+    "stop_reason": null
+   },
+   "X_nominal": {
+    "cost": 383.56375035294303,
+    "feasible": true,
+    "air": 91,
+    "H": 4751.329003745299,
+    "n_cross": 6,
+    "n_sorties": 25
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 407.4788896836762,
+    "verified": true,
+    "notes": [],
+    "wall": 0.4010373100027209,
+    "n_replans": 1,
+    "stop_replan": null,
+    "n_air_final": 90,
+    "n_evals": 98,
+    "replay_viol": null,
+    "n_fail_events": 1,
+    "n_fail_rec": 1,
+    "n_fail_cross": 0,
+    "failed_delivery_delays_s": [
+     959.4759935702409
+    ],
+    "failed_delivery_delay_mean_s": 959.4759935702409,
+    "failed_delivery_delay_max_s": 959.4759935702409,
+    "makespan_s": 4222.987803754979,
+    "driver_total_s": 16807.00836419506,
+    "z_s_metric": 4222.987803754979,
+    "n_swaps": 6,
+    "stop_reason": null
+   }
+  }
+ ]
+}

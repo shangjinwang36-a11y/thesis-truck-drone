@@ -1,0 +1,118 @@
+{
+ "case_id": "RC100",
+ "status": "FEASIBLE",
+ "plan_id": "RC100-nominal-1.0.0",
+ "H_s": 5915.927728141794,
+ "cost": 648.7881240129317,
+ "z_s": 4115.927728141794,
+ "n_sorties": 29,
+ "n_air_parcels": 72,
+ "n_visits": 51,
+ "eval_requests": 3000,
+ "wall_s": 48.72869496099884,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 648.7881240129317
+ },
+ "distance_km": 168.19128602767088,
+ "cost_breakdown": {
+  "truck_km": 168.19128602767088,
+  "c_km": 282.0450132783822,
+  "driver_s": 25619.32710580032,
+  "c_driver": 361.19543015169944,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 6.83013756896605,
+  "c_depot": 5.547680582850011,
+  "swaps": 7.0
+ },
+ "n_cross_sorties": 0,
+ "cross_launch": false,
+ "audit": {
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 36,
+   "feasible": 12,
+   "accepted": 5,
+   "cur_improve": 3,
+   "infeasible": 24
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 68,
+   "feasible": 21,
+   "cur_improve": 6,
+   "accepted": 6,
+   "infeasible": 47
+  },
+  "GROUND_TO_AIR": {
+   "calls": 16,
+   "feasible": 9,
+   "infeasible": 7
+  },
+  "R:AIR_FIRST": {
+   "calls": 33,
+   "feasible": 12,
+   "accepted": 2,
+   "infeasible": 21
+  },
+  "SUPPORT_VISIT": {
+   "calls": 22,
+   "feasible": 8,
+   "accepted": 3,
+   "infeasible": 14,
+   "cur_improve": 1
+  },
+  "SORTIE_REGROUP": {
+   "calls": 32,
+   "feasible": 8,
+   "infeasible": 24,
+   "cur_improve": 2,
+   "accepted": 2
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 16,
+   "infeasible": 10,
+   "feasible": 6,
+   "accepted": 1
+  },
+  "ENERGY_CHAIN": {
+   "calls": 25,
+   "feasible": 9,
+   "accepted": 4,
+   "infeasible": 16,
+   "cur_improve": 2
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 62,
+   "feasible": 21,
+   "accepted": 8,
+   "infeasible": 41,
+   "cur_improve": 3
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 16,
+   "infeasible": 14,
+   "feasible": 2,
+   "cur_improve": 1,
+   "accepted": 1
+  }
+ },
+ "reject": {
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 708,
+  "COORDINATE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 2
+ },
+ "last_improvement_iter": 0,
+ "n_iterations": 163,
+ "best_trace": [
+  [
+   0,
+   648.7881240129317,
+   4115.927728141794
+  ]
+ ],
+ "two_phase_b": 600,
+ "phase1_evals": 2150,
+ "phase1_cost": 648.7881240129317
+}

@@ -1,0 +1,117 @@
+{
+ "case_id": "R100",
+ "status": "FEASIBLE",
+ "plan_id": "R100-nominal-1.0.0",
+ "H_s": 6171.023447678524,
+ "cost": 691.1839415823282,
+ "z_s": 4371.023447678524,
+ "n_sorties": 26,
+ "n_air_parcels": 67,
+ "n_visits": 45,
+ "eval_requests": 3000,
+ "wall_s": 113.78179318000184,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 691.1839415823282
+ },
+ "distance_km": 179.29435522353737,
+ "cost_breakdown": {
+  "truck_km": 179.29435522353737,
+  "c_km": 300.66408310500657,
+  "driver_s": 27285.62738305692,
+  "c_driver": 384.6878522172786,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 7.180190795826491,
+  "c_depot": 5.832006260043015,
+  "swaps": 7.0
+ },
+ "n_cross_sorties": 0,
+ "cross_launch": false,
+ "audit": {
+  "RANDOM_DEPENDENCY": {
+   "calls": 15,
+   "infeasible": 13,
+   "feasible": 2
+  },
+  "R:AIR_FIRST": {
+   "calls": 42,
+   "infeasible": 30,
+   "feasible": 12,
+   "accepted": 3,
+   "cur_improve": 1
+  },
+  "SUPPORT_VISIT": {
+   "calls": 29,
+   "feasible": 6,
+   "infeasible": 23,
+   "accepted": 3,
+   "cur_improve": 2
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 65,
+   "feasible": 32,
+   "infeasible": 33,
+   "accepted": 9,
+   "cur_improve": 6
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 31,
+   "infeasible": 18,
+   "feasible": 13,
+   "cur_improve": 1,
+   "accepted": 2
+  },
+  "SORTIE_REGROUP": {
+   "calls": 14,
+   "infeasible": 8,
+   "feasible": 6,
+   "accepted": 2
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 35,
+   "feasible": 29,
+   "accepted": 3,
+   "infeasible": 6,
+   "cur_improve": 2
+  },
+  "GROUND_TO_AIR": {
+   "calls": 36,
+   "infeasible": 21,
+   "feasible": 15,
+   "accepted": 7,
+   "cur_improve": 5
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 63,
+   "feasible": 32,
+   "accepted": 5,
+   "infeasible": 31,
+   "cur_improve": 3
+  },
+  "ENERGY_CHAIN": {
+   "calls": 10,
+   "feasible": 5,
+   "infeasible": 5
+  }
+ },
+ "reject": {
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 680,
+  "MIP_RETURN|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 1
+ },
+ "last_improvement_iter": 0,
+ "n_iterations": 170,
+ "best_trace": [
+  [
+   0,
+   691.1839415823282,
+   4371.023447678524
+  ]
+ ],
+ "two_phase_b": 600,
+ "phase1_evals": 2108,
+ "phase1_cost": 691.1839415823282
+}

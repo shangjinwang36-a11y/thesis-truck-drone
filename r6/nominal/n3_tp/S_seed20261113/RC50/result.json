@@ -1,0 +1,244 @@
+{
+ "case_id": "RC50",
+ "status": "FEASIBLE",
+ "plan_id": "RC50-nominal-1.0.0",
+ "H_s": 5205.051865922349,
+ "cost": 336.8602080885554,
+ "z_s": 3405.051865922349,
+ "n_sorties": 16,
+ "n_air_parcels": 46,
+ "n_visits": 20,
+ "eval_requests": 3000,
+ "wall_s": 23.915572304998932,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 336.8602080885554
+ },
+ "distance_km": 85.53059249145036,
+ "cost_breakdown": {
+  "truck_km": 85.53059249145036,
+  "c_km": 143.42881646668786,
+  "driver_s": 13441.09967477627,
+  "c_driver": 189.50005043823035,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 4.840149088213996,
+  "c_depot": 3.9313411836372105,
+  "swaps": 6.0
+ },
+ "n_cross_sorties": 0,
+ "cross_launch": false,
+ "audit": {
+  "AFFECTED_SORTIE": {
+   "calls": 30,
+   "feasible": 23,
+   "accepted": 8,
+   "best": 5,
+   "infeasible": 7
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 32,
+   "feasible": 20,
+   "infeasible": 12,
+   "cur_improve": 1,
+   "accepted": 6,
+   "best": 1
+  },
+  "SUPPORT_VISIT": {
+   "calls": 8,
+   "feasible": 4,
+   "infeasible": 4
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 58,
+   "feasible": 42,
+   "infeasible": 16,
+   "cur_improve": 2,
+   "accepted": 11,
+   "best": 6
+  },
+  "R:AIR_FIRST": {
+   "calls": 52,
+   "feasible": 19,
+   "accepted": 6,
+   "infeasible": 33,
+   "best": 4,
+   "cur_improve": 1
+  },
+  "GROUND_TO_AIR": {
+   "calls": 26,
+   "infeasible": 13,
+   "feasible": 13,
+   "best": 2,
+   "accepted": 5,
+   "cur_improve": 2
+  },
+  "SORTIE_REGROUP": {
+   "calls": 34,
+   "feasible": 20,
+   "infeasible": 14,
+   "best": 3,
+   "accepted": 4
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 11,
+   "infeasible": 7,
+   "feasible": 4
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 11,
+   "infeasible": 6,
+   "feasible": 5,
+   "cur_improve": 1,
+   "accepted": 1
+  },
+  "ENERGY_CHAIN": {
+   "calls": 22,
+   "infeasible": 10,
+   "feasible": 12,
+   "cur_improve": 1,
+   "accepted": 5,
+   "best": 1
+  }
+ },
+ "reject": {
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 522,
+  "COORDINATE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 25,
+  "MIP_RETURN|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 2
+ },
+ "last_improvement_iter": 87,
+ "n_iterations": 142,
+ "best_trace": [
+  [
+   0,
+   354.1713826208467,
+   3671.2605954494884
+  ],
+  [
+   154,
+   349.6364187009633,
+   3759.4552590487338
+  ],
+  [
+   166,
+   349.3155817033786,
+   3759.4552590487338
+  ],
+  [
+   176,
+   348.15557589786295,
+   3759.4552590487338
+  ],
+  [
+   188,
+   348.0680953052247,
+   3759.4552590487338
+  ],
+  [
+   247,
+   346.7468210572323,
+   3654.2061734513118
+  ],
+  [
+   259,
+   346.424411540184,
+   3654.2061734513118
+  ],
+  [
+   264,
+   342.43410598894104,
+   3415.051865922349
+  ],
+  [
+   276,
+   342.11169647189274,
+   3415.051865922349
+  ],
+  [
+   299,
+   342.09741287739814,
+   3415.051865922349
+  ],
+  [
+   301,
+   341.91130325311144,
+   3415.051865922349
+  ],
+  [
+   378,
+   339.9092613921134,
+   3415.051865922349
+  ],
+  [
+   390,
+   339.7420007573764,
+   3415.051865922349
+  ],
+  [
+   400,
+   339.69148946395865,
+   3415.051865922349
+  ],
+  [
+   412,
+   339.5259393149569,
+   3415.051865922349
+  ],
+  [
+   432,
+   339.3919277653073,
+   3415.051865922349
+  ],
+  [
+   444,
+   339.236839725109,
+   3415.051865922349
+  ],
+  [
+   449,
+   338.8871751398623,
+   3415.051865922349
+  ],
+  [
+   466,
+   338.73404199449914,
+   3415.051865922349
+  ],
+  [
+   478,
+   338.5789539543008,
+   3415.051865922349
+  ],
+  [
+   542,
+   337.9935548657281,
+   3415.051865922349
+  ],
+  [
+   554,
+   337.8384668255297,
+   3415.051865922349
+  ],
+  [
+   560,
+   337.1428502897788,
+   3415.051865922349
+  ],
+  [
+   706,
+   337.00119361431103,
+   3405.051865922349
+  ],
+  [
+   787,
+   336.8602080885554,
+   3405.051865922349
+  ]
+ ],
+ "two_phase_b": 600,
+ "phase1_evals": 2096,
+ "phase1_cost": 354.1713826208467
+}
