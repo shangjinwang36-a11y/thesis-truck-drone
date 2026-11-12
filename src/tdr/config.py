@@ -210,6 +210,11 @@ class AlgorithmConfig:
     recovery_retarget: bool = False
     retarget_period: int = 10
     retarget_n: int = 2
+    # 第四轮：X 专用跨车算子(见 cross_ops.py)；仅当失败航次被≠原放飞车的车接回时才会触发，S 恒不触发；同一份预算
+    cross_ops: bool = False
+    cross_period: int = 5
+    cross_n: int = 2
+    cross_ops_gate: bool = True              # False=对照：同车情形也启用（S、X 同等）
     geometry_base_starts: int = 5
     coordinate_polish_every_alns_iterations: int = 10
     coordinate_extra_eval_cap: int = 40

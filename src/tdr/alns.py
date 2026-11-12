@@ -317,6 +317,7 @@ class SolveContext:
     rngs: dict[str, random.Random] = field(default_factory=dict)
     strategy: str = "X"
     retarget_tried: set = field(default_factory=set)
+    cross_tried: set = field(default_factory=set)
 
 
 # ---------------------------------------------------------------------------
@@ -545,6 +546,16 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 cur_plan, cur_ev = p_t, e_t
                 if _better(e_t, best_ev, alg):
                     best_ev, best_plan = e_t, p_t.clone()
+                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+        # 第四轮：X 专用跨车算子（仅当失败航次由≠原放飞车的车接回时有资格；S 恒不触发；消耗同一份预算）
+        if (alg.cross_ops and ctx.mode == "recovery" and ctx.frag_sid is not None
+                and stats.iterations % alg.cross_period == alg.cross_period // 2
+                and budget.evals_left() > 0):
+            p_x, e_x = try_cross_truck_ops(cur_plan, ctx, budget, stats)
+            if p_x is not None and e_x is not None and _better(e_x, cur_ev, alg):
+                cur_plan, cur_ev = p_x, e_x
+                if _better(e_x, best_ev, alg):
+                    best_ev, best_plan = e_x, p_x.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 局部事件重排
         if variant != "no_local_mip" and (stats.iterations % alg.mip_period_rounds == 0
@@ -814,6 +825,24 @@ def try_recovery_retarget(plan: Plan, ctx: SolveContext, budget: Budget, stats: 
             if ev.feasible and (best_ev is None or _better(ev, best_ev, ctx.alg)):
                 best_p, best_ev = cand, ev
             break
+    return best_p, best_ev
+
+
+def try_cross_truck_ops(plan: Plan, ctx: SolveContext, budget: Budget, stats: SearchStats):
+    """X 专用跨车算子入口（见 cross_ops.propose）：每个候选评价 1 次（几何继承 λ）."""
+    from .cross_ops import propose
+    best_p, best_ev = None, None
+    for tag, cand in propose(plan, ctx, ctx.alg.cross_n, ctx.cross_tried):
+        if budget.evals_left() <= 0:
+            break
+        ev = eval_counted(cand, ctx.inst, ctx.phys, ctx.state, ctx.H, "CROSS_OP", stats, budget)
+        if ev is None:
+            break
+        stats.destroy_used[tag] = stats.destroy_used.get(tag, 0) + 1
+        if ev.feasible:
+            stats.destroy_used[tag + "_FEAS"] = stats.destroy_used.get(tag + "_FEAS", 0) + 1
+            if best_ev is None or _better(ev, best_ev, ctx.alg):
+                best_p, best_ev = cand, ev
     return best_p, best_ev
 
 
