@@ -216,6 +216,8 @@ class AlgorithmConfig:
     # 第五轮：恢复目录候选(try_recovery_reassign)是在名义残余计划(base)上重建的，不含当前 ALNS 进展；
     # False=旧行为（优于当前解即替换当前解，会丢弃已有进展）；True=仅当优于全局最优时才采用（S/X 对称）
     reassign_adopt_only_if_best: bool = False
+    # 第五轮：恢复初始化无可行解且违规来自别的在飞无人机时，联合重选这些在飞航次的接机车/点（S/X 对称）
+    joint_inflight_retarget: bool = False
     cross_n: int = 2
     crn_per_iteration: bool = False          # 共同随机数：按(种子,算例,重规划,轮次)重置随机流（S/X 对称）
     cross_ops_gate: bool = True              # False=对照：同车情形也启用（S、X 同等）

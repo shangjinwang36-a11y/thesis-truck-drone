@@ -529,6 +529,88 @@ def _first_feasible(cands: list[Plan], inst, phys, state, H, stats, budget):
     return None, None, False, reasons
 
 
+JOINT_EXTRA_EVALS = 60      # 联合重选阶段额外评价额度（S/X 同一常数，记入初始化预算）
+
+
+def _joint_target(plan: Plan, ev: Evaluation, frag_sid: int, done: set[int]) -> int | None:
+    """从评价违规里找出需要“重选接机”的在飞航次：SWAP_CANNOT_FIX:<机体> 或 SLOT_OVER:<车>."""
+    import re
+    for v in ev.violations:
+        m = re.match(r"SWAP_CANNOT_FIX:(d\d+)@", v)
+        if m:
+            for sid in plan.drone_sorties.get(m.group(1), []):
+                so = plan.sorties.get(sid)
+                if so is not None and so.started and sid != frag_sid and sid not in done:
+                    return sid
+        m = re.match(r"SLOT_OVER:(t\d+)@", v)
+        if m:
+            for sid in sorted(plan.sorties):
+                so = plan.sorties[sid]
+                if (so.started and sid != frag_sid and sid not in done and so.rec_vid in plan.visits
+                        and plan.visits[so.rec_vid].truck == m.group(1)):
+                    return sid
+    return None
+
+
+def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfig, state: StartState,
+                    H: float | None, ground_required: set[str], strategy: str, stats, budget,
+                    tried_entries: list[dict], info: dict, consider, guard_n: int) -> bool:
+    """第五轮·联合重选：失败机的回收方案找不到可行解、且违规来自“别的在飞无人机”(SWAP_CANNOT_FIX/SLOT_OVER)时，
+    对这些在飞航次也重选接机车/接机点/继续子集（S 只能回原放飞车，X 任意车；同一目录/同一候选构造/同一预算规则）。
+    贪心深度≤3，每层最多 3 个条目×2 种补位，评价计入初始化预算（额外额度 JOINT_EXTRA_EVALS，S/X 相同）。"""
+    seeds: list[Plan] = []
+    for ent in [None] + list(tried_entries[:2]):
+        for c in build_residual_candidate(res, frag.sid, ent, inst, phys, state, ground_required, strategy)[:2]:
+            seeds.append(c)
+    seeds = seeds[:4]
+    if not seeds or budget is None:
+        return False
+    budget.eval_limit = (budget.eval_limit or 0) + JOINT_EXTRA_EVALS
+    info["joint_used"] = True
+    info["joint_retargets"] = 0
+    for seed in seeds:
+        plan_j = seed
+        done: set[int] = set()
+        for _depth in range(3):
+            if budget.evals_left() <= 0:
+                return False
+            ev = eval_counted(plan_j, inst, phys, state, H, "RECOVERY_INITIAL_BASE", stats, budget)
+            if ev is None:
+                return False
+            if ev.feasible:
+                fs = plan_j.sorties[frag.sid]
+                consider(plan_j, ev, {"truck": plan_j.visits[fs.rec_vid].truck, "kind": "visit", "ref": fs.rec_vid,
+                                      "support": False, "served": list(fs.air)}, "JOINT")
+                return True
+            tgt = _joint_target(plan_j, ev, frag.sid, done)
+            if tgt is None:
+                break
+            done.add(tgt)
+            cat = RecoveryCatalog(plan_j, plan_j.sorties[tgt], inst, strategy, state, ground_required,
+                                  phys=phys, guard_n=guard_n)
+            first_inf = None
+            for ent in cat.next_entries(3):
+                for cnd in build_residual_candidate(plan_j, tgt, ent, inst, phys, state, ground_required,
+                                                    strategy)[:2]:
+                    if budget.evals_left() <= 0:
+                        return False
+                    ev2 = eval_counted(cnd, inst, phys, state, H, "RECOVERY_INITIAL_BASE", stats, budget)
+                    if ev2 is None:
+                        return False
+                    info["joint_retargets"] = info.get("joint_retargets", 0) + 1
+                    if ev2.feasible:
+                        fs = cnd.sorties[frag.sid]
+                        consider(cnd, ev2, {"truck": cnd.visits[fs.rec_vid].truck, "kind": "visit",
+                                            "ref": fs.rec_vid, "support": False, "served": list(fs.air)}, "JOINT")
+                        return True
+                    if first_inf is None:
+                        first_inf = cnd
+            if first_inf is None:
+                break
+            plan_j = first_inf
+    return False
+
+
 def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: PhysicalConfig,
                      strategy: str, ground_required: set[str],
                      max_candidates: int | None = None, H: float | None = None,
@@ -537,7 +619,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                      catalog: RecoveryCatalog | None = None,
                      init_catalog_entries: int | None = None,
                      rescue_evals: int = 0, info: dict | None = None,
-                     use_milp: bool = False, milp_top_k: int = 6
+                     use_milp: bool = False, milp_top_k: int = 6, joint: bool = False
                      ) -> tuple[RecoveryOption | None, list[str], RecoveryCatalog | None]:
     """恢复初始解（修复1）：RESIDUAL → CATALOG（残段最小改动）→ REBUILD（旧清空重建，对照）.
 
@@ -704,6 +786,11 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                 info["rebuild_cost"] = ev.cost
                 _consider(cp, ev, ent, "REBUILD_FALLBACK")
                 break
+
+    # ②-J 第五轮：联合重选所有在飞无人机的接机（S/X 同一路径）；仅当仍无任何可行解时启用
+    if joint and best is None and budget is not None:
+        _joint_retarget(res, frag, inst, phys, state, H, ground_required, strategy, stats, budget,
+                        tried_entries, info, _consider, catalog.guard_n)
 
     # ③ REBUILD：对照候选——用当前最优接机安排，但清空未来重建（旧做法）
     if best is not None and best_entry is not None and (budget is None or budget.evals_left() > 0):

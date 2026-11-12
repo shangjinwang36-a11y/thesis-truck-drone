@@ -867,7 +867,8 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                                                  frag_sid=a.sid, stats=init_stats,
                                                  budget=init_budget, rescue_evals=main_limit,
                                                  info=init_info,
-                                                 use_milp=(alg.recovery_decision == "milp"))
+                                                 use_milp=(alg.recovery_decision == "milp"),
+                                                 joint=alg.joint_inflight_retarget)
         if opt is None:
             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
             res.notes.append(f"STOP_CONTEXT:replan={replan_index + 1},t_fail={a.time:.1f},t_cut={t_cut:.1f},"
@@ -904,6 +905,8 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             "main_budget_limit": main_limit,
             "init_rescue_used": init_info.get("rescue_used", False),
             "init_source": init_info.get("best_source"),
+            "joint_used": init_info.get("joint_used", False),
+            "joint_retargets": init_info.get("joint_retargets", 0),
             "init_cost": init_info.get("init_cost"),
             "residual_feasible": init_info.get("residual_feasible"),
             "residual_cost": res_cost,

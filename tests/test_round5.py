@@ -185,3 +185,82 @@ def test_apply_air_recheck_prevents_overlapping_chain(recheck):
         assert oks[0] is True
     else:
         assert len(_overlaps(plan)) >= 1                # 旧行为复现：同机体区间重叠
+
+
+def test_joint_target_parses_violations():
+    from types import SimpleNamespace
+    from tdr.recovery import _joint_target
+    from tdr.plan import Plan
+    p = Plan("X")
+    # 构造最小计划：两条路线、两个已起飞航次
+    v1 = p.add_visit("t1", "c1", pos=None, ground=[]).vid
+    v2 = p.add_visit("t2", "c2", pos=None, ground=[]).vid
+    s1 = p.add_sortie("d1", "t1", None, "ARC", 0.5, [], v1); s1.started = True
+    s2 = p.add_sortie("d2", "t1", None, "ARC", 0.5, [], v2); s2.started = True
+    ev = SimpleNamespace(violations=["SWAP_CANNOT_FIX:d2@100.0:e=-0.1<0.0"])
+    assert _joint_target(p, ev, frag_sid=s1.sid, done=set()) == s2.sid
+    assert _joint_target(p, ev, frag_sid=s1.sid, done={s2.sid}) is None        # 已重选过不重复
+    ev = SimpleNamespace(violations=["SLOT_OVER:t2@10.0=4"])
+    assert _joint_target(p, ev, frag_sid=s1.sid, done=set()) == s2.sid        # 回收在 t2 的在飞航次
+    assert _joint_target(p, SimpleNamespace(violations=["H_EXCEEDED:t1@9>8"]), s1.sid, set()) is None
+    assert _joint_target(p, SimpleNamespace(violations=["SWAP_CANNOT_FIX:d1@1.0"]), s1.sid, set()) is None  # 失败机本身不在此处理
+
+
+def test_joint_catalog_S_restricted_to_own_launch_truck_X_any():
+    """S 对在飞航次只考虑其放飞车，X 可任意车（同一目录/同一代码）."""
+    from tdr.recovery import RecoveryCatalog
+    from tdr import recovery
+    import random, zlib
+    from tdr.config import AlgorithmConfig, PhysicalConfig
+    from tdr.evaluate import evaluate_plan
+    from tdr.experiment import load_case_nominal
+    from tdr.hidden_world import TestWorld
+    from tdr.schedule import initial_state
+    from tdr import simulate
+    case = "C50"
+    pkg = json.load(open(ROOT / "data" / "package.json"))
+    fx = ROOT / "tests" / "fixtures" / "spec" / case
+    if not fx.exists():
+        pytest.skip("fixture missing")
+    phys = PhysicalConfig.from_dict(dict(pkg["config"])).for_case(pkg.get("case_fleet"), case)
+    alg = AlgorithmConfig.from_dict(pkg["algorithm_protocol"]["default_parameters"])
+    alg.recovery_eval_budget_override = 100
+    alg.recovery_time_limit_override_s = None
+    alg.recovery_decision = "milp"
+    inst = load_instance(pkg, case)
+    plan, ncost, H = load_case_nominal(inst, fx)
+    nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
+    air = sorted(p for s in plan.sorties.values() for p in s.air)
+    rng = random.Random(zlib.crc32(f"{case}:1:3".encode()))
+    world = TestWorld(inst, case, tuple(rng.sample(air, 3)))
+    cap = []
+    orig = simulate.initial_recovery
+
+    def wrap(new_plan, state2, *a, **kw):
+        cap.append((new_plan.clone(), state2))
+        return orig(new_plan, state2, *a, **kw)
+    simulate.initial_recovery = wrap
+    try:
+        simulate.run_episode(inst, plan, nom, H, phys, world, "X", alg,
+                             simulate.derive_rngs(alg.base_algorithm_seed, case, "recovery", 0),
+                             recovery_eval_budget=100)
+    finally:
+        simulate.initial_recovery = orig
+    assert cap
+    checked = 0
+    for pl, st in cap:
+        for so in pl.sorties.values():
+            if not so.started or so.start_pos is None:
+                continue
+            launch = so.launch_truck or so.truck
+            S = RecoveryCatalog(pl, so, inst, "S", st, set(), phys=phys, guard_n=10).next_entries(40)
+            X = RecoveryCatalog(pl, so, inst, "X", st, set(), phys=phys, guard_n=10).next_entries(200)
+            assert S and all(e["truck"] == launch for e in S)
+            assert {e["truck"] for e in X} >= {e["truck"] for e in S}
+            checked += 1
+    assert checked >= 1
+
+
+def test_joint_flag_default_off_and_runs():
+    from tdr.config import AlgorithmConfig
+    assert AlgorithmConfig().joint_inflight_retarget is False
