@@ -90,9 +90,9 @@ def verify_plan(inst: Instance, state: StartState | None, plan: Plan, strategy: 
     for d, stages in tl.drone_stages.items():
         energies = tl.drone_energy.get(d, [])
         for i, st in enumerate(stages):
-            if i + 1 < len(energies) and energies[i + 1] < -1e-6:
+            if i + 1 < len(energies) and energies[i + 1] < -phys.energy_tol:
                 rep.violations.append(f"NEGATIVE_SOC:{d}@{st.start:.1f}")
-            if st.kind == "R" and i + 1 < len(energies) and energies[i + 1] < phys.e_min - 1e-6:
+            if st.kind == "R" and i + 1 < len(energies) and energies[i + 1] < phys.e_min - phys.energy_tol:
                 rep.violations.append(f"RESERVE_VIOLATION:{d}@{st.start:.1f}")
     # ---- 交付与终端 ----
     delivered = set(state.delivered)

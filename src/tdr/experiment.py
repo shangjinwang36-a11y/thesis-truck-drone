@@ -182,6 +182,36 @@ def load_case_nominal(inst: Instance, nominal_dir: str | Path) -> tuple[Plan, di
 # ---------------------------------------------------------------------------
 # 单回合
 # ---------------------------------------------------------------------------
+def episode_metrics(ep) -> dict:
+    """第三轮：每次运行的服务/时间指标与停止原因（S/X 对照用）.
+
+    failed_delivery_delay：失败包裹从“到达客户点发现失败”到“地面交付结束”的时长；
+    makespan：最晚卡车返库时刻；driver_total：各车工时之和；z_s：实际出库无人机最晚随车入库时刻。"""
+    fail_time = {o.parcel_id: o.time_s for o in ep.observations if not o.air_delivery_available}
+    deliv: dict[str, float] = {}
+    for seg in ep.segments:
+        for a in seg["actions"]:
+            if a["kind"] == "G" and a.get("ref"):
+                deliv[a["ref"]] = a["end"]
+        for st in seg["stages"]:
+            if st["kind"] == "SERVICE" and st.get("parcel"):
+                deliv[st["parcel"]] = st["end"]
+    delays = [deliv[p] - t for p, t in fail_time.items() if p in deliv]
+    ok = ep.evaluation is not None and ep.evaluation.feasible
+    tf = (ep.evaluation.counts or {}).get("truck_finish", {}) if ok else {}
+    stop = [n[:300] for n in ep.notes if n.startswith(("STOP_CONTEXT", "INITIAL_RECOVERY_FAILED", "MAX_REPLANS"))]
+    return {
+        "failed_delivery_delays_s": delays,
+        "failed_delivery_delay_mean_s": (sum(delays) / len(delays)) if delays else None,
+        "failed_delivery_delay_max_s": max(delays) if delays else None,
+        "makespan_s": max(tf.values()) if tf else None,
+        "driver_total_s": sum(tf.values()) if tf else None,
+        "z_s_metric": ep.evaluation.z if ok else None,
+        "n_swaps": (ep.replay.n_swaps if ep.replay is not None else None),
+        "stop_reason": " | ".join(stop) if stop else None,
+    }
+
+
 def run_episode_dir(inst: Instance, nominal_plan: Plan, nominal_cost: dict, H: float,
                     phys: PhysicalConfig, alg: AlgorithmConfig, seed: int, strategy: str,
                     out_dir: str | Path, recovery_eval_budget: int | None = None,
@@ -311,6 +341,7 @@ def run_episode_dir(inst: Instance, nominal_plan: Plan, nominal_cost: dict, H: f
     if ep.replay is not None:
         _write_json(out / "verification.json", ep.replay.to_dict())
     result = {
+        **episode_metrics(ep),
         "run_id": run_id, "case_id": inst.case_id, "strategy": strategy,
         "environment_seed": seed, "episode_status": ep.status,
         "configured_failure_count": world.configured_failure_count,

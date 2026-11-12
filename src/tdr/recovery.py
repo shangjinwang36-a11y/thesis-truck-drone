@@ -176,7 +176,8 @@ class RecoveryCatalog:
         self.strategy = strategy
         self.state = state
         self.ground_required = set(ground_required or set())
-        self.launch_truck = frag.truck or (state.drone_carrier.get(frag.drone, "t1")
+        # 第三轮：用真正的放飞车(launch_truck)；frag.truck 在一次恢复改派后是“接机车”
+        self.launch_truck = frag.launch_truck or frag.truck or (state.drone_carrier.get(frag.drone, "t1")
                                            if state else home_truck(frag.drone))
         self.frag_pos = frag.start_pos or (inst.depot_x, inst.depot_y)
         self._gen = self._entries()
@@ -251,7 +252,7 @@ class RecoveryCatalog:
             w1, w2 = max(0.0, a - t_d), max(0.0, t_d - a)
             en += p_h * w1 / 3600.0
             cost += c_e * en + phys.wage_per_s * w2
-            if en > e0 - phys.e_min:
+            if en > e0 - phys.e_min + phys.energy_tol:
                 cost += 1e4                  # 能量上界不满足：排到最后，但不删除（以完整评价为准）
             return cost
 
@@ -569,10 +570,13 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
     best: RecoveryOption | None = None
     best_src = None
     best_entry: dict | None = None
+    best_s_eligible = False          # 第三轮：是否已有“S 资格”（接机车=原放飞车）的可行候选
 
     def _consider(cand_plan, ev, entry, src):
-        nonlocal best, best_src, best_entry
+        nonlocal best, best_src, best_entry, best_s_eligible
         rv = cand_plan.sorties[frag.sid].rec_vid
+        if cand_plan.visits[rv].truck == catalog.launch_truck:
+            best_s_eligible = True
         opt = RecoveryOption(cand_plan, ev, f"{src}:truck={cand_plan.visits[rv].truck},rv={rv},"
                              f"served={len(cand_plan.sorties[frag.sid].air)}",
                              cand_plan.visits[rv].truck, rv, len(cand_plan.sorties[frag.sid].air),
@@ -674,7 +678,10 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
 
     # ②-F 第二轮兜底：残段/目录/MILP 都没有可行解（常见于多次失败后剩余航次的充电/能量不可行），
     # 退回"清空未来重建"路径，对前若干个条目各试一次；S/X 规则相同、额外评价额度相同。
-    if best is None and tried_entries and budget is not None:
+    # 第三轮修复(X⊇S 覆盖)：兜底的触发条件由“没有任何可行解”改为“没有 S 资格的可行解”。
+    # S 只能用原放飞车，所以对 S 二者等价；但 X 若靠 X 专有的接机车找到可行解就会跳过兜底，
+    # 而 S 在同样条件下会走兜底并得到更便宜的解，造成 X 的起始最优反而比 S 差。
+    if not best_s_eligible and tried_entries and budget is not None:
         info["fallback_used"] = True
         budget.eval_limit = (budget.eval_limit or 0) + 24
         for ent in tried_entries:

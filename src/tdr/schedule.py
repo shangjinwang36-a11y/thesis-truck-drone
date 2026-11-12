@@ -39,6 +39,8 @@ class DroneStart:
     pos: tuple[float, float] | None = None
     energy: float = 0.0
     aboard: list[str] = field(default_factory=list)
+    service_parcel: str | None = None   # 第三轮：截断时正在服务（悬停交付）的包裹
+    service_done_s: float = 0.0         # 第三轮：该服务截断前已进行的秒数（残段只补完剩余部分）
 
 
 @dataclass
@@ -113,6 +115,8 @@ class DroneStage:
     y0: float = 0.0
     x1: float = 0.0
     y1: float = 0.0
+    svc_done0: float = 0.0          # 第三轮：续飞残段的空中服务已完成时长（该 SERVICE 阶段只剩余下的部分）
+    resumed: bool = False           # 第三轮：True=接续被截断的服务，不是新的到场(不产生新的到场观察)
 
 
 @dataclass
@@ -491,6 +495,10 @@ def _schedule_drones(plan: Plan, inst: Instance, phys: PhysicalConfig, state: St
                 cur_time = s.start_time
             aboard = list(s.air) + list(s.handover)
             mass_now = sum(inst.parcel_mass[p] for p in aboard)
+            resume_p = resume_done = None
+            if s.started and st is not None and st.kind == "AIRBORNE" and st.service_parcel \
+                    and st.service_done_s > 1e-9 and s.air and s.air[0] == st.service_parcel:
+                resume_p, resume_done = st.service_parcel, st.service_done_s
             for p in s.air:
                 cid = inst.parcel_to_customer[p]
                 c = inst.customer(cid)
@@ -500,8 +508,15 @@ def _schedule_drones(plan: Plan, inst: Instance, phys: PhysicalConfig, state: St
                 stages.append(DroneStage("CRUISE", cur_time, t_arr, mass=mass_now, parcel=p,
                                          sid=sid, dist=leg, x0=cur_pos[0], y0=cur_pos[1],
                                          x1=dpos[0], y1=dpos[1]))
-                svc_end = t_arr + phys.air_service_s
-                stages.append(DroneStage("SERVICE", t_arr, svc_end, mass=mass_now, parcel=p, sid=sid))
+                if p == resume_p:
+                    # 第三轮：被截断的服务只补完剩余时长（原先整段重做，多算时间和一次服务能耗）
+                    svc_end = t_arr + max(0.0, phys.air_service_s - resume_done)
+                    stages.append(DroneStage("SERVICE", t_arr, svc_end, mass=mass_now, parcel=p, sid=sid,
+                                             svc_done0=resume_done, resumed=True))
+                    resume_p = None
+                else:
+                    svc_end = t_arr + phys.air_service_s
+                    stages.append(DroneStage("SERVICE", t_arr, svc_end, mass=mass_now, parcel=p, sid=sid))
                 mass_now -= inst.parcel_mass[p]
                 cur_time = svc_end
                 cur_pos = dpos
@@ -604,11 +619,11 @@ def _swap_pass(tl: Timeline, plan: Plan, phys: PhysicalConfig, state: StartState
                 continue
             e -= stage_energy(st, phys)
             req = phys.e_min if st.kind == "R" else 0.0
-            if e < req - 1e-6:
+            if e < req - phys.energy_tol:
                 sid = st.sid
                 s = plan.sorties.get(sid) if sid is not None else None
                 if s is None or s.started or sid in swaps:
-                    msg = f"SWAP_CANNOT_FIX:{d}@{st.start:.1f}:e={e:.3f}<{req:.3f}"
+                    msg = f"SWAP_CANNOT_FIX:{d}@{st.start:.1f}:e={e:.6f}<{req:.6f}"
                 else:
                     new.add(sid)
                 break
@@ -649,7 +664,7 @@ def allocate_swaps(tl: Timeline, phys: PhysicalConfig, state: StartState):
             tl.energy_msg = f"SWAP_SPARES:{k}:{n}>{state.truck_ac.get(k, phys.spare_batteries):.0f}"
             tl.deficits = {}
             return False, tl.energy_msg, {}
-    ok = all(tl.e_return.get(d, 0.0) >= -1e-6 for d in drones)
+    ok = all(tl.e_return.get(d, 0.0) >= -phys.energy_tol for d in drones)
     tl.energy_ok = ok
     tl.energy_msg = "" if ok else "NEGATIVE_RETURN"
     return ok, tl.energy_msg, {}
@@ -766,7 +781,7 @@ def allocate_charging(tl: Timeline, phys: PhysicalConfig, state: StartState):
         tl.e_return[d] = energies[-1]
     ok = True
     for d in drones:
-        if tl.e_return.get(d, 0.0) < -1e-6:
+        if tl.e_return.get(d, 0.0) < -phys.energy_tol:
             ok = False
     tl.energy_ok = ok
     tl.energy_msg = "" if ok else "NEGATIVE_RETURN"
@@ -778,9 +793,9 @@ def _check_energy_without_charge(tl: Timeline, phys: PhysicalConfig, state: Star
         e = _start_energy(state, d, phys)
         for st in stages:
             e -= stage_energy(st, phys)
-            if st.kind == "R" and e < phys.e_min - 1e-6:
+            if st.kind == "R" and e < phys.e_min - phys.energy_tol:
                 return False, f"E_MIN_VIOLATION:{d}@{st.start:.1f}"
-            if e < -1e-6:
+            if e < -phys.energy_tol:
                 return False, f"NEGATIVE_ENERGY:{d}@{st.start:.1f}"
     return True, ""
 

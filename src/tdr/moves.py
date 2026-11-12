@@ -349,7 +349,7 @@ def air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str
             e = air_energy(inst, phys, sortie_start(inst, plan, s), new_air, _rec_pos(inst, plan, s))
             if best is None or e < best[0]:
                 best = (e, pos)
-        if best is not None and best[0] <= phys.e_cap - phys.e_min:
+        if best is not None and best[0] <= phys.e_cap - phys.e_min + phys.energy_tol:
             sync_delta = 0.0
             tt = _t_truck(s.truck or "", s.launch_vid, s.rec_vid)
             if tt is not None:
@@ -389,7 +389,7 @@ def air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str
                 lpos = _pos(inst, plan, route[a])
                 rpos = _pos(inst, plan, rvid)
                 e = air_energy(inst, phys, lpos, [parcel], rpos)
-                if e > phys.e_cap - phys.e_min:
+                if e > phys.e_cap - phys.e_min + phys.energy_tol:
                     continue
                 proxy = w * (phys.prepare_s + phys.recovery_s) + cdep * e
                 tt = _t_truck(truck, route[a], rvid)
@@ -418,11 +418,25 @@ def _rec_pos(inst: Instance, plan: Plan, s) -> tuple[float, float]:
     return _pos(inst, plan, s.rec_vid)
 
 
-def apply_air(plan: Plan, inst: Instance, parcel: str, cand: AirCandidate) -> bool:
+def apply_air(plan: Plan, inst: Instance, parcel: str, cand: AirCandidate, phys=None) -> bool:
     if cand.kind == "EXTEND":
         s = plan.sorties.get(cand.sid)
         if s is None:
             return False
+        if phys is not None:
+            # 第三轮修复：EXTEND 候选是按原计划预先算好的；贪心修复连续往同一航次并入多票时，
+            # 载荷/能量必须按“当前已并入后”的航次重新核对，否则整个候选因超载被结构校验丢弃。
+            m = sum(inst.parcel_mass[p] for p in s.air) + inst.parcel_mass[parcel]
+            if m > phys.drone_payload_limit_kg + 1e-9:
+                return False
+            try:
+                new_air = list(s.air)
+                new_air.insert(min(cand.pos, len(new_air)), parcel)
+                e = air_energy(inst, phys, sortie_start(inst, plan, s), new_air, _rec_pos(inst, plan, s))
+            except KeyError:
+                return False
+            if e > phys.e_cap - phys.e_min + phys.energy_tol:
+                return False
         s.air.insert(min(cand.pos, len(s.air)), parcel)
         return True
     if cand.rec_vid not in plan.visits:
@@ -458,7 +472,7 @@ def repair_greedy(plan: Plan, inst: Instance, phys: PhysicalConfig, pool: list[s
         if offer is None:
             continue
         _, kind, cand = offer
-        ok = apply_ground(plan, inst, p, cand) if kind == "G" else apply_air(plan, inst, p, cand)
+        ok = apply_ground(plan, inst, p, cand) if kind == "G" else apply_air(plan, inst, p, cand, phys=phys)
         if ok:
             remaining.remove(p)
             applied += 1
@@ -467,7 +481,7 @@ def repair_greedy(plan: Plan, inst: Instance, phys: PhysicalConfig, pool: list[s
             offer2 = _best_offer(plan, inst, phys, p, forbid_air, min_pos, state)
             if offer2 is not None:
                 _, kind2, cand2 = offer2
-                ok2 = apply_ground(plan, inst, p, cand2) if kind2 == "G" else apply_air(plan, inst, p, cand2)
+                ok2 = apply_ground(plan, inst, p, cand2) if kind2 == "G" else apply_air(plan, inst, p, cand2, phys=phys)
                 if ok2:
                     remaining.remove(p)
                     applied += 1
@@ -525,7 +539,7 @@ def repair_regret2(plan: Plan, inst: Instance, phys: PhysicalConfig, pool: list[
         if not v:
             continue
         _, kind, cand = v[0]
-        ok = apply_ground(plan, inst, p, cand) if kind == "G" else apply_air(plan, inst, p, cand)
+        ok = apply_ground(plan, inst, p, cand) if kind == "G" else apply_air(plan, inst, p, cand, phys=phys)
         if ok:
             remaining.remove(p)
             applied += 1
@@ -533,7 +547,7 @@ def repair_regret2(plan: Plan, inst: Instance, phys: PhysicalConfig, pool: list[
             b = _best_offer(plan, inst, phys, p, forbid_air, min_pos, state)
             if b is not None:
                 _, kind2, cand2 = b
-                ok2 = apply_ground(plan, inst, p, cand2) if kind2 == "G" else apply_air(plan, inst, p, cand2)
+                ok2 = apply_ground(plan, inst, p, cand2) if kind2 == "G" else apply_air(plan, inst, p, cand2, phys=phys)
                 if ok2:
                     remaining.remove(p)
                     applied += 1
@@ -560,7 +574,7 @@ def repair_air_first(plan: Plan, inst: Instance, phys: PhysicalConfig, pool: lis
             break
         done = False
         ac = air_candidates(plan, inst, phys, p, forbid_air=forbid_air, state=state, min_pos=min_pos)
-        if ac and apply_air(plan, inst, p, ac[0]):
+        if ac and apply_air(plan, inst, p, ac[0], phys=phys):
             done = True
         if not done:
             gc = ground_candidates(plan, inst, phys, p, min_pos, state)

@@ -170,7 +170,7 @@ def solve_recovery_milp(res: Plan, frag_sid: int, inst: Instance, phys: Physical
     # 预筛选（不改变可行域的下界剪枝）：无人机不论怎么飞，到该点的能量下界都超过剩余电量的点直接去掉；
     # 支援访问只保留离无人机当前位置最近的 max_support 个客户（每车），控制 MILP 规模。
     m_min = sum(inst.parcel_mass[p] for p in fixed_back)
-    lim = e0 - phys.e_min
+    lim = e0 - phys.e_min + phys.energy_tol
     keep: list[Stop] = []
     sup_by_truck: dict[str, list[Stop]] = {}
     for s_ in stops:
@@ -302,7 +302,7 @@ def solve_recovery_milp(res: Plan, frag_sid: int, inst: Instance, phys: Physical
     for i in range(1, m + 1):
         en_terms.append((idx[("z", i)], serv_e))
     en_terms.append((idx[("w1",)], p_h / 3600.0))
-    add(en_terms, -np.inf, e0 - phys.e_min)
+    add(en_terms, -np.inf, e0 - phys.e_min + phys.energy_tol)
     A = coo_matrix((vals, (rows, cols)), shape=(r, n)).tocsr()
     base_cons = (A, np.array(lo), np.array(hi))
 

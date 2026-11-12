@@ -33,7 +33,7 @@ def air_arrivals(plan: Plan, tl: Timeline, inst: Instance) -> list[AirArrival]:
     out = []
     for d, stages in tl.drone_stages.items():
         for st in stages:
-            if st.kind == "SERVICE" and st.parcel:
+            if st.kind == "SERVICE" and st.parcel and not st.resumed:
                 out.append(AirArrival(st.start, st.parcel, inst.parcel_to_customer[st.parcel],
                                       d, st.sid or -1))
     out.sort(key=lambda a: (a.time, a.parcel))
@@ -408,6 +408,11 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
                               hand, True, t_cut, pos, 0, 0, o.launch_truck or o.truck)
             new.sorties[frag.sid] = frag
             st.drone_start[d] = DroneStart("AIRBORNE", None, t_cut, pos, energy)
+            if (cur != failed_sid and stage is not None and stage.kind == "SERVICE" and stage.parcel
+                    and stage.start < t_cut < stage.end - 1e-9 and remain_air and remain_air[0] == stage.parcel):
+                # 第三轮：截断落在别机正在进行的空中服务内部，记下已完成时长，残段只补完剩余部分
+                st.drone_start[d].service_parcel = stage.parcel
+                st.drone_start[d].service_done_s = stage.svc_done0 + (t_cut - stage.start)
             st.drone_carrier[d] = o.truck or home_truck(d)
         else:
             stage = stages[idx] if 0 <= idx < len(stages) else None
@@ -751,6 +756,8 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                     "ref": "", "partial": False, "customer": ""})
         if replan_index >= max_replans:
             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
+            res.notes.append(f"STOP_CONTEXT:replan={replan_index + 1},t_fail={a.time:.1f},t_cut={t_cut:.1f},"
+                             f"drone={a.drone},parcel={a.parcel}")
             res.notes.append("MAX_REPLANS")
             res.plan, res.evaluation = new_plan, None
             break
@@ -770,6 +777,8 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                                                  use_milp=(alg.recovery_decision == "milp"))
         if opt is None:
             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
+            res.notes.append(f"STOP_CONTEXT:replan={replan_index + 1},t_fail={a.time:.1f},t_cut={t_cut:.1f},"
+                             f"drone={a.drone},parcel={a.parcel},n_candidate_reasons={len(reasons)}")
             res.notes.append("INITIAL_RECOVERY_FAILED:" + ",".join(reasons[:5]))
             res.plan, res.evaluation = new_plan, None
             break

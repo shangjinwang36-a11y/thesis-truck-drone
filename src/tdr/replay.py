@@ -177,7 +177,7 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict]) ->
                         v.append(f"R_TRUCK_NOT_THERE:{d}@{cust}")
                     if c is not None and d in drone_pos and _d((c.x, c.y), drone_pos[d]) > 50.0:
                         v.append(f"R_DRONE_NOT_THERE:{d}@{cust}")
-                    if energy.get(d, 0.0) < phys.e_min - 1e-6:
+                    if energy.get(d, 0.0) < phys.e_min - phys.energy_tol:
                         v.append(f"R_RESERVE:{d}@{t:.1f} E={energy.get(d,0):.4f}")
                     reserved[a["actor"]] = reserved.get(a["actor"], 0) + 1
                     occupied = len(onboard.get(a["actor"], set())) + reserved[a["actor"]]
@@ -237,7 +237,7 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict]) ->
                         charge_ac += q
                         if ac_left[k] < -1e-9:
                             v.append(f"AC_BUDGET:{k}@{s['start']:.1f} left={ac_left[k]:.4f}")
-                    if energy.get(d, 0.0) > phys.e_cap + 1e-6:
+                    if energy.get(d, 0.0) > phys.e_cap + phys.energy_tol:
                         v.append(f"OVERCHARGE:{d}@{s['start']:.1f}")
             if len(v) > 300:
                 break

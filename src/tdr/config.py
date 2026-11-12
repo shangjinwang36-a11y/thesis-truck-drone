@@ -81,6 +81,11 @@ class PhysicalConfig:
         return self.reserve_fraction * self.battery_kwh
 
     @property
+    def energy_tol(self) -> float:
+        """第三轮：全库唯一的能量比较容差(kWh)；与 E_min、0 电量、E_cap 比较一律用它。"""
+        return self.tolerance_energy_kwh
+
+    @property
     def p0(self) -> float:
         return self.battery_kwh / (self.hover_min_empty / 60.0)
 
