@@ -591,6 +591,10 @@ def _rec_pos(inst: Instance, plan: Plan, s) -> tuple[float, float]:
     return _pos(inst, plan, s.rec_vid)
 
 
+# 第五轮：恢复阶段 apply_air 机位复核开关（False=旧行为，仅供对照）
+CHAIN_RECHECK = True
+
+
 def apply_air(plan: Plan, inst: Instance, parcel: str, cand: AirCandidate, phys=None) -> bool:
     if cand.kind == "EXTEND":
         s = plan.sorties.get(cand.sid)
@@ -634,7 +638,22 @@ def apply_air(plan: Plan, inst: Instance, parcel: str, cand: AirCandidate, phys=
     car = drone_carriers(plan)
     if car.get(drone) != cand.truck:
         return False
-    if phys is not None and not any(so.started for so in plan.sorties.values()):
+    if CHAIN_RECHECK and any(so.started for so in plan.sorties.values()):
+        # 第五轮修复(b)并入第六轮（恢复阶段，S/X 同等）：候选机位是修复开始时按当时计划选的，连续应用多个 NEW 候选
+        # 会令同一机体同一区间重叠 → 机体链重叠 → 结构校验“放飞早于上一航次回收” → 整个空送修复作废 → STOPPED。
+        # 应用时重新核对机位；原机体被占则换同车另一空闲机体，否则失败（调用方重算）。
+        route_ = plan.routes.get(cand.truck, [])
+        li_ = route_.index(cand.launch_vid) if cand.launch_vid in route_ else (-1 if cand.launch_vid is None else None)
+        ri_ = route_.index(cand.rec_vid) if cand.rec_vid in route_ else None
+        if li_ is None or ri_ is None:
+            return False
+        if not sortie_slot_free(plan, drone, li_, ri_):
+            alt_ = next((d for d in drones_on_truck(plan, cand.truck) if d != drone
+                         and sortie_slot_free(plan, d, li_, ri_)), None)
+            if alt_ is None:
+                return False
+            drone = alt_
+    elif CHAIN_RECHECK and phys is not None and not any(so.started for so in plan.sorties.values()):
         # 第六轮（仅名义阶段，S/X 同等）：候选是在同一轮修复开始时算好的，前序插入可能已占用同一机体的时段；
         # 此前不复核会产生大量“放飞早于上一航次回收(链次序)”的结构违规评价（每个名义解约 10–15% 评价）
         li_ = -1 if cand.launch_vid is None else plan.routes[plan.visits[cand.launch_vid].truck].index(cand.launch_vid)
