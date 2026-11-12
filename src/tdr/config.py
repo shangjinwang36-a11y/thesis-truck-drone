@@ -125,6 +125,9 @@ class AlgorithmConfig:
     recovery_wallclock_seconds: float = 60.0
     final_verification_reserve_seconds: float = 2.0
     deterministic_recovery_eval_budget: int = 1000
+    # 第一轮修改（修复2）：恢复初始化（残段候选 + 接机目录枚举）单独记账，S/X 相同上限；
+    # recovery 预算（250/1000...）只管 ALNS 主循环。
+    recovery_init_eval_budget: int = 100
     max_search_rounds: int = 2000
     geometry_base_starts: int = 5
     coordinate_polish_every_alns_iterations: int = 10

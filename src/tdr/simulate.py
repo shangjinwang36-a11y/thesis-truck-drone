@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from .alns import Budget, SearchStats, SolveContext, optimize
+from .alns import Budget, SearchStats, SolveContext, SolveResult, optimize
 from .config import AlgorithmConfig, PhysicalConfig
 from .data import Instance
 from .evaluate import Evaluation, evaluate_plan
@@ -145,16 +145,26 @@ def _truck_is_driving(truck: str, t: float, tl: Timeline) -> bool:
 
 
 def _compute_holders(new: Plan, plan: Plan, inst: Instance, delivered: set[str],
-                     prev_state: StartState | None) -> dict[str, str]:
+                     prev_state: StartState | None,
+                     inflight: set[int] | None = None) -> dict[str, str]:
     holders: dict[str, str] = {}
     drone_of: dict[str, str] = {}
+    handed: dict[str, str] = {}      # 已回收并交接给回收车、尚未地送的票 → 回收车
     for s in new.sorties.values():
         if s.started:
             for p in s.air + s.handover:
                 drone_of[p] = s.drone
     # 原计划中在飞（started）的航次：其机上票在快照时确实在机上
+    # 修复（第一轮顺带）：只有"此刻仍在飞"的残段，机上票才算无人机保管；
+    # 已经回收并交接（R、U 完成）的残段，其交接票已转给回收车，保管者是该车（等待地送）。
     for s in plan.sorties.values():
         if s.started and s.start_time <= (prev_state.t0 if prev_state else 0.0) + 1e9:
+            if inflight is not None and s.sid not in inflight and s.rec_vid in plan.visits:
+                rec_truck = plan.visits[s.rec_vid].truck
+                for p in s.air + s.handover:
+                    if p not in delivered:
+                        handed.setdefault(p, rec_truck)
+                continue
             for p in s.air + s.handover:
                 if p not in delivered:
                     drone_of.setdefault(p, s.drone)
@@ -170,6 +180,8 @@ def _compute_holders(new: Plan, plan: Plan, inst: Instance, delivered: set[str],
             holders[p] = "DELIVERED"
         elif p in drone_of:
             holders[p] = f"DRONE:{drone_of[p]}"
+        elif p in handed:
+            holders[p] = f"TRUCK:{handed[p]}"
         elif p in holders:
             continue
         else:
@@ -396,7 +408,7 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
         new.drone_sorties[d] = [x for x in new.drone_sorties[d] if x in new.sorties]
         if not new.drone_sorties[d]:
             new.drone_sorties.pop(d)
-    st.parcel_holder = _compute_holders(new, plan, inst, all_delivered, prev_state)
+    st.parcel_holder = _compute_holders(new, plan, inst, all_delivered, prev_state, inflight)
     info = {"unloaded": unloaded, "delivered": all_delivered, "prefix_dist": prefix_dist, "q_prefix": q_prefix,
             "t_cut": t_cut, "freed": sorted(set(freed)), "inflight": sorted(inflight)}
     return new, st, info
@@ -656,13 +668,19 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             res.notes.append("MAX_REPLANS")
             res.plan, res.evaluation = new_plan, None
             break
-        budget = Budget(recovery_eval_budget if recovery_eval_budget is not None else
-                        alg.deterministic_recovery_eval_budget, recovery_wall_s)
-        stats = SearchStats()
+        main_limit = (recovery_eval_budget if recovery_eval_budget is not None
+                      else alg.deterministic_recovery_eval_budget)
+        # 修复2：初始化预算与 ALNS 主循环预算分开记账，S/X 使用相同的两份额度
+        t_budget0 = time.perf_counter()
+        init_budget = Budget(alg.recovery_init_eval_budget, recovery_wall_s, start=t_budget0)
+        init_stats = SearchStats()
+        init_info: dict[str, Any] = {}
         opt, reasons, catalog = initial_recovery(new_plan, state2, inst, phys, strategy,
                                                  ground_required, H=H,
                                                  extra_pool=info_.get("freed", []),
-                                                 frag_sid=a.sid, stats=stats, budget=budget)
+                                                 frag_sid=a.sid, stats=init_stats,
+                                                 budget=init_budget, rescue_evals=main_limit,
+                                                 info=init_info)
         if opt is None:
             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
             res.notes.append("INITIAL_RECOVERY_FAILED:" + ",".join(reasons[:5]))
@@ -674,9 +692,40 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                            ground_required=set(ground_required), replan_index=replan_index + 1,
                            rngs=rr, catalog=catalog, frag_sid=a.sid)
         t_r = time.perf_counter()
-        sol = optimize(opt.plan, ctx, budget, variant=variant, stats=stats)
+        budget = Budget(main_limit, recovery_wall_s, start=t_budget0)   # 主循环预算
+        stats = SearchStats()
+        sol = optimize(opt.plan, ctx, budget, variant=variant, stats=stats, init_ev=opt.ev)
         dt = time.perf_counter() - t_r
         res.replan_times.append(dt)
+        # 永不劣于残段候选：理论上 optimize 的最好解从起始解出发、只会更好；这里再做显式兜底
+        res_cost = init_info.get("residual_cost")
+        if (res_cost is not None and sol.evaluation is not None and sol.evaluation.feasible
+                and (sol.evaluation.cost or 0.0) > res_cost + alg.cost_tolerance_yuan):
+            res.notes.append("RESIDUAL_GUARD_TRIGGERED")
+            rp, rev = init_info["_residual"]
+            sol = SolveResult(rp, rev, "FEASIBLE_LIMIT", sol.stats)
+        init_counts = {
+            "n_init_evals": init_stats.eval_requests,
+            "init_by_reason": dict(init_stats.eval_by_reason),
+            "n_main_evals": stats.eval_requests,
+            "n_main_iterations": stats.iterations,
+            "main_by_reason": dict(stats.eval_by_reason),
+            "n_eval_requests": init_stats.eval_requests + stats.eval_requests,
+            "init_budget_limit": alg.recovery_init_eval_budget,
+            "main_budget_limit": main_limit,
+            "init_rescue_used": init_info.get("rescue_used", False),
+            "init_source": init_info.get("best_source"),
+            "init_cost": init_info.get("init_cost"),
+            "residual_feasible": init_info.get("residual_feasible"),
+            "residual_cost": res_cost,
+            "rebuild_cost": init_info.get("rebuild_cost"),
+            "n_init_catalog_entries": init_info.get("n_catalog_entries"),
+            "stop_reason": stats.stop_reason,
+            "final_cost": sol.evaluation.cost if sol.evaluation is not None else None,
+        }
+        if init_counts["init_cost"] is not None and init_counts["final_cost"] is not None:
+            init_counts["patch_back"] = init_counts["init_cost"] - init_counts["final_cost"]
+        sol.stats.counts.update(init_counts)
         if sol.plan is None or sol.evaluation is None or not sol.evaluation.feasible:
             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
             res.notes.append("RECOVERY_OPT_FAILED")

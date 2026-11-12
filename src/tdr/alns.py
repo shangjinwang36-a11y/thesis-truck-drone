@@ -305,7 +305,13 @@ class SolveResult:
 
 
 def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full",
-             stats: SearchStats | None = None) -> SolveResult:
+             stats: SearchStats | None = None, init_ev: Evaluation | None = None) -> SolveResult:
+    """ALNS 主循环.
+
+    init_ev：调用方已经完整评价过起始解时传入（恢复阶段由 initial_recovery 评价，
+    计入"初始化预算"），这里不再重复评价，也不占主循环预算。
+    此时 budget 是**主循环预算**（S/X 相同），SA 退火进度只由主循环进度决定。
+    """
     inst, phys, alg = ctx.inst, ctx.phys, ctx.alg
     stats = stats or SearchStats()
     t_start = time.perf_counter()
@@ -313,7 +319,9 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
     rng_des = ctx.rngs.get("destroy", random.Random(2))
     rng_acc = ctx.rngs.get("accept", random.Random(3))
     # 初始评价（若外部已评价过则跳过）
-    if budget.used == 0:
+    if init_ev is not None:
+        cur_ev = init_ev
+    elif budget.used == 0:
         cur_ev = eval_counted(plan, inst, phys, ctx.state, ctx.H,
                               "RECOVERY_INITIAL_BASE" if ctx.mode == "recovery" else "NOMINAL_GROUND",
                               stats, budget)
@@ -632,7 +640,7 @@ def coordinate_polish(plan: Plan, ctx: SolveContext, stats: SearchStats,
 def try_recovery_reassign(plan: Plan, ctx: SolveContext, budget: Budget,
                           stats: SearchStats, n: int = 2):
     """在统一预算内继续展开恢复候选目录，尝试替换受影响残段的接机车/点/继续子集."""
-    from .recovery import build_candidates
+    from .recovery import build_catalog_candidates
     cat = ctx.catalog
     if cat is None or ctx.frag_sid is None:
         return None, None
@@ -640,6 +648,7 @@ def try_recovery_reassign(plan: Plan, ctx: SolveContext, budget: Budget,
     pool = getattr(cat, "pool", None)
     if base is None or pool is None:
         return None, None
+    res_plan = getattr(cat, "res_plan", None) or base
     best_p, best_ev = None, None
     for _ in range(n):
         if budget.evals_left() <= 0:
@@ -651,10 +660,10 @@ def try_recovery_reassign(plan: Plan, ctx: SolveContext, budget: Budget,
         cat.n_evaluated += 1
         cat.covered_trucks.add(entry["truck"])
         cat.covered_customers.add(entry["ref"] if entry["support"]
-                                  else base.visits[entry["ref"]].customer)
+                                  else res_plan.visits[entry["ref"]].customer)
         cat.covered_subsets.add(len(entry["served"]))
-        cands = build_candidates(base, pool, ctx.frag_sid, entry, ctx.inst, ctx.phys,
-                                 ctx.state, ctx.H, ctx.ground_required)
+        cands = build_catalog_candidates(cat, entry, ctx.inst, ctx.phys, ctx.state, ctx.H,
+                                         ctx.ground_required, ctx.frag_sid)
         for cand in cands:
             if budget.evals_left() <= 0:
                 break
