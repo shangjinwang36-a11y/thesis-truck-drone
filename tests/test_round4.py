@@ -8,7 +8,7 @@ from tdr.config import AlgorithmConfig, PhysicalConfig
 from tdr.data import load_instance
 from tdr.evaluate import evaluate_plan
 from tdr.experiment import load_case_nominal
-from tdr.hidden_world import HiddenWorld
+from tdr.hidden_world import HiddenWorld, TestWorld
 from tdr.schedule import initial_state
 from tdr import simulate
 
