@@ -219,6 +219,7 @@ class Plan:
                 carrier = initial_carrier.get(d)
             elif not any(self.sorties[x].started for x in sids if x in self.sorties):
                 carrier = home_truck(d)
+            prev_rec = None
             for sid in sids:
                 s = self.sorties.get(sid)
                 if s is None:
@@ -227,10 +228,19 @@ class Plan:
                 if s.started:
                     # 空中残段的承运关系由残段自身的 rec 访问确定（跨车回收后即新承运车）
                     carrier = self.visits[s.rec_vid].truck if s.rec_vid in self.visits else carrier
+                    prev_rec = s.rec_vid if s.rec_vid in self.visits else None
                     continue
                 if carrier is not None and s.truck != carrier:
                     errs.append(f"drone {d}: 航次 {sid} 放飞车 {s.truck} 与上一回收/起始承运车 {carrier} 不符")
+                # 第四轮 L1：同车相邻航次，后一航次的放飞访问不得早于前一航次的回收访问（路线次序）；
+                # 否则调度链成环(定点迭代不收敛，被误判 H_EXCEEDED)
+                if (prev_rec is not None and s.launch_vid is not None and s.launch_vid in self.visits
+                        and self.visits[prev_rec].truck == self.visits[s.launch_vid].truck):
+                    rt_ = self.routes.get(self.visits[prev_rec].truck, [])
+                    if prev_rec in rt_ and s.launch_vid in rt_ and rt_.index(s.launch_vid) < rt_.index(prev_rec):
+                        errs.append(f"drone {d}: 航次 {sid} 放飞访问早于上一航次回收访问(链次序)")
                 carrier = self.visits[s.rec_vid].truck if s.rec_vid in self.visits else None
+                prev_rec = s.rec_vid if s.rec_vid in self.visits else None
         # 货物保管由调度器的时点检查（P/G/R/U 顺序）与全程重放核验负责，
         # 这里只保留目的地与交接闭环等静态结构检查。
         return errs

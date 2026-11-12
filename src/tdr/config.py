@@ -70,6 +70,8 @@ class PhysicalConfig:
     tolerance_cost_cny: float = 1e-4
     tolerance_time_s: float = 1e-3
     tolerance_energy_kwh: float = 1e-6
+    # 第四轮：规范 fixed_wait_cap_s=null（不设固定等待上限）。None=按规范；数值=旧版“单访问累计等待上限”(秒)，仅作敏感性对照
+    energy_wait_cap_s: float | None = None
 
     # ---- derived ----
     @property

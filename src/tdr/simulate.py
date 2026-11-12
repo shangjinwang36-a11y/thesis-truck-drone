@@ -759,7 +759,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                     "parcels": list(u["parcels"]), "start": t_cut, "end": t_cut,
                     "ref": "", "partial": False, "customer": ""})
         if replan_index >= max_replans:
-            res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
+            res.status = "STOPPED_MAX_REPLANS"      # 第四轮：不再误称 NO_FEASIBLE_SUFFIX
             res.notes.append(f"STOP_CONTEXT:replan={replan_index + 1},t_fail={a.time:.1f},t_cut={t_cut:.1f},"
                              f"drone={a.drone},parcel={a.parcel}")
             res.notes.append("MAX_REPLANS")

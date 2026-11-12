@@ -266,8 +266,10 @@ def _plan_energy_waits(tl: Timeline, plan: Plan, phys: PhysicalConfig, state: St
             continue
         vid = best[0]
         need_s = deficit * 3600.0 / (phys.slot_efficiency * phys.slot_ac_kw)
-        # 等待上限：单访问累计不超过 3600 s
-        room = max(0.0, 3600.0 - waits.get(vid, 0.0))
+        # 规范 fixed_wait_cap_s=null：不设固定等待上限（有限电量、真实到场、后续任务与 H 共同约束）；
+        # 旧版 3600 s 上限只作为 energy_wait_cap_s 的敏感性选项保留
+        cap = phys.energy_wait_cap_s
+        room = float("inf") if cap is None else max(0.0, cap - waits.get(vid, 0.0))
         delta = min(need_s + 1.0, room)
         if delta > 1e-6:
             add[vid] = delta

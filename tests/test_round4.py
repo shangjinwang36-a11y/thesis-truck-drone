@@ -127,3 +127,42 @@ def test_m3_sa_scale_excludes_prefix():
            + phys.cost_vehicle_kwh * phys.slot_efficiency * 1.0)
     assert prefix_fixed_cost(st, phys) == pytest.approx(exp)
     assert prefix_fixed_cost(st, phys) > 0
+
+
+def test_l1_validate_structure_chain_order():
+    """同机同车相邻航次：后一航次放飞访问早于前一航次回收访问 → 结构校验报错."""
+    pkg, phys, alg, inst, plan, H = _spec("C50")
+    assert not [e for e in plan.validate_structure(inst, phys) if "链次序" in e]
+    found = False
+    for d, sids in plan.drone_sorties.items():
+        for a, b in zip(sids, sids[1:]):
+            s1, s2 = plan.sorties[a], plan.sorties[b]
+            if s1.launch_vid is None or s2.launch_vid is None:
+                continue
+            r1, l2 = s1.rec_vid, s2.launch_vid
+            if r1 == l2 or plan.visits[r1].truck != plan.visits[l2].truck:
+                continue
+            rt = plan.routes[plan.visits[r1].truck]
+            i, j = rt.index(r1), rt.index(l2)
+            rt[i], rt[j] = rt[j], rt[i]
+            errs = plan.validate_structure(inst, phys)
+            assert any("链次序" in e for e in errs), errs
+            found = True
+            break
+        if found:
+            break
+    assert found
+
+
+def test_wait_cap_follows_spec_null():
+    """规范 fixed_wait_cap_s=null：默认不设能量修复等待上限；旧 3600 s 上限仅为显式敏感性选项."""
+    pkg, phys, alg, inst, plan, H = _spec("C50")
+    assert phys.energy_wait_cap_s is None
+    import dataclasses
+    assert dataclasses.replace(phys, energy_wait_cap_s=3600.0).energy_wait_cap_s == 3600.0
+
+
+def test_stopped_max_replans_label():
+    import inspect
+    src = inspect.getsource(simulate.run_episode)
+    assert "STOPPED_MAX_REPLANS" in src
