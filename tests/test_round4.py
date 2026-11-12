@@ -279,3 +279,85 @@ def test_h1_second_failure_during_committed_action():
                               recovery_eval_budget=1000)
     assert ep.status == "COMPLETED_VERIFIED", (ep.status, ep.notes[:2])
     assert any(abs(r.time_s - 545.5) < 1.0 for r in ep.replans)   # 确实发生了承诺期内的第二次失败
+
+
+# ------------------------------------------------------------------ X 专用跨车算子（cross_ops）
+def _spec_episode_capture(strat, cross_ops, gate=True, seed=1, forced=3):
+    import random, zlib
+    case = "C50"
+    pkg = json.load(open(ROOT / "data" / "package.json"))
+    phys = PhysicalConfig.from_dict(dict(pkg["config"])).for_case(pkg.get("case_fleet"), case)
+    alg = AlgorithmConfig.from_dict(pkg["algorithm_protocol"]["default_parameters"])
+    alg.recovery_eval_budget_override = 1000
+    alg.recovery_time_limit_override_s = None
+    alg.recovery_decision = "milp"
+    alg.cross_ops = cross_ops
+    alg.cross_ops_gate = gate
+    inst = load_instance(pkg, case)
+    plan, ncost, H = load_case_nominal(inst, FIX / "spec" / case)
+    nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
+    air = sorted(p for s in plan.sorties.values() for p in s.air)
+    rng = random.Random(zlib.crc32(f"{case}:{seed}:{forced}".encode()))
+    world = TestWorld(inst, case, tuple(rng.sample(air, forced)))
+    rngs = simulate.derive_rngs(alg.base_algorithm_seed, case, "recovery", 0)
+    cap = []
+    orig = simulate.optimize
+
+    def wrap(p, ctx, b, **kw):
+        r = orig(p, ctx, b, **kw)
+        cap.append((ctx, r))
+        return r
+    simulate.optimize = wrap
+    try:
+        ep = simulate.run_episode(inst, plan, nom, H, phys, world, strat, alg, rngs, recovery_eval_budget=1000)
+    finally:
+        simulate.optimize = orig
+    return ep, cap
+
+
+def test_cross_ops_never_active_for_S():
+    """S 的接机车恒为原放飞车 → cross_pair 恒为 None，门控下算子从不产生候选、也不消耗评价."""
+    from tdr.cross_ops import cross_pair, propose
+    ep, cap = _spec_episode_capture("S", True)
+    assert ep.status == "COMPLETED_VERIFIED"
+    for ctx, r in cap:
+        assert cross_pair(r.plan, ctx.frag_sid) is None
+        assert propose(r.plan, ctx, 3, set()) == []
+        assert r.stats.eval_by_reason.get("CROSS_OP", 0) == 0
+
+
+def test_cross_ops_X_candidates_are_structurally_valid():
+    """X 的跨车最终计划上：算子候选保持访问集合/包裹集合不变、交接票只在接机访问之后地送，评价器可评价."""
+    from tdr.cross_ops import cross_pair, propose
+    ep, cap = _spec_episode_capture("X", True)
+    assert ep.status == "COMPLETED_VERIFIED"
+    n_checked = 0
+    for ctx, r in cap:
+        if cross_pair(r.plan, ctx.frag_sid) is None:
+            continue
+        base = r.plan
+        cands = propose(base, ctx, 6, set())
+        for tag, cand in cands:
+            n_checked += 1
+            assert sorted(cand.visits) == sorted(base.visits)
+            assert sorted(v for rt in cand.routes.values() for v in rt) == sorted(v for rt in base.routes.values() for v in rt)
+            for vid, v in cand.visits.items():
+                assert vid in cand.routes[v.truck]
+            f = cand.sorties[ctx.frag_sid]
+            rt = cand.routes[cand.visits[f.rec_vid].truck]
+            for vid in rt:
+                if set(cand.visits[vid].ground) & set(f.handover):
+                    assert rt.index(vid) > rt.index(f.rec_vid)
+            ev = evaluate_plan(cand, ctx.inst, ctx.phys, ctx.state, ctx.H, "TEST")
+            assert ev.status != "ERROR"
+    assert n_checked >= 1
+
+
+def test_cross_ops_X_spends_same_budget_and_ungated_control_is_allowed_for_S():
+    from tdr.cross_ops import propose
+    epx, capx = _spec_episode_capture("X", True)
+    for ctx, r in capx:
+        assert r.stats.eval_requests <= 1000 + 24 + 5         # 总评价数受同一预算限制（含 rescue 额度）
+    eps, caps = _spec_episode_capture("S", True, gate=False)  # 对照：解除门控后 S 也能用
+    assert eps.status == "COMPLETED_VERIFIED"
+    assert any(r.stats.eval_by_reason.get("CROSS_OP", 0) > 0 for ctx, r in caps)
