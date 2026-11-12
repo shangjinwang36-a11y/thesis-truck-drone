@@ -166,3 +166,53 @@ def test_stopped_max_replans_label():
     import inspect
     src = inspect.getsource(simulate.run_episode)
     assert "STOPPED_MAX_REPLANS" in src
+
+
+def test_h4_cross_truck_candidates_include_release_credit():
+    """规范 C50 / HiddenWorld seed 3：穷举(oracle)最优 X=196.3；修复前代码初始 X=208.7，修复后应≈197.9(<200)，S=226.0 不变."""
+    from tdr import recovery as R
+    from tdr.alns import Budget, SearchStats
+    pkg = json.load(open(ROOT / "data" / "package.json"))
+    case = "C50"
+    phys = PhysicalConfig.from_dict(dict(pkg["config"]))
+    alg = AlgorithmConfig.from_dict(pkg["algorithm_protocol"]["default_parameters"])
+    alg.recovery_eval_budget_override = 1000
+    alg.recovery_time_limit_override_s = None
+    alg.recovery_decision = "milp"
+    inst = load_instance(pkg, case)
+    plan, nc, H = load_case_nominal(inst, FIX / "spec_m03" / case)
+    nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "N")
+    out = {}
+    for strat in "SX":
+        got = []
+        orig = simulate.initial_recovery
+
+        def hook(np_, st, i_, p_, s, gr, **kw):
+            got.append((np_.clone(), st, set(gr), kw))
+            raise _Stop()
+        simulate.initial_recovery = hook
+        try:
+            simulate.run_episode(inst, plan, nom, H, phys, HiddenWorld(inst, case, 3), strat, alg,
+                                 simulate.derive_rngs(alg.base_algorithm_seed, case, "recovery", 0),
+                                 recovery_eval_budget=1000)
+        except _Stop:
+            pass
+        finally:
+            simulate.initial_recovery = orig
+        np_, st, gr, kw = got[0]
+        opt, _, _ = R.initial_recovery(np_, st, inst, phys, strat, gr, H=H, frag_sid=kw["frag_sid"],
+                                       stats=SearchStats(), budget=Budget(alg.recovery_init_eval_budget, None),
+                                       rescue_evals=1000, info={}, use_milp=True, extra_pool=kw.get("extra_pool"))
+        out[strat] = opt.ev.cost
+    assert out["S"] == pytest.approx(226.01, abs=0.05)
+    assert out["X"] < 200.0, out
+
+
+def test_h4_continue_subsets_prefixes():
+    from tdr.recovery import _continue_subsets
+    rem = ["a", "b", "c", "d", "e", "f"]
+    subs = _continue_subsets(rem)
+    assert [] in subs and ["a"] in subs and rem in subs
+    for k in range(2, 6):
+        assert rem[:k] in subs
+    assert len({tuple(s) for s in subs}) == len(subs)

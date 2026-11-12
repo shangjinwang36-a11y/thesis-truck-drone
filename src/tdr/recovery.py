@@ -155,6 +155,23 @@ def _set_recovery(plan: Plan, frag: Sortie, rec_truck: str, rec_vid: int,
     return handover
 
 
+def _continue_subsets(rem: list[str]) -> list[list[str]]:
+    """继续空送的票子集（稳定顺序）：空、单票、全集、全部前缀(第四轮 H4)、票数≤4 时的两两组合."""
+    out: list[list[str]] = [[]] + [[p] for p in rem]
+    if len(rem) >= 2:
+        out.append(list(rem))
+        out += [list(rem[:k]) for k in range(2, len(rem))]
+        if len(rem) <= 4:
+            out += [list(c) for c in itertools.combinations(rem, 2)]
+    seen: set = set()
+    uniq = []
+    for x in out:
+        if tuple(x) not in seen:
+            seen.add(tuple(x))
+            uniq.append(x)
+    return uniq
+
+
 # ---------------------------------------------------------------------------
 # 持续展开的候选目录
 # ---------------------------------------------------------------------------
@@ -215,12 +232,7 @@ class RecoveryCatalog:
         plan, frag, inst, phys, state = self._base_plan, self.frag, self.inst, self.phys, self.state
         rem = [p for p in frag.air if p not in self.ground_required]
         fixed_back = list(frag.handover) + [p for p in frag.air if p in self.ground_required]
-        subsets: list[list[str]] = [[]]
-        subsets += [[p] for p in rem]
-        if len(rem) >= 2:
-            subsets.append(list(rem))
-            if len(rem) <= 4:
-                subsets += [list(c) for c in itertools.combinations(rem, 2)]
+        subsets = _continue_subsets(rem)
         stops = build_stops(plan, frag, inst, phys, state, "X")
         launch = self.launch_truck
         ds = state.drone_start.get(frag.drone)
@@ -293,12 +305,7 @@ class RecoveryCatalog:
         # 全局按"到失败点的距离"排序：各车的最远位置交错出现，避免某辆车独占预算
         plan = self._base_plan
         rem = [p for p in self.frag.air if p not in self.ground_required]
-        subsets: list[list[str]] = [[]]
-        subsets += [[p] for p in rem]
-        if len(rem) >= 2:
-            subsets.append(list(rem))
-            if len(rem) <= 4:
-                subsets += [list(c) for c in itertools.combinations(rem, 2)]
+        subsets = _continue_subsets(rem)
         items = []
         launch = self.launch_truck
         trucks = [launch] if self.strategy == "S" else sorted(plan.routes)

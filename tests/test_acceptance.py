@@ -260,12 +260,19 @@ def test_t11_two_failures_full_replay(phys):
     plan, cost, H = load_case_nominal(inst, nom_dir)
     nom_ev = evaluate_plan(plan, inst, phys, initial_run_state(plan, inst, phys), H)
     res = type("R", (), {"plan": plan, "evaluation": nom_ev})()
-    targets = ("p017", "p034")
-    ep = run_episode(inst, res.plan, res.evaluation, H, phys,
-                     TestWorld(inst, "C50", targets),
-                     "S", alg, derive_rngs(alg.base_algorithm_seed, "C50", "recovery", 0),
-                     recovery_eval_budget=150)
-    obs = [o.parcel_id for o in ep.observations if not o.air_delivery_available]
+    # 第四轮：恢复候选变化后，第一次恢复可能把 p034 改成地送(不再观察到失效)；
+    # 这里依次尝试第二个目标，取第一个确实被观察到两次失效的组合
+    seconds = ["p034"] + [p for p in sorted(p for s in plan.sorties.values() for p in s.air)
+                          if p not in ("p017", "p034")]
+    for second in seconds:
+        targets = ("p017", second)
+        ep = run_episode(inst, res.plan, res.evaluation, H, phys,
+                         TestWorld(inst, "C50", targets),
+                         "S", alg, derive_rngs(alg.base_algorithm_seed, "C50", "recovery", 0),
+                         recovery_eval_budget=150)
+        obs = [o.parcel_id for o in ep.observations if not o.air_delivery_available]
+        if sorted(obs) == sorted(targets):
+            break
     assert sorted(obs) == sorted(targets), f"必须实际观察两次失效，实际 {obs}"
     assert ep.status == "COMPLETED_VERIFIED", (ep.status, ep.notes[:3])
     assert ep.replay is not None and ep.replay.ok

@@ -90,9 +90,45 @@ def _truck_timeline(res: Plan, inst: Instance, phys: PhysicalConfig, state: Star
     return arr, dep
 
 
+def release_credit(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfig,
+                   state: StartState) -> tuple[int | None, float]:
+    """第四轮 H4：原回收访问 rv0 一旦不再接机，原车省下的成本（接机点不是 rv0 的方案共享该项）.
+
+    = R/U 司机工时；若 rv0 除接机外没有别的任务（地送票只含将被移交的票、无放飞、无其他回收），
+    则整个访问被清理，还省去绕行里程与驾驶工时。这是跨车(及同车异点)接机的主要收益来源，
+    旧代理成本漏计了它。
+    """
+    rv0 = frag.rec_vid
+    vis = res.visits.get(rv0)
+    if vis is None:
+        return None, 0.0
+    ru = phys.recovery_s + phys.handover_s
+    credit = phys.wage_per_s * ru
+    moving = set(frag.handover) | set(frag.air)
+    other_ground = [p for p in vis.ground if p not in moving]
+    others = [s for s in res.sorties.values()
+              if s.sid != frag.sid and (s.rec_vid == rv0 or (s.launch_vid == rv0 and not s.started))]
+    route = res.routes.get(vis.truck, [])
+    if other_ground or others or rv0 not in route:
+        return rv0, credit
+    i = route.index(rv0)
+    if i == 0 and state.truck_fixed_first.get(vis.truck):
+        return rv0, credit
+    depot = (inst.depot_x, inst.depot_y)
+    c0 = inst.customer(vis.customer)
+    prev = state.truck_start_pos.get(vis.truck, depot) if i == 0 else \
+        (inst.customer(res.visits[route[i - 1]].customer).x, inst.customer(res.visits[route[i - 1]].customer).y)
+    nxt = depot if i == len(route) - 1 else \
+        (inst.customer(res.visits[route[i + 1]].customer).x, inst.customer(res.visits[route[i + 1]].customer).y)
+    det = _d(prev, (c0.x, c0.y)) + _d((c0.x, c0.y), nxt) - _d(prev, nxt)
+    credit += phys.c_km * det / 1000.0 + phys.wage_per_s * det / phys.truck_speed_m_s
+    return rv0, credit
+
+
 def build_stops(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfig,
                 state: StartState, strategy: str) -> list[Stop]:
     launch = frag.launch_truck or frag.truck
+    rv0, credit0 = release_credit(res, frag, inst, phys, state)
     trucks = [launch] if strategy == "S" else sorted(res.routes)
     depot = (inst.depot_x, inst.depot_y)
     v = phys.truck_speed_m_s
@@ -114,7 +150,10 @@ def build_stops(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfig,
                               [pts[i]] + after, [custs[i]] + custs[i + 1:] + [""], i))
         # --- 支援访问：每个客户一个最小绕行插入位置（与 recovery._insert_support 同规则）---
         min_pos = state.truck_min_insert.get(k, 0)
+        have = {vv.customer for vv in (res.visits[x] for x in route)}
         for c in inst.customers:
+            if c.customer_id in have:
+                continue          # 第四轮：该车已有同客户访问 → 既有访问更优，不再生成重复的支援访问占 top-K
             cp = (c.x, c.y)
             best = None
             for i in range(min_pos, len(route) + 1):
@@ -130,6 +169,9 @@ def build_stops(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfig,
             after = [cp] + pts[i:] + [depot]
             stops.append(Stop(k, True, c.customer_id, c.customer_id, cp, a, cost, after,
                               [c.customer_id] + custs[i:] + [""], i))
+    for s_ in stops:
+        if not (not s_.support and s_.ref == rv0):
+            s_.cost -= credit0          # 原回收访问不再接机：原车省下 R/U 工时(及整段绕行)
     return stops
 
 
@@ -344,6 +386,32 @@ def solve_recovery_milp(res: Plan, frag_sid: int, inst: Instance, phys: Physical
         cuts.append((ones, zeros, vi))
         if res_m.status == 1:               # 触及时限：已有最好解，不再继续
             break
+    # 第四轮 H4：X 每辆合格的其他车再各取一个最优方案(top-K 常被同车方案占满，跨车最优方案进不了评价)。
+    # S 只有一辆合格车，天然不触发；X 追加的是“新增候选”，其评价同样计入同一恢复预算。
+    if strategy != "S" and out.entries and status_all and all(s_ == 0 for s_ in status_all):
+        have_trucks = {e_["truck"] for e_ in out.entries}
+        for tk in sorted({s_.truck for s_ in stops} - have_trucks):
+            row = coo_matrix(([1.0] * sum(1 for s_ in stops if s_.truck == tk),
+                              ([0] * sum(1 for s_ in stops if s_.truck == tk),
+                               [idx[("x", q)] for q, s_ in enumerate(stops) if s_.truck == tk])),
+                             shape=(1, n)).tocsr()
+            from scipy.sparse import vstack as _vs
+            AA = _vs([base_cons[0], row]).tocsr()
+            LL = np.concatenate([base_cons[1], [1.0]])
+            UU = np.concatenate([base_cons[2], [1.0]])
+            r_ = milp(cost, constraints=LinearConstraint(AA, LL, UU), integrality=integrality,
+                      bounds=Bounds(lb, ub), options={"time_limit": time_limit_s, "disp": False})
+            out.n_solves += 1
+            if r_.x is None or r_.status not in (0, 1):
+                continue
+            xs = r_.x
+            vi = int(np.argmax([xs[idx[("x", q)]] for q in range(V)]))
+            zs = [int(round(xs[idx[("z", i)]])) for i in range(1, m + 1)]
+            s_ = stops[vi]
+            out.entries.append({"truck": s_.truck, "kind": "support" if s_.support else "visit",
+                                "ref": s_.ref, "support": s_.support,
+                                "served": [rem[i] for i in range(m) if zs[i] == 1]})
+            out.objective.append(float(r_.fun))
     out.status = "OPTIMAL" if status_all and all(s == 0 for s in status_all) else \
         ("NO_FEASIBLE" if not out.entries else "FEASIBLE_LIMIT")
     out.wall_s = time.perf_counter() - t_wall
