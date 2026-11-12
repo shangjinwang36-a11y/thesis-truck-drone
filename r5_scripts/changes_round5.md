@@ -178,3 +178,23 @@
 
 ### 审计 v2 p=0.2（算子表见 r5/audit_v2_p02.txt）：重规划 S519/X483；搜索无改进的重规划 S142/X119；reassign 采用 X 5 次（gap_max=−13.6<0，S 0 次）。
 - 后台队列 r5/queue4.sh（v2）：p=0.1 b1 运行中，随后 p=0.3 b1、p=0.1 的 seeds 11–40、p=0.2 的 seeds 11–40。
+
+# 第五轮·第四阶段：v3 = 在飞无人机联合重选接机（分支 round5c，工作树 proj_r5c）
+## 13. 实现
+- `recovery._joint_retarget / _joint_target`，由 `initial_recovery(..., joint=alg.joint_inflight_retarget)` 在 ②-F 之后、③ REBUILD 之前调用，**仅当仍无任何可行解时**启用（不改变已有可行时的行为）。
+- 流程：取种子候选（失败机 RESIDUAL + 前 2 个目录条目，各 ≤2 种补位）→ 评价；若违规为 `SWAP_CANNOT_FIX:<机体>`（别的在飞机电量/到达不可修）或 `SLOT_OVER:<车>`（接机车机位超限）→ 找到对应的**已起飞航次**，对它建 `RecoveryCatalog`（S：只含其放飞车；X：任意车），取前 3 个条目、各 ≤2 种补位用 `build_residual_candidate` 重选其接机车/点/继续子集 → 评价；仍不可行则以首个候选为新种子继续，贪心深度 ≤3。H_EXCEEDED 不处理（真不可行）。
+- 预算：全部评价走 `eval_counted` 记入**初始化预算**，额外额度 `JOINT_EXTRA_EVALS=60`（S/X 同一常数；与 ②-F 兜底 +24 同类规则）。S/X 同一代码路径。
+- 开关 `AlgorithmConfig.joint_inflight_retarget`（默认 False，旧结果可复现；v3 运行用 True）。审计字段 `joint_used / joint_retargets` 写入重规划 counts。
+- 测试（tests/test_round5.py 新增 3 个，全部通过）：`_joint_target` 违规解析（只选在飞航次、不重复、不处理失败机本身、H 不处理）；对在飞航次的目录 **S 全部是其放飞车、X ⊇ S 且含其他车**；开关默认关。全套 pytest 在 v3 上还在跑（机器负载高），v2 为 101 passed。
+## 14. 前后对照（同种子重跑，p=0.2，reassign 修复开）
+| 案例 | v2 | v3(联合重选) |
+|---|---|---|
+| RC50 s4 (X) | STOPPED(SWAP_CANNOT_FIX e=−0.226) | **COMPLETED_VERIFIED** |
+| C100 s3 (X)、C100 s5 (X)、R50 s2 (X)、RC50 s1 (X)、R50 s10 (S) | COMPLETED（v2 已修） | COMPLETED（保持） |
+| C100 s2 (X) | STOPPED replan 7（SLOT_OVER+SWAP） | 仍 STOPPED，但推迟到 replan 17；原因 SLOT_OVER:t4（t4 在多个时刻机体数=4>3 个机位）+ 一次 SWAP_CANNOT_FIX e=0.031<0.05；同状态 S 也无可行解 |
+| R100 s2 (S) | STOPPED（H_EXCEEDED 6445>5694） | 仍 STOPPED：**真 H 不可行**（全地面也超 H） |
+p=0.2 seeds1-10 全体（v3 运行中，`r5/v3_l2_p02_b1.json`，C100 排序在前，目前已完成 28/60 个环境的部分对照）：同 28 个环境 STOPPED S/X = v2 14/16 → v3 12/15，两边都完成的对数 9 → 11。**效果有限但方向正确；STOPPED 仍未只限于真 H 不可行**。
+## 15. 剩余 STOPPED 的类型与下一步
+1. SLOT_OVER（多次跨车回收使某辆车机体数>机位）：需要“机位感知”的接机选择（把某架无人机的接机改到机位未满的车/时刻，或延迟放飞），目前联合重选只处理在飞航次、不处理“已在车上排队等放飞”的机位冲突；
+2. 真 H 不可行：全地面也超 H（R100 s2），这类应当 STOPPED（或允许记为“超时完成+罚金”的敏感性口径）。
+队列 `r5/queue5.sh`（v3）：p=0.2 b1 运行中 → p=0.1 b1 → p=0.3 b1 → p=0.1 的 seeds 11–40 → p=0.2 的 seeds 11–40；v2 队列已终止（v2 p=0.1 b1 部分结果在 `partial_killed_v2_l2_p01_b1.json`，不作结论）。汇总命令：`python r5/report5.py results/v3_l2_p02_b1.json "v3 p=0.2" 0.2`，审计 `python r5/audit_r5.py results/<f>.json <p>`。

@@ -11,7 +11,7 @@ from tdr.evaluate import evaluate_plan
 from tdr.schedule import initial_state
 from tdr import simulate
 pkg=json.load(open('data/package_light.json')); phys=PhysicalConfig.from_dict(dict(pkg['config']))
-ad=dict(pkg['algorithm_protocol']['default_parameters']); ad['reassign_adopt_only_if_best']=bool(int(os.environ.get('R5FLAG','0')))
+ad=dict(pkg['algorithm_protocol']['default_parameters']); ad['reassign_adopt_only_if_best']=bool(int(os.environ.get('R5FLAG','0'))); ad['joint_inflight_retarget']=bool(int(os.environ.get('R5JOINT','0')))
 alg=AlgorithmConfig.from_dict(ad); alg.recovery_eval_budget_override=1000; alg.recovery_time_limit_override_s=None; alg.recovery_decision='milp'
 inst=load_instance(pkg,case); phys=phys.for_case(pkg.get('case_fleet'),case)
 plan,ncost,H=load_case_nominal(inst,Path('/workspace/thesis/proj/outputs/nominal_lightR1000')/case)
