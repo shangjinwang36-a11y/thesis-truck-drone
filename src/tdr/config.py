@@ -213,6 +213,9 @@ class AlgorithmConfig:
     # 第四轮：X 专用跨车算子(见 cross_ops.py)；仅当失败航次被≠原放飞车的车接回时才会触发，S 恒不触发；同一份预算
     cross_ops: bool = False
     cross_period: int = 5
+    # 第五轮：恢复目录候选(try_recovery_reassign)是在名义残余计划(base)上重建的，不含当前 ALNS 进展；
+    # False=旧行为（优于当前解即替换当前解，会丢弃已有进展）；True=仅当优于全局最优时才采用（S/X 对称）
+    reassign_adopt_only_if_best: bool = False
     cross_n: int = 2
     crn_per_iteration: bool = False          # 共同随机数：按(种子,算例,重规划,轮次)重置随机流（S/X 对称）
     cross_ops_gate: bool = True              # False=对照：同车情形也启用（S、X 同等）

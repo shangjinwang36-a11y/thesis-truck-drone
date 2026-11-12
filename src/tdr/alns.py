@@ -554,8 +554,11 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         if ctx.catalog is not None and stats.iterations % 10 == 0 and budget.evals_left() > 0:
             p_r, e_r = try_recovery_reassign(cur_plan, ctx, budget, stats)
             stats.aud('reassign:calls')
-            if p_r is not None and e_r is not None and _better(e_r, cur_ev, alg):
+            if (p_r is not None and e_r is not None
+                    and _better(e_r, best_ev if alg.reassign_adopt_only_if_best else cur_ev, alg)):
                 stats.aud('reassign:improve')
+                _gap = (e_r.cost or 0.0) - (best_ev.cost or 0.0)
+                stats.audit['reassign:adopt_gap_max'] = max(stats.audit.get('reassign:adopt_gap_max', -1e9), _gap)
                 cur_plan, cur_ev = p_r, e_r
                 if _better(e_r, best_ev, alg):
                     best_ev, best_plan = e_r, p_r.clone()

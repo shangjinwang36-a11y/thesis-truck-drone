@@ -67,3 +67,59 @@ def test_bernoulli_unattempted_not_observed(inst):
     w.observe_air_arrival(c.parcel_id, 1.0, "x", c.customer_id, "d")
     audit = w.finish_episode()
     assert set(audit.observed_air_failure_parcels) <= {c.parcel_id}
+
+
+def _episode_audit(strat, flag):
+    import random, zlib
+    from tdr.config import AlgorithmConfig, PhysicalConfig
+    from tdr.evaluate import evaluate_plan
+    from tdr.experiment import load_case_nominal
+    from tdr.hidden_world import TestWorld
+    from tdr.schedule import initial_state
+    from tdr import simulate
+    case = "C50"
+    pkg = json.load(open(ROOT / "data" / "package.json"))
+    fx = ROOT / "tests" / "fixtures" / "spec" / case
+    if not fx.exists():
+        pytest.skip("fixture missing")
+    phys = PhysicalConfig.from_dict(dict(pkg["config"])).for_case(pkg.get("case_fleet"), case)
+    alg = AlgorithmConfig.from_dict(pkg["algorithm_protocol"]["default_parameters"])
+    alg.recovery_eval_budget_override = 300
+    alg.recovery_time_limit_override_s = None
+    alg.recovery_decision = "milp"
+    alg.reassign_adopt_only_if_best = flag
+    inst = load_instance(pkg, case)
+    plan, ncost, H = load_case_nominal(inst, fx)
+    nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
+    air = sorted(p for s in plan.sorties.values() for p in s.air)
+    rng = random.Random(zlib.crc32(f"{case}:1:3".encode()))
+    world = TestWorld(inst, case, tuple(rng.sample(air, 3)))
+    rngs = simulate.derive_rngs(alg.base_algorithm_seed, case, "recovery", 0)
+    cap = []
+    orig = simulate.optimize
+
+    def wrap(p, ctx, b, **kw):
+        r = orig(p, ctx, b, **kw)
+        cap.append(r)
+        return r
+    simulate.optimize = wrap
+    try:
+        ep = simulate.run_episode(inst, plan, nom, H, phys, world, strat, alg, rngs, recovery_eval_budget=300)
+    finally:
+        simulate.optimize = orig
+    return ep, cap
+
+
+@pytest.mark.parametrize("strat", ["S", "X"])
+def test_reassign_flag_never_adopts_worse_than_best(strat):
+    """reassign_adopt_only_if_best=True：目录候选只有优于全局最优才替换当前解（防止丢弃 ALNS 进展）."""
+    ep, cap = _episode_audit(strat, True)
+    assert ep.status.startswith("COMPLETED") or ep.status.startswith("STOPPED")
+    for r in cap:
+        gap = r.stats.audit.get("reassign:adopt_gap_max")
+        assert gap is None or gap < 0.0
+
+
+def test_reassign_flag_default_false():
+    from tdr.config import AlgorithmConfig
+    assert AlgorithmConfig().reassign_adopt_only_if_best is False
