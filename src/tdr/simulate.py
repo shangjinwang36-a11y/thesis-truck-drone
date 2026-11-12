@@ -815,7 +815,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                         [st.end for lst in tl.drone_stages.values() for st in lst] + [state.t0])
             segments.append(collect_segment(plan, tl, inst, phys, state.t0, t_end, seg_start))
             ev = evaluate_plan(plan, inst, phys, state, H, "FINAL")
-            rep = verify_replay(inst, phys, segments)
+            rep = verify_replay(inst, phys, segments, H)
             res.segments = segments
             res.replay = rep
             res.plan = plan

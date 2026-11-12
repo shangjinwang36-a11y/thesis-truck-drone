@@ -339,3 +339,73 @@ def test_slot_aware_catalog_is_symmetric_and_only_reorders():
                 assert sorted(map(key, A)) == sorted(map(key, B))
             n += 1
     assert n >= 1
+
+
+def test_slot_ledger_counts_drone_after_recovery_until_final():
+    """v5 修复：非起飞航次回收后，无人机继续占本车机位直到下次放飞/入库(旧评价器漏计→与重放不一致)."""
+    import dataclasses
+    from tdr.evaluate import evaluate_plan, truck_slot_check, final_carrier
+    from tdr.schedule import initial_state
+    inst, phys, plan = _light_plan()
+    st = initial_state(inst, phys)
+    ev = evaluate_plan(plan, inst, phys, st, None, "NOMINAL")
+    assert ev.feasible
+    fin = {}
+    for d in [f"d{i+1}" for i in range(phys.drone_count)]:
+        fin.setdefault(final_carrier(plan, d, st, phys), []).append(d)
+    k, ds = max(((kk, vv) for kk, vv in fin.items() if ev.timeline.truck_finish.get(kk, 0.0) > 1.0),
+                key=lambda kv: len(kv[1]))
+    assert len(ds) >= 2
+    tight = dataclasses.replace(phys, truck_drone_slots=len(ds) - 1)
+    errs = truck_slot_check(plan, inst, tight, ev.timeline, st)
+    assert any(e.startswith(f"SLOT_OVER:{k}@") for e in errs), errs
+    ok = dataclasses.replace(phys, truck_drone_slots=len(ds))
+    assert not truck_slot_check(plan, inst, ok, ev.timeline, st)
+
+
+def test_slot_ledger_matches_replay_on_episode():
+    """端到端：若干失败后评价器与独立重放不应在机位上不一致(无 INVALID_EXECUTION)."""
+    import json as _j
+    from tdr.config import AlgorithmConfig
+    from tdr.evaluate import evaluate_plan
+    from tdr.schedule import initial_state
+    from tdr import simulate
+    inst, phys, plan = _light_plan()
+    pkg = _j.load(open(ROOT / "data" / "package_light.json"))
+    alg = AlgorithmConfig.from_dict(pkg["algorithm_protocol"]["default_parameters"])
+    alg.recovery_eval_budget_override = 60; alg.recovery_time_limit_override_s = None
+    alg.recovery_decision = "milp"
+    from tdr.experiment import load_case_nominal
+    _, _, H = load_case_nominal(inst, ROOT / "tests" / "fixtures" / "light" / "C50")
+    nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
+    for seed in (1, 2):
+        w = BernoulliWorld(inst, "C50", seed, 0.3)
+        ep = simulate.run_episode(inst, plan, nom, H, phys, w, "X", alg,
+                                  simulate.derive_rngs(alg.base_algorithm_seed, "C50", "recovery", 0),
+                                  recovery_eval_budget=60, max_replans=6)
+        assert ep.status != "INVALID_EXECUTION", ep.notes
+
+
+def test_soft_h_overtime_cost_and_default_hard():
+    """v5 变体(b)：默认硬 H；soft_h 下 H_EXCEEDED 变为 (mult-1)×时薪×超出秒数 的附加成本."""
+    import dataclasses
+    from tdr.evaluate import evaluate_plan
+    from tdr.schedule import initial_state
+    inst, phys, plan = _light_plan()
+    st = initial_state(inst, phys)
+    base = evaluate_plan(plan, inst, phys, st, None, "NOMINAL")
+    assert base.feasible
+    fin = base.timeline.truck_finish
+    H = max(fin.values()) - 300.0
+    hard = evaluate_plan(plan, inst, phys, st, H, "NOMINAL")
+    assert not hard.feasible and any(v.startswith("H_EXCEEDED") for v in hard.violations)
+    soft_phys = dataclasses.replace(phys, soft_h=True, overtime_mult=1.5)
+    soft = evaluate_plan(plan, inst, soft_phys, st, H, "NOMINAL")
+    assert soft.feasible
+    ot = sum(max(0.0, f - H) for f in fin.values())
+    assert ot > 0
+    assert soft.cost == pytest.approx(base.cost + phys.wage_per_s * 0.5 * ot, rel=1e-9)
+    assert soft.cost_breakdown["overtime_s"] == pytest.approx(ot)
+    # H 足够大 → 软/硬一致
+    big = evaluate_plan(plan, inst, soft_phys, st, max(fin.values()) + 1.0, "NOMINAL")
+    assert big.cost == pytest.approx(base.cost)

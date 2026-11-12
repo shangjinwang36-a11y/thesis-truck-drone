@@ -36,26 +36,26 @@ def truck_slot_check(plan: Plan, inst: Instance, phys: PhysicalConfig, tl: Timel
         intervals: list[tuple[float, float, str]] = []
         for d in [f"d{i+1}" for i in range(phys.drone_count)]:
             st = state.drone_start.get(d)
-            on_start = state.t0 if (st is not None and st.kind == "ON_TRUCK" and st.truck == k) else None
+            # 第五轮 v5 修复：沿机体航次链连续记账“在哪辆车上、从何时起占机位”。
+            # 旧实现在非起飞航次回收后没有续记在车占位(只在下一次放飞窗口/从未放飞时才计)，
+            # 导致评价器漏算回收后停在车上的无人机，与独立重放器的机位账不一致(RC100 s4 INVALID_EXECUTION)。
+            cur_truck = st.truck if (st is not None and st.kind == "ON_TRUCK") else None
+            cur_start = state.t0 if cur_truck is not None else None
             for sid in plan.drone_sorties.get(d, []):
                 s = plan.sorties[sid]
-                if s.started:
-                    # 空中残段：只有当其回收车就是本车时，回收结束才在本车占位
-                    if s.rec_vid in plan.visits and plan.visits[s.rec_vid].truck == k:
-                        rt = tl.rec_times.get(sid)
-                        if rt is not None:
-                            on_start = rt[1]
-                    continue
-                if s.truck != k:
-                    continue
-                lt = tl.launch_times.get(sid)
-                if lt is None:
-                    continue
-                start = on_start if on_start is not None else lt[0]
-                intervals.append((start, lt[1], f"{d}:on{sid}"))
-                on_start = None
-            if on_start is not None:
-                intervals.append((on_start, tl.truck_finish.get(k, on_start), f"{d}:final"))
+                if not s.started:
+                    lt = tl.launch_times.get(sid)
+                    if lt is not None and s.truck == k:
+                        start = cur_start if (cur_truck == k and cur_start is not None) else lt[0]
+                        intervals.append((start, lt[1], f"{d}:on{sid}"))
+                rv0 = plan.visits.get(s.rec_vid)
+                rt0 = tl.rec_times.get(sid)
+                if rv0 is not None and rt0 is not None:
+                    cur_truck, cur_start = rv0.truck, rt0[1]
+                else:
+                    cur_truck, cur_start = None, None
+            if cur_truck == k and cur_start is not None:
+                intervals.append((cur_start, tl.truck_finish.get(k, cur_start), f"{d}:final"))
         for s in plan.sorties.values():
             rv = plan.visits.get(s.rec_vid)
             if rv is not None and rv.truck == k:
@@ -166,7 +166,7 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
     viol += channel_check(plan, phys, tl)
     # 终端：每个出飞机体最后必须在车上；返库时刻与 H
     for k, f in tl.truck_finish.items():
-        if H is not None and f > H + 1e-6:
+        if H is not None and f > H + 1e-6 and not phys.soft_h:
             viol.append(f"H_EXCEEDED:{k}@{f:.1f}>{H:.1f}")
     # 回收余电
     for d, stages in tl.drone_stages.items():
@@ -190,6 +190,9 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
     depot_refill += state.prefix_refill_kwh + tl.swap_refill_kwh
     c_km = phys.c_km * D / 1000.0
     c_driver = phys.wage_per_s * sumF
+    overtime_s = (sum(max(0.0, f - H) for f in tl.truck_finish.values())
+                  if (phys.soft_h and H is not None) else 0.0)
+    c_overtime = phys.wage_per_s * (phys.overtime_mult - 1.0) * overtime_s
     Qnet = phys.slot_efficiency * Qac
     c_veh = phys.cost_vehicle_kwh * Qnet
     c_dep = phys.cost_depot_kwh * depot_refill
@@ -199,7 +202,9 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
         "depot_refill_kwh": depot_refill, "c_depot": c_dep,
         "swaps": float(sum(tl.swap_count_by_truck.values())),
     }
-    ev.cost = c_km + c_driver + c_veh + c_dep
+    ev.cost = c_km + c_driver + c_veh + c_dep + c_overtime
+    ev.cost_breakdown["overtime_s"] = overtime_s
+    ev.cost_breakdown["c_overtime"] = c_overtime
     # z：实际出库机体最晚随车入库时刻
     dispatched = set(state.dispatched) if state.dispatched else set()
     for s in plan.sorties.values():
