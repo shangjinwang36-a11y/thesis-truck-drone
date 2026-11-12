@@ -166,7 +166,10 @@ class RecoveryCatalog:
     """
 
     def __init__(self, plan: Plan, frag: Sortie, inst: Instance, strategy: str,
-                 state: StartState | None = None, ground_required: set[str] | None = None):
+                 state: StartState | None = None, ground_required: set[str] | None = None,
+                 phys: PhysicalConfig | None = None, guard_n: int = 40):
+        self.phys = phys
+        self.guard_n = guard_n      # X 的第一批评价必须包含 S 排序的前 guard_n 个候选（第二轮修复2）
         self._base_plan = plan
         self.frag = frag
         self.inst = inst
@@ -199,6 +202,93 @@ class RecoveryCatalog:
         return sorted(trucks, key=lambda t: (t != self.launch_truck, dist(t), t))
 
     def _entries(self):
+        if (self.phys is not None and self.state is not None
+                and self.frag.start_pos is not None):
+            yield from self._entries_est()
+            return
+        yield from self._entries_dist()
+
+    # -- 第二轮修复2：按“估计成本”排序，并保证 X 的第一批包含 S 的前 guard_n 名 --
+    def _entries_est(self):
+        from .recovery_milp import _d, _ground_cost, build_stops
+        plan, frag, inst, phys, state = self._base_plan, self.frag, self.inst, self.phys, self.state
+        rem = [p for p in frag.air if p not in self.ground_required]
+        fixed_back = list(frag.handover) + [p for p in frag.air if p in self.ground_required]
+        subsets: list[list[str]] = [[]]
+        subsets += [[p] for p in rem]
+        if len(rem) >= 2:
+            subsets.append(list(rem))
+            if len(rem) <= 4:
+                subsets += [list(c) for c in itertools.combinations(rem, 2)]
+        stops = build_stops(plan, frag, inst, phys, state, "X")
+        launch = self.launch_truck
+        ds = state.drone_start.get(frag.drone)
+        e0 = ds.energy if ds is not None else state.drone_energy.get(frag.drone, phys.e_cap)
+        mass = {p: inst.parcel_mass[p] for p in rem + fixed_back}
+        m_tot = sum(mass.values())
+        p_h = phys.hover_power(m_tot)
+        c_e = phys.cost_depot_kwh
+        vd = phys.drone_speed_m_s
+        ppos = {p: (inst.customer(inst.parcel_to_customer[p]).x,
+                    inst.customer(inst.parcel_to_customer[p]).y) for p in rem + fixed_back}
+        pcust = {p: inst.parcel_to_customer[p] for p in rem + fixed_back}
+
+        def est(stop, served: list[str]) -> float:
+            cost = stop.cost
+            for p in fixed_back + [q for q in rem if q not in served]:
+                cost += _ground_cost(stop, pcust[p], ppos[p], phys)
+            cur, m_cur, t_d, en = frag.start_pos, m_tot, 0.0, 0.0
+            for p in served:
+                d = _d(cur, ppos[p])
+                en += phys.fly_energy_kwh(d, m_cur) + phys.hover_energy_kwh(phys.air_service_s, m_cur)
+                t_d += d / vd + phys.air_service_s
+                m_cur = max(0.0, m_cur - mass[p])
+                cur = ppos[p]
+            d = _d(cur, stop.pos)
+            en += phys.fly_energy_kwh(d, m_cur)
+            t_d += d / vd
+            a = stop.arrival - state.t0
+            w1, w2 = max(0.0, a - t_d), max(0.0, t_d - a)
+            en += p_h * w1 / 3600.0
+            cost += c_e * en + phys.wage_per_s * w2
+            if en > e0 - phys.e_min:
+                cost += 1e4                  # 能量上界不满足：排到最后，但不删除（以完整评价为准）
+            return cost
+
+        items = []
+        for st in stops:
+            for served in subsets:
+                key = (st.truck, st.ref, tuple(served))
+                items.append((est(st, served), st.truck != launch, st.truck, str(st.ref),
+                              tuple(served), key, st))
+        items.sort(key=lambda x: (x[0], x[2], x[3], x[4]))
+        s_list = [x for x in items if x[2] == launch]
+        seen: set = set()
+
+        def make(x):
+            st = x[6]
+            return {"truck": st.truck, "kind": "support" if st.support else "visit",
+                    "ref": st.ref, "support": st.support, "served": list(x[4]), "est": x[0]}
+
+        n_guard = 0
+        trucks_ok = [launch] if self.strategy == "S" else None
+        for x in s_list:                       # 先放 S 排序的前 guard_n 个（X、S 完全一致）
+            if n_guard >= self.guard_n and self.strategy != "S":
+                break
+            if x[5] in seen or x[5] in self.skip_keys:
+                continue
+            seen.add(x[5])
+            n_guard += 1
+            self.n_generated += 1
+            yield make(x)
+        for x in (s_list if self.strategy == "S" else items):
+            if x[5] in seen or x[5] in self.skip_keys:
+                continue
+            seen.add(x[5])
+            self.n_generated += 1
+            yield make(x)
+
+    def _entries_dist(self):
         # 全局按"到失败点的距离"排序：各车的最远位置交错出现，避免某辆车独占预算
         plan = self._base_plan
         rem = [p for p in self.frag.air if p not in self.ground_required]
@@ -373,6 +463,13 @@ def build_residual_candidate(res: Plan, frag_sid: int, entry: dict | None, inst:
             freed_later.extend(so.air + so.handover)
             cand.remove_sortie(sid)
     hand = _set_recovery(cand, f, truck, rv, served)
+    # 第二轮修复（跨车 bug）：失败票/未续飞票由机上交接给接机车。残段底板里这些票遗留在
+    # 别的车（通常是原放飞车）上的旧地送安排必须先清除，否则货物保管冲突(G_CUSTODY)，
+    # 所有跨车候选都不可行。
+    hand_set = set(hand)
+    for v in cand.visits.values():
+        if v.truck != truck:
+            v.ground = [p for p in v.ground if p not in hand_set]
     if _place_handover_guarded(cand, inst, truck, rv, hand):
         return []
     protect = _fixed_first_vids(cand, state) | {rv}
@@ -449,7 +546,8 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
         return None, ["NO_FRAGMENT"], catalog
     res = prepare_residual(plan, inst)
     if catalog is None:
-        catalog = RecoveryCatalog(res, frag, inst, strategy, state, ground_required)
+        catalog = RecoveryCatalog(res, frag, inst, strategy, state, ground_required, phys=phys,
+                                  guard_n=max(1, ((budget.eval_limit or 100) - 4) // 2))
     catalog.mode = "residual"
     catalog.res_plan = res
     # 重建路径（对照）所需的底板与待插入票

@@ -219,7 +219,10 @@ def ground_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: 
             delta = (math.hypot(prev[0] - cpos[0], prev[1] - cpos[1])
                      + math.hypot(cpos[0] - nxt[0], cpos[1] - nxt[1])
                      - math.hypot(prev[0] - nxt[0], prev[1] - nxt[1]))
-            proxy = phys.c_km * delta / 1000.0 + w * phys.ground_service_s
+            # 第二轮修复3：绕行不仅有里程费，还有司机行驶时间的工资（约占绕行成本的一半），
+            # 原代理漏掉了这一项，会系统性低估地送成本、偏向"放回地面"。
+            proxy = (phys.c_km * delta / 1000.0 + w * delta / phys.truck_speed_m_s
+                     + w * phys.ground_service_s)
             out.append(GroundCandidate(truck, i, None, proxy=proxy))
     out.sort(key=lambda x: (x.proxy, x.truck, x.pos))
     return out
@@ -255,6 +258,48 @@ def sortie_start(inst: Instance, plan: Plan, s) -> tuple[float, float]:
     return p
 
 
+def route_times(plan: Plan, inst: Instance, phys: PhysicalConfig, truck: str):
+    """估计某车路线上各访问的到达/离开时刻（相对出库，仅用于代理分，不用于可行性）."""
+    route = plan.routes.get(truck, [])
+    depot = (inst.depot_x, inst.depot_y)
+    v = phys.truck_speed_m_s
+    arr, dep = [], []
+    t, pos = 0.0, depot
+    n_launch: dict[int, int] = {}
+    n_rec: dict[int, int] = {}
+    for s in plan.sorties.values():
+        if s.launch_vid is not None:
+            n_launch[s.launch_vid] = n_launch.get(s.launch_vid, 0) + 1
+        n_rec[s.rec_vid] = n_rec.get(s.rec_vid, 0) + 1
+    for vid in route:
+        c = inst.customer(plan.visits[vid].customer)
+        t += math.hypot(c.x - pos[0], c.y - pos[1]) / v
+        arr.append(t)
+        t += (phys.ground_service_s * len(plan.visits[vid].ground)
+              + phys.prepare_s * n_launch.get(vid, 0)
+              + (phys.recovery_s + phys.handover_s) * n_rec.get(vid, 0))
+        dep.append(t)
+        pos = (c.x, c.y)
+    return arr, dep
+
+
+def air_time(inst: Instance, phys: PhysicalConfig, p0, parcels: list[str], rec) -> float:
+    cur, t = p0, phys.launch_s
+    for p in parcels:
+        c = inst.customer(inst.parcel_to_customer[p])
+        t += math.hypot(c.x - cur[0], c.y - cur[1]) / phys.drone_speed_m_s + phys.air_service_s
+        cur = (c.x, c.y)
+    t += math.hypot(rec[0] - cur[0], rec[1] - cur[1]) / phys.drone_speed_m_s
+    return t
+
+
+def sync_cost(phys: PhysicalConfig, t_air: float, t_truck: float, mass_kg: float = 3.0) -> float:
+    """无人机飞行时间与卡车到接机点时间不同步的代价：卡车等机（工资）或无人机悬停等车（电费）."""
+    if t_air >= t_truck:
+        return phys.wage_per_s * (t_air - t_truck)
+    return phys.cost_depot_kwh * phys.hover_power(mass_kg) * (t_truck - t_air) / 3600.0
+
+
 def air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str,
                    max_new: int = 10, near_visits: int = 6,
                    forbid_air: set[str] | None = None,
@@ -270,6 +315,19 @@ def air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str
     out: list[AirCandidate] = []
     w = phys.wage_per_s
     cdep = phys.cost_depot_kwh
+    rt_cache: dict[str, tuple[list[float], list[float]]] = {}
+
+    def _rt(truck_: str):
+        if truck_ not in rt_cache:
+            rt_cache[truck_] = route_times(plan, inst, phys, truck_)
+        return rt_cache[truck_]
+
+    def _t_truck(truck_: str, launch_vid_, rec_vid_) -> float | None:
+        r_ = plan.routes.get(truck_, [])
+        if launch_vid_ not in r_ or rec_vid_ not in r_:
+            return None
+        arr_, dep_ = _rt(truck_)
+        return max(0.0, arr_[r_.index(rec_vid_)] - dep_[r_.index(launch_vid_)])
     # 1) 并入已有航次（只能并入该票保管车上的航次）
     for s in plan.sorties.values():
         if s.started or s.launch_vid is None:
@@ -291,8 +349,17 @@ def air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str
             if best is None or e < best[0]:
                 best = (e, pos)
         if best is not None and best[0] <= phys.e_cap - phys.e_min:
+            sync_delta = 0.0
+            tt = _t_truck(s.truck or "", s.launch_vid, s.rec_vid)
+            if tt is not None:
+                new_air = list(s.air)
+                new_air.insert(best[1], parcel)
+                sp, rp = sortie_start(inst, plan, s), _rec_pos(inst, plan, s)
+                sync_delta = (sync_cost(phys, air_time(inst, phys, sp, new_air, rp), tt)
+                              - sync_cost(phys, air_time(inst, phys, sp, list(s.air), rp), tt))
             out.append(AirCandidate("EXTEND", s.truck or "", s.launch_vid, s.mode, s.lam, s.rec_vid,
-                                    sid=s.sid, pos=best[1], proxy=cdep * (best[0] - base),
+                                    sid=s.sid, pos=best[1],
+                                    proxy=cdep * (best[0] - base) + sync_delta,
                                     energy=best[0], drone=s.drone))
     # 2) 新建航次：按"回收访问离客户最近"展开
     for truck, route in plan.routes.items():
@@ -324,6 +391,10 @@ def air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str
                 if e > phys.e_cap - phys.e_min:
                     continue
                 proxy = w * (phys.prepare_s + phys.recovery_s) + cdep * e
+                tt = _t_truck(truck, route[a], rvid)
+                if tt is not None:
+                    proxy += sync_cost(phys, air_time(inst, phys, lpos, [parcel], rpos), tt,
+                                       inst.parcel_mass[parcel])
                 out.append(AirCandidate("NEW", truck, route[a], "ARC", 0.5, rvid, proxy=proxy,
                                         energy=e, drone=drone))
                 out.append(AirCandidate("NEW", truck, route[a], "STOP", 0.0, rvid,
@@ -465,6 +536,38 @@ def repair_regret2(plan: Plan, inst: Instance, phys: PhysicalConfig, pool: list[
                 if ok2:
                     remaining.remove(p)
                     applied += 1
+    return plan, remaining
+
+
+def repair_air_first(plan: Plan, inst: Instance, phys: PhysicalConfig, pool: list[str],
+                     rng=None, max_ops: int = 200,
+                     forbid_air: set[str] | None = None,
+                     min_pos: dict[str, int] | None = None,
+                     state=None) -> tuple[Plan, list[str]]:
+    """第二轮新增 R3：能空送的票优先空送（取空送代理最优），不能空送的才地送.
+    接受与否仍由完整评价的真实成本决定，所以不会因此偏向任何一方；它只是让搜索更常尝试空送邻域。"""
+    remaining = list(pool)
+    order = []
+    for p in remaining:
+        ac = air_candidates(plan, inst, phys, p, forbid_air=forbid_air, state=state, min_pos=min_pos)
+        gc = ground_candidates(plan, inst, phys, p, min_pos, state)
+        order.append((ac[0].proxy if ac else float("inf"), p))
+    order.sort()
+    applied = 0
+    for _, p in order:
+        if applied >= max_ops:
+            break
+        done = False
+        ac = air_candidates(plan, inst, phys, p, forbid_air=forbid_air, state=state, min_pos=min_pos)
+        if ac and apply_air(plan, inst, p, ac[0]):
+            done = True
+        if not done:
+            gc = ground_candidates(plan, inst, phys, p, min_pos, state)
+            if gc and apply_ground(plan, inst, p, gc[0]):
+                done = True
+        if done:
+            remaining.remove(p)
+            applied += 1
     return plan, remaining
 
 

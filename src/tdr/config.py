@@ -133,6 +133,15 @@ class AlgorithmConfig:
     operator_selector: str = "roulette"     # "roulette"（基线） | "qlearn"（变体 A）
     qtable_path: str | None = None          # 变体 A：已训练的 Q 表（JSON）
     qlearn_eval_epsilon: float = 0.05       # 变体 A 评价时的随机探索概率（Q 表冻结）
+    # 第二轮修改：算法改进开关（全部默认开启；设为 False 即回到第一轮行为）
+    air_promote_ops: bool = True            # 额外的 GROUND_TO_AIR 破坏 + AIR_FIRST 修复算子
+    geometry_new_sortie_only: bool = True   # 仅当本轮新建了航次才评 5 个 λ 起点，否则只评继承 λ
+    coordinate_light: bool = True           # ALNS 内的坐标细化：沿用已知评价、最多 coordinate_light_cap 次额外评价
+    coordinate_light_cap: int = 12
+    nominal_descent: bool = True            # 名义计划：成本驱动的"转空送"下降作为启动阶段
+    nominal_descent_eval_budget: int = 200  # 下降阶段的评价上限（计入 1000 次名义总预算）
+    nominal_two_start: bool = True          # 双起点：下降起点与块转换起点各跑一小段 ALNS，择优后用余下预算
+    nominal_start_slice: int = 150          # 每个起点的试跑评价数（全部计入 1000 次总预算）
     max_search_rounds: int = 2000
     geometry_base_starts: int = 5
     coordinate_polish_every_alns_iterations: int = 10

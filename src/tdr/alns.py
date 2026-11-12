@@ -200,6 +200,31 @@ def destroy(plan: Plan, op: str, q: int, rng: random.Random, inst: Instance,
         seeds = _support_seeds(plan, inst)
         if not seeds:
             used = "RANDOM_DEPENDENCY"
+    elif op == "GROUND_TO_AIR":
+        # 第二轮：把"卡车绕行最大"的地送票放出来，让修复器有机会改成空送
+        scored = []
+        depot = (inst.depot_x, inst.depot_y)
+        for tk, route in plan.routes.items():
+            for i, vid in enumerate(route):
+                v = plan.visits[vid]
+                if len(v.ground) != 1 or v.ground[0] in frozen:
+                    continue
+                if any(s.launch_vid == vid or s.rec_vid == vid for s in plan.sorties.values()):
+                    continue
+                cc = inst.customer(v.customer)
+                prv = depot if i == 0 else (inst.customer(plan.visits[route[i - 1]].customer).x,
+                                            inst.customer(plan.visits[route[i - 1]].customer).y)
+                nxt = depot if i + 1 == len(route) else (inst.customer(plan.visits[route[i + 1]].customer).x,
+                                                         inst.customer(plan.visits[route[i + 1]].customer).y)
+                det = (math.hypot(cc.x - prv[0], cc.y - prv[1]) + math.hypot(nxt[0] - cc.x, nxt[1] - cc.y)
+                       - math.hypot(nxt[0] - prv[0], nxt[1] - prv[1]))
+                scored.append((det, v.ground[0]))
+        scored.sort(reverse=True)
+        pool_ = [p for _, p in scored[:max(2 * q, 4)]]
+        if pool_:
+            seeds = rng.sample(pool_, min(q, len(pool_)))
+        else:
+            used = "RANDOM_DEPENDENCY"
     elif op == "SORTIE_REGROUP":
         cand = [s for s in plan.sorties.values() if not s.started and s.launch_vid is not None]
         if cand:
@@ -342,6 +367,9 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
     T0 = -alg.sa_initial_worse_fraction * C_scale / math.log(0.5)
     destroy_ops = list(alg.destroy_operators)
     repair_ops = list(alg.repair_operators)
+    if alg.air_promote_ops and alg.operator_selector != "qlearn":
+        destroy_ops.append("GROUND_TO_AIR")
+        repair_ops.append("AIR_FIRST")
     w_d = {k: 1.0 for k in destroy_ops}
     w_r = {k: 1.0 for k in repair_ops}
     n_d = {k: 0 for k in destroy_ops}
@@ -401,6 +429,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             continue
         if rep == "GREEDY_PROXY":
             from .moves import repair_greedy as _rep
+        elif rep == "AIR_FIRST":
+            from .moves import repair_air_first as _rep
         else:
             from .moves import repair_regret2 as _rep
         trial, leftover = _rep(trial, inst, phys, freed, rng_acc,
@@ -415,7 +445,10 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg)
             continue
         # 基础几何评价（5 个 λ 起点）
-        cand_ev, cand_plan = _geometry_evaluate(trial, ctx, stats, "ALNS_BASE", budget)
+        new_sortie = any(sid >= cur_plan.next_sid for sid in trial.sorties)
+        cand_ev, cand_plan = _geometry_evaluate(
+            trial, ctx, stats, "ALNS_BASE", budget,
+            multistart=(new_sortie or not alg.geometry_new_sortie_only))
         if cand_ev is None:
             _reward(s_d, op, 0.0)
             _reward(s_r, rep, 0.0)
@@ -469,7 +502,11 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         do_polish = variant != "no_coordinate_polish" and (
             (best_ev is cand_ev) or stats.iterations % alg.coordinate_polish_every_alns_iterations == 0)
         if do_polish and budget.evals_left() > 0:
-            p2, e2 = coordinate_polish(cur_plan, ctx, stats, budget)
+            if alg.coordinate_light:
+                p2, e2 = coordinate_polish(cur_plan, ctx, stats, budget, base_ev=cur_ev,
+                                           cap=alg.coordinate_light_cap)
+            else:
+                p2, e2 = coordinate_polish(cur_plan, ctx, stats, budget)
             if e2 is not None and _better(e2, cur_ev, alg):
                 cur_plan, cur_ev = p2, e2
                 if _better(e2, best_ev, alg):
@@ -582,7 +619,8 @@ def adjustable_launches(plan: Plan) -> list[Sortie]:
 
 
 def _geometry_evaluate(plan: Plan, ctx: SolveContext, stats: SearchStats, reason: str,
-                       budget: Budget | None = None) -> tuple[Evaluation | None, Plan | None]:
+                       budget: Budget | None = None,
+                       multistart: bool = True) -> tuple[Evaluation | None, Plan | None]:
     """5 个基础几何起点：B0 继承 λ，B1/B2/B3/B4 全 0/1/0.25/0.75，B5(0.5) 补足."""
     inst, phys = ctx.inst, ctx.phys
     adj = adjustable_launches(plan)
@@ -602,6 +640,8 @@ def _geometry_evaluate(plan: Plan, ctx: SolveContext, stats: SearchStats, reason
     for vec in vectors:
         if vec not in uniq:
             uniq.append(vec)
+    if not multistart:
+        uniq = uniq[:1]          # 第二轮：没有新建航次时只评继承的 λ（B0），省 4 次评价
     best_ev = None
     best_plan = None
     for vec in uniq[:5]:
@@ -620,27 +660,31 @@ def _geometry_evaluate(plan: Plan, ctx: SolveContext, stats: SearchStats, reason
 
 
 def coordinate_polish(plan: Plan, ctx: SolveContext, stats: SearchStats,
-                      budget: Budget) -> tuple[Plan | None, Evaluation | None]:
-    """逐维 ±h 坐标模式搜索，最多 coordinate_extra_eval_cap 次额外评价."""
+                      budget: Budget, base_ev: Evaluation | None = None,
+                      cap: int | None = None) -> tuple[Plan | None, Evaluation | None]:
+    """逐维 ±h 坐标模式搜索，最多 cap（默认 coordinate_extra_eval_cap）次额外评价.
+    第二轮：调用方已有该计划的评价时传入 base_ev，省掉重复评价."""
     inst, phys, alg = ctx.inst, ctx.phys, ctx.alg
     adj = adjustable_launches(plan)
     if not adj:
         return None, None
-    base_ev = eval_counted(plan, inst, phys, ctx.state, ctx.H, "COORDINATE", stats, budget)
+    if base_ev is None:
+        base_ev = eval_counted(plan, inst, phys, ctx.state, ctx.H, "COORDINATE", stats, budget)
     if base_ev is None or not base_ev.feasible:
         return None, None
+    cap_n = alg.coordinate_extra_eval_cap if cap is None else cap
     cur = plan.clone()
     cur_ev = base_ev
     h = alg.coordinate_initial_step
     extra = 0
     improved_any = False
-    while h >= alg.coordinate_min_step and extra < alg.coordinate_extra_eval_cap:
+    while h >= alg.coordinate_min_step and extra < cap_n:
         improved_round = False
         for s in adj:
-            if extra >= alg.coordinate_extra_eval_cap or budget.evals_left() <= 0:
+            if extra >= cap_n or budget.evals_left() <= 0:
                 break
             for delta in (h, -h):
-                if extra >= alg.coordinate_extra_eval_cap or budget.evals_left() <= 0:
+                if extra >= cap_n or budget.evals_left() <= 0:
                     break
                 cand = cur.clone()
                 old = cand.sorties[s.sid].lam

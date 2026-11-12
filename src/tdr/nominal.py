@@ -130,6 +130,76 @@ def conversion_pass(plan: Plan, inst: Instance, phys: PhysicalConfig, alg: Algor
     return plan, best_ev, evals
 
 
+def descent_pass(plan: Plan, inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
+                 state, stats: SearchStats, best_ev, budget: Budget, max_eval: int = 450):
+    """第二轮：成本驱动的"转空送"下降（取代旧的按节省里程排序的块转换）.
+
+    每个地送客户按"卡车去掉它能省的绕行"从大到小依次尝试：取该票最好的 ≤3 个空送候选
+    （并入已有航次 / 新建航次，代理分已含同步等待与电费），各用**完整评价的真实成本**判断，
+    更便宜才接受。只有新建航次被接受时才补评另外 4 个 λ 起点（省评价）。
+    整个阶段的评价次数计入名义总预算。"""
+    from .alns import _better, _geometry_evaluate, SolveContext
+    from .moves import air_candidates, apply_air, remove_parcel
+    ctx = SolveContext(inst, phys, alg, state, None, "nominal")
+    spent = 0
+    depot = (inst.depot_x, inst.depot_y)
+
+    def room() -> bool:
+        return spent < max_eval and budget.evals_left() > 0
+
+    improved_pass = True
+    while improved_pass and room():
+        improved_pass = False
+        scored = []
+        for tk, route in plan.routes.items():
+            for i, vid in enumerate(route):
+                v = plan.visits[vid]
+                if len(v.ground) != 1:
+                    continue
+                if any(s.launch_vid == vid or s.rec_vid == vid for s in plan.sorties.values()):
+                    continue
+                cc = inst.customer(v.customer)
+                prv = depot if i == 0 else _pos(inst, plan, route[i - 1])
+                nxt = depot if i + 1 == len(route) else _pos(inst, plan, route[i + 1])
+                det = (math.hypot(cc.x - prv[0], cc.y - prv[1]) + math.hypot(nxt[0] - cc.x, nxt[1] - cc.y)
+                       - math.hypot(nxt[0] - prv[0], nxt[1] - prv[1]))
+                scored.append((det, v.ground[0]))
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        for det, p in scored:
+            if not room():
+                break
+            if not any(p in v.ground for v in plan.visits.values()):
+                continue                      # 已被前面的接受改走
+            base = plan.clone()
+            remove_parcel(base, p)
+            acs = air_candidates(base, inst, phys, p, max_new=3, state=None)[:3]
+            win = None
+            for ac in acs:
+                if not room():
+                    break
+                cand = base.clone()
+                if not apply_air(cand, inst, p, ac):
+                    continue
+                ev = eval_counted(cand, inst, phys, state, None, "NOMINAL_AIR_BASE", stats, budget)
+                spent += 1
+                if ev is None:
+                    break
+                if ev.feasible and _better(ev, best_ev, alg) and (win is None or _better(ev, win[1], alg)):
+                    win = (cand, ev, ac)
+            if win is None:
+                continue
+            cand, ev, ac = win
+            if ac.kind == "NEW" and budget.evals_left() > 0:
+                before = stats.eval_requests
+                ev2, p2 = _geometry_evaluate(cand, ctx, stats, "NOMINAL_AIR_BASE", budget)
+                spent += stats.eval_requests - before
+                if ev2 is not None and _better(ev2, ev, alg):
+                    cand, ev = p2, ev2
+            plan, best_ev = cand, ev
+            improved_pass = True
+    return plan, best_ev, spent
+
+
 def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                   rngs: dict[str, random.Random], eval_budget: int | None = None,
                   variant: str = "full") -> SolveResult:
@@ -142,9 +212,48 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
     if ev is None or not ev.feasible:
         return SolveResult(plan, ev, "INVALID_INPUT", stats)
     best_plan, best_ev = plan.clone(), ev
+    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=None, mode="nominal",
+                       rngs=rngs)
+    if alg.nominal_two_start and variant == "full" and budget.eval_limit is not None \
+            and budget.eval_limit >= 600:
+        from .alns import _better
+        total = budget.eval_limit
+        pA, eA, nA = descent_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
+                                  max_eval=alg.nominal_descent_eval_budget)
+        pB, eB, nB = conversion_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
+                                     max_eval=alg.nominal_air_bootstrap_eval_budget)
+        best = None
+        for p0, e0 in ((pA, eA), (pB, eB)):
+            if e0 is None or not e0.feasible:
+                continue
+            budget.eval_limit = min(total, budget.used + alg.nominal_start_slice)
+            r0 = optimize(p0, ctx, budget, variant=variant, stats=stats)
+            budget.eval_limit = total
+            if r0.plan is not None and r0.evaluation is not None and r0.evaluation.feasible:
+                if best is None or _better(r0.evaluation, best[1], alg):
+                    best = (r0.plan, r0.evaluation)
+        if best is not None:
+            best_plan, best_ev = best
+        n_conv = nA + nB
+        res = optimize(best_plan, ctx, budget, variant=variant, stats=stats)
+        if res.plan is not None and res.evaluation is not None and res.evaluation.feasible:
+            best_plan, best_ev = res.plan, res.evaluation
+        if variant != "no_coordinate_polish" and budget.evals_left() > 0:
+            p3, e3 = coordinate_polish(best_plan, ctx, stats, budget)
+            if p3 is not None and e3 is not None and _better(e3, best_ev, alg):
+                best_plan, best_ev = p3, e3
+        stats.stop_reason = res.stats.stop_reason or "BUDGET"
+        stats.wall_s = time.perf_counter() - t0
+        stats.counts = dict(res.stats.counts)
+        stats.counts["n_conversion_evals"] = n_conv
+        return SolveResult(best_plan, best_ev, "FEASIBLE_LIMIT", stats)
     # 转换启动
-    plan2, ev2, n_conv = conversion_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
-                                         max_eval=alg.nominal_air_bootstrap_eval_budget)
+    if alg.nominal_descent:
+        plan2, ev2, n_conv = descent_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
+                                          max_eval=alg.nominal_descent_eval_budget)
+    else:
+        plan2, ev2, n_conv = conversion_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
+                                             max_eval=alg.nominal_air_bootstrap_eval_budget)
     if ev2 is not None and ev2.feasible:
         best_plan, best_ev = plan2, ev2
     # ALNS
