@@ -540,7 +540,8 @@ def _first_feasible(cands: list[Plan], inst, phys, state, H, stats, budget):
     return None, None, False, reasons
 
 
-JOINT_EXTRA_EVALS = 60      # 联合重选阶段额外评价额度（S/X 同一常数，记入初始化预算）
+JOINT_EXTRA_EVALS = 60
+LAND_EXTRA_EVALS = 120   # v6：降落等待候选额外额度(S/X 相同，仅 land_and_wait 开启时)      # 联合重选阶段额外评价额度（S/X 同一常数，记入初始化预算）
 
 
 def _joint_target(plan: Plan, ev: Evaluation, frag_sid: int, done: set[int]) -> int | None:
@@ -657,7 +658,7 @@ def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfi
             info['landing_seeds'] = info.get('landing_seeds', 0) + 1
     if not seeds or budget is None:
         return False
-    budget.eval_limit = (budget.eval_limit or 0) + JOINT_EXTRA_EVALS
+    budget.eval_limit = (budget.eval_limit or 0) + JOINT_EXTRA_EVALS + (LAND_EXTRA_EVALS if phys.land_and_wait else 0)
     info["joint_used"] = True
     info["joint_retargets"] = 0
     for seed in seeds:
@@ -717,6 +718,7 @@ def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfi
                         return True
                     if first_inf is None:
                         first_inf = cnd
+            first_land = None
             if phys.land_and_wait:
                 for cnd in _landing_candidates(plan_j, tgt, inst, phys, state, ground_required, strategy,
                                                guard_n)[:3]:
@@ -732,8 +734,10 @@ def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfi
                         consider(cnd, ev2, {"truck": cnd.visits[fs.rec_vid].truck, "kind": "visit",
                                             "ref": fs.rec_vid, "support": False, "served": list(fs.air)}, "JOINT_LAND")
                         return True
-                    if first_inf is None:
-                        first_inf = cnd
+                    if first_land is None:
+                        first_land = cnd
+            if first_land is not None:
+                first_inf = first_land          # 降落等待候选优先作为下一层底板(正常目录条目已全部不可行)
             if first_inf is None:
                 break
             plan_j = first_inf
