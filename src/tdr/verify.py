@@ -85,7 +85,7 @@ def verify_plan(inst: Instance, state: StartState | None, plan: Plan, strategy: 
     rep.charging_kwh = tl.q_total
     # ---- 资源 ----
     for k, f in tl.truck_finish.items():
-        if H is not None and f > H + 1e-6:
+        if H is not None and f > H + 1e-6 and not phys.soft_h:
             rep.violations.append(f"H_EXCEEDED:{k}@{f:.1f}>{H:.1f}")
     for d, stages in tl.drone_stages.items():
         energies = tl.drone_energy.get(d, [])

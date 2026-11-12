@@ -255,7 +255,7 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
     viol += channel_check(plan, phys, tl)
     # 终端：每个出飞机体最后必须在车上；返库时刻与 H
     for k, f in tl.truck_finish.items():
-        if H is not None and f > H + 1e-6:
+        if H is not None and f > H + 1e-6 and not phys.soft_h:
             viol.append(f"H_EXCEEDED:{k}@{f:.1f}>{H:.1f}")
     # 回收余电
     for d, stages in tl.drone_stages.items():
@@ -279,6 +279,9 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
     depot_refill += state.prefix_refill_kwh + tl.swap_refill_kwh
     c_km = phys.c_km * D / 1000.0
     c_driver = phys.wage_per_s * sumF
+    overtime_s = (sum(max(0.0, f - H) for f in tl.truck_finish.values())
+                  if (phys.soft_h and H is not None) else 0.0)
+    c_overtime = phys.wage_per_s * (phys.overtime_mult - 1.0) * overtime_s
     Qnet = phys.slot_efficiency * Qac
     c_veh = phys.cost_vehicle_kwh * Qnet
     c_dep = phys.cost_depot_kwh * depot_refill
@@ -288,7 +291,9 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
         "depot_refill_kwh": depot_refill, "c_depot": c_dep,
         "swaps": float(sum(tl.swap_count_by_truck.values())),
     }
-    ev.cost = c_km + c_driver + c_veh + c_dep
+    ev.cost = c_km + c_driver + c_veh + c_dep + c_overtime
+    ev.cost_breakdown["overtime_s"] = overtime_s
+    ev.cost_breakdown["c_overtime"] = c_overtime
     # z：实际出库机体最晚随车入库时刻
     dispatched = set(state.dispatched) if state.dispatched else set()
     for s in plan.sorties.values():

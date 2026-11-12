@@ -43,7 +43,7 @@ def _overlap(a0: float, a1: float, b0: float, b1: float) -> bool:
     return a0 < b1 - 1e-9 and b0 < a1 - 1e-9
 
 
-def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict]) -> ReplayReport:
+def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict], H: float | None = None) -> ReplayReport:
     rep = ReplayReport(n_segments=len(segments))
     if not segments:
         rep.violations.append("NO_SEGMENTS")
@@ -259,7 +259,10 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict]) ->
     Qnet = phys.slot_efficiency * charge_ac
     refill = sum(phys.e_cap - energy.get(d, phys.e_cap) for d in energy) + swap_refill
     rep.n_swaps = n_swaps
+    overtime = (sum(max(0.0, f - H) for f in truck_finish.values())
+                if (phys.soft_h and H is not None) else 0.0)
     rep.cost = (phys.c_km * total_dist / 1000.0 + phys.wage_per_s * rep.driver_s
+                + phys.wage_per_s * (phys.overtime_mult - 1.0) * overtime
                 + phys.cost_vehicle_kwh * Qnet + phys.cost_depot_kwh * refill)
     for d in sorted(energy):
         rep.terminal[d] = {"carrier": carrier.get(d), "energy": energy.get(d)}

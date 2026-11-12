@@ -185,3 +185,28 @@ def test_apply_air_recheck_prevents_overlapping_chain(recheck):
         assert oks[0] is True
     else:
         assert len(_overlaps(plan)) >= 1                # 旧行为复现：同机体区间重叠
+
+
+def test_soft_h_overtime_cost_and_default_hard():
+    """v5 变体(b)：默认硬 H；soft_h 下 H_EXCEEDED 变为 (mult-1)×时薪×超出秒数 的附加成本."""
+    import dataclasses
+    from tdr.evaluate import evaluate_plan
+    from tdr.schedule import initial_state
+    inst, phys, plan = _light_plan()
+    st = initial_state(inst, phys)
+    base = evaluate_plan(plan, inst, phys, st, None, "NOMINAL")
+    assert base.feasible
+    fin = base.timeline.truck_finish
+    H = max(fin.values()) - 300.0
+    hard = evaluate_plan(plan, inst, phys, st, H, "NOMINAL")
+    assert not hard.feasible and any(v.startswith("H_EXCEEDED") for v in hard.violations)
+    soft_phys = dataclasses.replace(phys, soft_h=True, overtime_mult=1.5)
+    soft = evaluate_plan(plan, inst, soft_phys, st, H, "NOMINAL")
+    assert soft.feasible
+    ot = sum(max(0.0, f - H) for f in fin.values())
+    assert ot > 0
+    assert soft.cost == pytest.approx(base.cost + phys.wage_per_s * 0.5 * ot, rel=1e-9)
+    assert soft.cost_breakdown["overtime_s"] == pytest.approx(ot)
+    # H 足够大 → 软/硬一致
+    big = evaluate_plan(plan, inst, soft_phys, st, max(fin.values()) + 1.0, "NOMINAL")
+    assert big.cost == pytest.approx(base.cost)
