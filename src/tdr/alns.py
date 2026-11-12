@@ -415,6 +415,11 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             break
         stats.iterations += 1
         stats.rounds += 1
+        if alg.crn_per_iteration:
+            # 共同随机数(CRN)：每轮的随机流只由(种子,算例,重规划序号,轮次)决定，与此前消耗了多少评价无关；
+            # S/X 在同一轮次、同一当前解时抽到完全相同的算子/破坏量/接受随机数，削弱 X 目录更大造成的流错位噪声。
+            for _nm, _r in (('operator', rng_op), ('destroy', rng_des), ('accept', rng_acc)):
+                _r.seed(f'crn|{alg.base_algorithm_seed}|{inst.case_id}|{ctx.replan_index}|{stats.iterations}|{_nm}')
         # 选算子
         if sel is None:
             op = _roulette(w_d, rng_op)

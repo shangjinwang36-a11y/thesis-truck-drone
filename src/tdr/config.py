@@ -214,6 +214,7 @@ class AlgorithmConfig:
     cross_ops: bool = False
     cross_period: int = 5
     cross_n: int = 2
+    crn_per_iteration: bool = False          # 共同随机数：按(种子,算例,重规划,轮次)重置随机流（S/X 对称）
     cross_ops_gate: bool = True              # False=对照：同车情形也启用（S、X 同等）
     geometry_base_starts: int = 5
     coordinate_polish_every_alns_iterations: int = 10
