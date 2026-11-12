@@ -255,3 +255,27 @@ def test_h1_commit_times_only_straddling_entities():
         own = [x.end for x in tl.actions if x.actor == k and x.kind in ("G", "P", "R", "U", "W") and x.start < t < x.end]
         assert own and v <= max(own) + 60.0     # 只允许 R→U 并入
     assert all(v >= t for v in list(Tt.values()) + list(Td.values()))
+
+
+def test_h1_second_failure_during_committed_action():
+    """H1：第一次失败时卡车 t3 的 G 被承诺到 553.2 s；第二次失败(545.5 s)发生在承诺期内——
+    t3 必须仍停在原地(此前误取仓库位置 → DRIVE_ORIGIN)，回放核验通过(轻型 RC50 / forced5 / seed1)."""
+    import random as _r
+    import zlib
+    pkg = json.load(open(ROOT / "data" / "package_light.json"))
+    case = "RC50"
+    phys = PhysicalConfig.from_dict(dict(pkg["config"])).for_case(pkg.get("case_fleet"), case)
+    alg = AlgorithmConfig.from_dict(pkg["algorithm_protocol"]["default_parameters"])
+    alg.recovery_eval_budget_override = 1000
+    alg.recovery_time_limit_override_s = None
+    alg.recovery_decision = "milp"
+    inst = load_instance(pkg, case)
+    plan, nc, H = load_case_nominal(inst, FIX / "light_rc50" / case)
+    nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "N")
+    air = sorted(p for s in plan.sorties.values() for p in s.air)
+    failed = tuple(_r.Random(zlib.crc32(f"{case}:1:5".encode())).sample(air, 5))
+    ep = simulate.run_episode(inst, plan, nom, H, phys, TestWorld(inst, case, failed), "S", alg,
+                              simulate.derive_rngs(alg.base_algorithm_seed, case, "recovery", 0),
+                              recovery_eval_budget=1000)
+    assert ep.status == "COMPLETED_VERIFIED", (ep.status, ep.notes[:2])
+    assert any(abs(r.time_s - 545.5) < 1.0 for r in ep.replans)   # 确实发生了承诺期内的第二次失败

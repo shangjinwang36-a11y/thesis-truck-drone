@@ -44,7 +44,8 @@ def _lerp(p, q, t):
     return (p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t)
 
 
-def truck_state_at(truck: str, t: float, plan: Plan, tl: Timeline, inst: Instance):
+def truck_state_at(truck: str, t: float, plan: Plan, tl: Timeline, inst: Instance,
+                   prev_state: StartState | None = None):
     depot = (inst.depot_x, inst.depot_y)
     route = plan.routes.get(truck, [])
     for a in tl.actions:
@@ -66,6 +67,11 @@ def truck_state_at(truck: str, t: float, plan: Plan, tl: Timeline, inst: Instanc
             c = inst.customer(plan.visits[vid].customer)
             return (c.x, c.y), 0.0, i, False
     fin = tl.truck_finish.get(truck, 0.0)
+    if (prev_state is not None and truck not in prev_state.truck_done
+            and t < prev_state.truck_ready_time.get(truck, 0.0) + 1e-9
+            and truck in prev_state.truck_start_pos):
+        # 第四轮 H1：上一次快照把该车的在途动作承诺到 ready 时刻，本次失败发生在 ready 之前——车仍停在原地
+        return prev_state.truck_start_pos[truck], 0.0, 0, False
     if t >= fin - 1e-9:
         return depot, 0.0, len(route), True
     return depot, 0.0, len(route), False
@@ -215,6 +221,20 @@ def compute_commit_times(tl: Timeline, t_fail: float, failed_drone: str
     return t_fail, T_truck, T_drone
 
 
+def carry_commit_times(state: StartState, plan: Plan, t_cut: float, T_truck: dict[str, float],
+                       T_drone: dict[str, float]) -> None:
+    """上一次快照承诺的在途动作可能晚于本次失败时刻：该实体的 ready/起飞时刻继续有效（原地放入 T 字典）."""
+    for k, rt in state.truck_ready_time.items():
+        if rt > t_cut + 1e-9 and k not in state.truck_done:
+            T_truck[k] = max(T_truck.get(k, t_cut), rt)
+    for d, ds in state.drone_start.items():
+        if ds.ready_time > t_cut + 1e-9:
+            T_drone[d] = max(T_drone.get(d, t_cut), ds.ready_time)
+    for s in plan.sorties.values():
+        if s.started and s.start_time > t_cut + 1e-9:
+            T_drone[s.drone] = max(T_drone.get(s.drone, t_cut), s.start_time)
+
+
 def _truck_is_driving(truck: str, t: float, tl: Timeline) -> bool:
     for a in tl.actions:
         if a.actor == truck and a.kind == "DRIVE" and a.ref != "DEPOT":
@@ -286,7 +306,7 @@ def _in_flight(plan: Plan, tl: Timeline, t_cut: float,
         rt = tl.rec_times.get(s.sid)
         if s.started:
             end = rt[1] if rt else INF
-            if s.start_time <= tc < end - 1e-9:
+            if tc < end - 1e-9:      # 残段一经建立即在飞(承诺完成的放飞其 start_time 可能晚于后续失败时刻)
                 out.add(s.sid)
         else:
             lt = tl.launch_times.get(s.sid)
@@ -366,7 +386,7 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
     inflight = _in_flight(plan, tl, t_cut, T_drone) | {failed_sid}
     new = plan.clone()
     for truck in plan.routes:
-        pos, first_travel, start_idx, finished = truck_state_at(truck, tk(truck), plan, tl, inst)
+        pos, first_travel, start_idx, finished = truck_state_at(truck, tk(truck), plan, tl, inst, prev_state)
         st.truck_start_pos[truck] = pos
         st.truck_start_time[truck] = tk(truck)
         st.truck_first_travel_s[truck] = first_travel
@@ -425,7 +445,7 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
             cur = failed_sid
         launched = [sid for sid in plan.drone_sorties.get(d, [])
                     if ((tl.launch_times.get(sid) or (0, 0, None))[1] <= t_d + 1e-9)
-                    or (plan.sorties[sid].started and plan.sorties[sid].start_time <= t_d + 1e-9)]
+                    or plan.sorties[sid].started]
         if launched:
             st.dispatched.add(d)
         carrier = None
@@ -811,6 +831,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             t_cut, T_truck, T_drone = compute_cut(tl, a.time, a.drone), {}, {}
         else:                              # 规范：快照取失败时刻，在途动作按各自剩余时长承诺完成
             t_cut, T_truck, T_drone = compute_commit_times(tl, a.time, a.drone)
+            carry_commit_times(state, plan, t_cut, T_truck, T_drone)
         segments.append(collect_segment(plan, tl, inst, phys, state.t0, t_cut, seg_start,
                                         failed_parcel=a.parcel, failed_time=a.time,
                                         failed_drone=a.drone, T_truck=T_truck, T_drone=T_drone))
