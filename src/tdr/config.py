@@ -192,6 +192,8 @@ class AlgorithmConfig:
     nominal_descent_eval_budget: int = 200  # 下降阶段的评价上限（计入 1000 次名义总预算）
     nominal_two_start: bool = True          # 双起点：下降起点与块转换起点各跑一小段 ALNS，择优后用余下预算
     nominal_start_slice: int = 150          # 每个起点的试跑评价数（全部计入 1000 次总预算）
+    nominal_truck_starts: bool = False      # 第三轮：True 时车队>5 辆则分别从"5 车"与"满车队"两个初解起步(各用完整预算)取低成本者
+    nominal_start_trucks: int | None = None  # 第三轮：指定名义初解启用的车数(其余车保留空路线)；None=满车队
     nominal_final_descent_frac: float = 0.15  # 第三轮：名义预算末尾留出此比例做一次"转空送"下降收尾（0=关闭）
     max_search_rounds: int = 2000
     geometry_base_starts: int = 5

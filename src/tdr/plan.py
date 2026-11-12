@@ -302,7 +302,7 @@ class Plan:
             self.remove_sortie(x)
 
 
-def ground_only_plan(inst: Instance) -> Plan:
+def ground_only_plan(inst: Instance, n_trucks: int = 5, n_total: int | None = None) -> Plan:
     """五车全地送初解：角度扇区 + 最近邻（第7.3节第一步）."""
     import math
 
@@ -312,12 +312,12 @@ def ground_only_plan(inst: Instance) -> Plan:
                                   math.hypot(c.x - depot[0], c.y - depot[1]),
                                   c.customer_id))
     n = len(customers)
-    k = 5
+    k = n_trucks            # 第三轮：车队规模随配置(轻型配置 100 客户 8 车/7 车)；规范配置默认 5
     base = n // k
     extra = n % k
     sizes = [base + (1 if i < extra else 0) for i in range(k)]
     plan = Plan(inst.case_id)
-    for t in range(k):
+    for t in range(max(k, n_total or 0)):          # 未启用的车保留空路线（终端核验需要其存在）
         plan.routes[f"t{t+1}"] = []
     idx = 0
     for t in range(k):

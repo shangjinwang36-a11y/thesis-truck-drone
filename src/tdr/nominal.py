@@ -204,12 +204,12 @@ def descent_pass(plan: Plan, inst: Instance, phys: PhysicalConfig, alg: Algorith
 
 def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                   rngs: dict[str, random.Random], eval_budget: int | None = None,
-                  variant: str = "full") -> SolveResult:
+                  variant: str = "full", n_used: int | None = None) -> SolveResult:
     t0 = time.perf_counter()
     state = initial_state(inst, phys)
     stats = SearchStats()
     budget = Budget(eval_budget if eval_budget is not None else alg.nominal_eval_budget, None)
-    plan = ground_only_plan(inst)
+    plan = ground_only_plan(inst, n_used or phys.truck_count, phys.truck_count)
     ev = eval_counted(plan, inst, phys, state, None, "NOMINAL_GROUND", stats, budget)
     if ev is None or not ev.feasible:
         return SolveResult(plan, ev, "INVALID_INPUT", stats)

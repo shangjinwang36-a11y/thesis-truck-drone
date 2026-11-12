@@ -87,7 +87,19 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
     out.mkdir(parents=True, exist_ok=True)
     rngs = derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0)
     t = time.perf_counter()
-    res = build_nominal(inst, phys, alg, rngs, eval_budget=eval_budget, variant=variant)
+    starts = [alg.nominal_start_trucks]
+    if alg.nominal_truck_starts and phys.truck_count > 5:
+        starts = [5, phys.truck_count]
+    res, start_used, start_costs = None, None, {}
+    for ns in starts:
+        r_ = build_nominal(inst, phys, alg, derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0),
+                           eval_budget=eval_budget, variant=variant, n_used=ns)
+        c_ = r_.evaluation.cost if (r_.plan is not None and r_.evaluation is not None and r_.evaluation.feasible) else None
+        start_costs[str(ns)] = c_
+        if c_ is not None and (res is None or c_ < res.evaluation.cost):
+            res, start_used = r_, ns
+    if res is None:
+        res = r_
     wall = time.perf_counter() - t
     if res.plan is None or res.evaluation is None or not res.evaluation.feasible:
         meta = {"case_id": inst.case_id, "status": "NO_FEASIBLE_NOMINAL",
@@ -143,7 +155,8 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         "cost": ev.cost, "z_s": ev.z, "n_sorties": len(res.plan.sorties),
         "n_air_parcels": sum(len(s.air) for s in res.plan.sorties.values()),
         "n_visits": len(res.plan.visits), "eval_requests": res.stats.eval_requests,
-        "wall_s": wall, "verified": bool(replay.ok),
+        "wall_s": wall, "verified": bool(replay.ok), "verified_plan": bool(rep.ok),
+        "start_trucks": start_used, "start_costs": start_costs,
         "distance_km": ev.cost_breakdown.get("truck_km"),
         "cost_breakdown": ev.cost_breakdown,
     }

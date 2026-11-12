@@ -63,6 +63,8 @@ def cmd_nominal(args) -> int:
     pkg = _load(_pkg_path(args))
     phys, alg = _phys_alg(pkg, args)
     cases = CASE_IDS if args.case == "all" else [args.case]
+    if getattr(args, "start_trucks", None):
+        alg.nominal_start_trucks = args.start_trucks
     metas = []
     for case in cases:
         inst = load_instance(pkg, case)
@@ -174,6 +176,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--case", default="all")
     p.add_argument("--out", default="outputs/nominal")
     p.add_argument("--eval-budget", type=int, default=None)
+    p.add_argument("--start-trucks", type=int, default=None,
+                   help="名义初解启用的车数(其余车留空路线)；默认=满车队")
     p.set_defaults(func=cmd_nominal)
 
     p = sub.add_parser("simulate")
