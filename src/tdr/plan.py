@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 
-from .config import PhysicalConfig
+from .config import PhysicalConfig, home_truck
 from .data import Instance
 
 
@@ -91,10 +91,37 @@ class Plan:
         self.sorties[sid] = s
         lst = self.drone_sorties.setdefault(drone, [])
         if order is None:
-            lst.append(sid)
+            # 第三轮修复：新航次必须按"时间/路线次序"插入机体航次链，而不是一律追加到链尾。
+            # 此前追加到链尾会让"路线上更早的新航次"排在更晚航次之后，造成机体链与卡车路线次序相反，
+            # 定点迭代的时刻表每轮漂移约 1300 s 而不收敛(14 轮后 H 超限)，被误判为不可行。
+            lst.insert(self._chain_pos(lst, truck, launch_vid, rec_vid), sid)
         else:
             lst.insert(order, sid)
         return s
+
+    def _route_idx(self, vid: int | None) -> int | None:
+        if vid is None:
+            return -1
+        v = self.visits.get(vid)
+        if v is None or v.truck not in self.routes or vid not in self.routes[v.truck]:
+            return None
+        return self.routes[v.truck].index(vid)
+
+    def _chain_pos(self, chain: list[int], truck: str | None, launch_vid: int | None, rec_vid: int) -> int:
+        """同车航次按路线次序排链：插在第一个"放飞位置晚于本航次回收位置"的同车航次之前；否则链尾."""
+        ri = self._route_idx(rec_vid)
+        if ri is None or truck is None:
+            return len(chain)
+        for i, sid in enumerate(chain):
+            o = self.sorties.get(sid)
+            if o is None or o.truck != truck or o.rec_vid not in self.visits:
+                continue
+            if self.visits[o.rec_vid].truck != truck:
+                continue
+            li_o = self._route_idx(o.launch_vid)
+            if li_o is not None and li_o > ri:
+                return i
+        return len(chain)
 
     # ---------- 查询 ----------
     def visit(self, vid: int) -> Visit:
@@ -191,7 +218,7 @@ class Plan:
             if initial_carrier is not None:
                 carrier = initial_carrier.get(d)
             elif not any(self.sorties[x].started for x in sids if x in self.sorties):
-                carrier = f"t{int(d[1:])}"
+                carrier = home_truck(d)
             for sid in sids:
                 s = self.sorties.get(sid)
                 if s is None:

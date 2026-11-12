@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .alns import Budget, SearchStats, SolveContext, SolveResult, optimize
-from .config import AlgorithmConfig, PhysicalConfig
+from .config import AlgorithmConfig, PhysicalConfig, home_truck
 from .data import Instance
 from .evaluate import Evaluation, evaluate_plan
 from .hidden_world import HiddenWorld, Observation, TestWorld
@@ -92,6 +92,9 @@ def _energy_at(tl: Timeline, phys: PhysicalConfig, d: str, t: float):
         if st.start - 1e-9 <= t <= st.end + 1e-9:
             frac = 0.0 if st.end - st.start < 1e-12 else (t - st.start) / (st.end - st.start)
             frac = min(1.0, max(0.0, frac))
+            if st.kind == "SWAP":
+                # 换电：完成即满电（W 动作在截断中被视为不可分割，故 t<end 时仍是旧电池）
+                return (energies[i + 1] if t >= st.end - 1e-9 else e_prev), i
             if st.kind in ("ON_TRUCK", "READY") and st.end - st.start > 1e-9 and st.truck:
                 q = tl.q_by_stage.get(f"{d}#{_charge_index(stages, i)}", 0.0)
                 return e_prev + phys.slot_efficiency * q * frac, i
@@ -138,7 +141,7 @@ def compute_cut(tl: Timeline, t_fail: float, failed_drone: str) -> float:
     for a in tl.actions:
         if _ghost_action(a, failed_drone, t_fail):
             continue
-        if a.kind in ("G", "P", "R", "U") and a.start < t_fail < a.end:
+        if a.kind in ("G", "P", "R", "U", "W") and a.start < t_fail < a.end:
             t_cut = max(t_cut, a.end)
     for d, stages in tl.drone_stages.items():
         for st in stages:
@@ -155,7 +158,7 @@ def compute_cut(tl: Timeline, t_fail: float, failed_drone: str) -> float:
         for a in tl.actions:
             if _ghost_action(a, failed_drone, t_fail):
                 continue
-            if a.kind in ("G", "P", "R", "U") and a.start < t_cut < a.end - 1e-9:
+            if a.kind in ("G", "P", "R", "U", "W") and a.start < t_cut < a.end - 1e-9:
                 t_cut = a.end
                 moved = True
             elif a.kind == "U" and abs(a.start - t_cut) < 1e-6 and a.end > t_cut:
@@ -288,11 +291,25 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
                     q_prefix[st.truck] = q_prefix.get(st.truck, 0.0) + q
                 elif st.start < t_cut:
                     q_prefix[st.truck] = q_prefix.get(st.truck, 0.0) + q * (t_cut - st.start) / (st.end - st.start)
+    swap_refill_prefix = 0.0
+    if phys.swap_mode:
+        # 换电：q_prefix[卡车] 改记"已用备用电池块数"；换下电池的待补电量计入 prefix_refill_kwh
+        for d, stages in tl.drone_stages.items():
+            energies = tl.drone_energy.get(d, [])
+            for i, st_ in enumerate(stages):
+                if st_.kind != "SWAP" or st_.end > t_cut + 1e-9:
+                    continue
+                if d == failed_drone and st_.start >= t_fail - 1e-6:
+                    continue
+                q_prefix[st_.truck] = q_prefix.get(st_.truck, 0.0) + 1.0
+                swap_refill_prefix += phys.e_cap - energies[i]
     base_dist = prev_state.prefix_distance_m if prev_state is not None else 0.0
     base_ac = prev_state.prefix_ac_kwh if prev_state is not None else 0.0
     st = StartState(t0=t_cut, delivered=set(all_delivered),
                     prefix_distance_m=base_dist + prefix_dist,
-                    prefix_ac_kwh=base_ac + sum(q_prefix.values()))
+                    prefix_ac_kwh=base_ac + (0.0 if phys.swap_mode else sum(q_prefix.values())),
+                    prefix_refill_kwh=(prev_state.prefix_refill_kwh if prev_state is not None else 0.0)
+                    + swap_refill_prefix)
     inflight = _in_flight(plan, tl, t_cut) | {failed_sid}
     new = plan.clone()
     for truck in plan.routes:
@@ -301,7 +318,8 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
         st.truck_start_time[truck] = t_cut
         st.truck_first_travel_s[truck] = first_travel
         st.truck_ready_time[truck] = t_cut
-        prev_ac = prev_state.truck_ac.get(truck, phys.truck_initial_ac_kwh) if prev_state else phys.truck_initial_ac_kwh
+        _ac0 = float(phys.spare_batteries) if phys.swap_mode else phys.truck_initial_ac_kwh
+        prev_ac = prev_state.truck_ac.get(truck, _ac0) if prev_state else _ac0
         st.truck_ac[truck] = max(0.0, prev_ac - q_prefix.get(truck, 0.0))
         new.routes[truck] = [] if finished else list(plan.routes[truck][start_idx:])
         st.truck_fixed_first[truck] = (not finished) and _truck_is_driving(truck, t_cut, tl)
@@ -364,9 +382,9 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
                     pos = _drone_pos_at(stages, idx, t_cut, inst)
                     if pos is None:
                         # 残段首阶段即 WAIT/SERVICE(无停靠点)：沿用残段起点坐标（第二轮修复：连续失败同一时刻截断）
-                        pos = o.start_pos or st.truck_start_pos.get(f"t{int(d[1:])}", (inst.depot_x, inst.depot_y))
+                        pos = o.start_pos or st.truck_start_pos.get(home_truck(d), (inst.depot_x, inst.depot_y))
                 else:
-                    pos = o.start_pos or st.truck_start_pos.get(f"t{int(d[1:])}", (inst.depot_x, inst.depot_y))
+                    pos = o.start_pos or st.truck_start_pos.get(home_truck(d), (inst.depot_x, inst.depot_y))
             else:
                 pos = o.start_pos or (inst.depot_x, inst.depot_y)
             if cur == failed_sid:
@@ -390,7 +408,7 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
                               hand, True, t_cut, pos, 0, 0, o.launch_truck or o.truck)
             new.sorties[frag.sid] = frag
             st.drone_start[d] = DroneStart("AIRBORNE", None, t_cut, pos, energy)
-            st.drone_carrier[d] = o.truck or f"t{int(d[1:])}"
+            st.drone_carrier[d] = o.truck or home_truck(d)
         else:
             stage = stages[idx] if 0 <= idx < len(stages) else None
             if stage is not None and stage.truck:
@@ -400,7 +418,7 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
                     if sd.truck:
                         carrier = sd.truck
                         break
-            carrier = carrier or f"t{int(d[1:])}"
+            carrier = carrier or home_truck(d)
             st.drone_start[d] = DroneStart("ON_TRUCK", carrier, t_cut,
                                            st.truck_start_pos.get(carrier), energy)
             st.drone_carrier[d] = carrier
@@ -493,7 +511,7 @@ def collect_segment(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConf
         if end <= start + 1e-12 and a.kind != "DRIVE":
             continue
         partial = bool(end < a.end - 1e-9 or start > a.start + 1e-9)
-        if partial and a.kind in ("G", "P", "R", "U", "L"):
+        if partial and a.kind in ("G", "P", "R", "U", "L", "W"):
             # 未完成的固定时长动作不产生交付/装卸/回收事件（其剩余时间由快照承接）
             continue
         rec = {"kind": a.kind, "actor": a.actor, "start": start, "end": end, "ref": a.ref,
@@ -511,6 +529,8 @@ def collect_segment(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConf
             rec["dist"] = a.info.get("dist", 0.0) * (f1 - f0)
         elif a.kind == "G":
             rec["customer"] = a.info.get("customer")
+        elif a.kind == "W":
+            rec["drone"] = a.info.get("drone")
         elif a.kind == "P":
             rec["drone"] = a.info.get("drone")
             so = plan.sorties.get(int(a.ref[1:])) if a.ref.startswith("S") else None
@@ -649,7 +669,7 @@ def initial_run_state(plan: Plan, inst: Instance, phys: PhysicalConfig) -> Start
     for p in inst.parcel_mass:
         holder.setdefault(p, "DEPOT")
     st.parcel_holder = holder
-    st.drone_carrier = {f"d{i+1}": f"t{i+1}" for i in range(phys.drone_count)}
+    st.drone_carrier = {f"d{i+1}": phys.home_truck(f"d{i+1}") for i in range(phys.drone_count)}
     st.drone_energy = {f"d{i+1}": phys.e_cap for i in range(phys.drone_count)}
     return st
 

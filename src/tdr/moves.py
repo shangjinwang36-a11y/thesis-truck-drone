@@ -124,15 +124,16 @@ def sortie_slot_free(plan: Plan, drone: str, launch_idx: int, rec_idx: int) -> b
 
 
 def drone_of_truck(plan: Plan, truck: str) -> str:
-    idx = int(truck[1:])
-    return f"d{idx}"
+    from .config import home_drones
+    return home_drones(truck)[0]
 
 
 def drone_carriers(plan: Plan, state=None) -> dict[str, str]:
     """每架无人机的当前实际承运车：最后航次的回收车；空中残段用其 rec；
     无航次时用快照承运车；名义阶段回退为出厂对应关系。"""
     out: dict[str, str] = {}
-    for d in [f"d{i+1}" for i in range(5)]:
+    from .config import all_drones, home_truck
+    for d in all_drones():
         sids = plan.drone_sorties.get(d, [])
         if sids:
             last = plan.sorties[sids[-1]]
@@ -142,7 +143,7 @@ def drone_carriers(plan: Plan, state=None) -> dict[str, str]:
         if state is not None and d in getattr(state, "drone_carrier", {}):
             out[d] = state.drone_carrier[d]
             continue
-        out[d] = f"t{int(d[1:])}"
+        out[d] = home_truck(d)
     return out
 
 

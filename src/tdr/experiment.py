@@ -371,13 +371,14 @@ def run_batch(pkg: dict, cases: list[str], seeds: list[int], strategies: list[st
     t0 = time.perf_counter()
     for case in cases:
         inst = load_instance(pkg, case)
+        phys_c = phys.for_case(pkg.get("case_fleet"), case)
         nominal_dir = Path(nominal_root) / case
         nominal_plan, nominal_cost, H = load_case_nominal(inst, nominal_dir)
         for seed in seeds:
             res_by_strategy = {}
             for strategy in strategies:
                 ep_dir = out / f"{case}_seed{seed:02d}_{strategy}"
-                r = run_episode_dir(inst, nominal_plan, nominal_cost, H, phys, alg, seed,
+                r = run_episode_dir(inst, nominal_plan, nominal_cost, H, phys_c, alg, seed,
                                     strategy, ep_dir, recovery_eval_budget=recovery_eval_budget,
                                     recovery_wall_s=recovery_wall_s, variant=variant,
                                     make_figures=make_figures)

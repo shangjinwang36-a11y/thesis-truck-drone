@@ -62,7 +62,8 @@ def try_convert(plan: Plan, inst: Instance, phys: PhysicalConfig, truck: str, s:
         last_cust = plan.visits[block[-1]].customer
         rv = cand.add_visit(truck, last_cust, ground=[])
         next_vid = rv.vid
-    drone = f"d{int(truck[1:])}"
+    from .config import home_drones
+    drones_ = home_drones(truck)
     launch_vid = prev_vid
     mode = "ARC"
     new_route = cand.routes[truck]
@@ -76,7 +77,8 @@ def try_convert(plan: Plan, inst: Instance, phys: PhysicalConfig, truck: str, s:
     from .moves import sortie_slot_free
     li = -1 if launch_vid is None else new_route.index(launch_vid)
     ri = new_route.index(next_vid)
-    if not sortie_slot_free(cand, drone, li, ri):
+    drone = next((d for d in drones_ if sortie_slot_free(cand, d, li, ri)), None)
+    if drone is None:
         return None
     cand.add_sortie(drone, truck, launch_vid, mode, lam, parcels, next_vid)
     return cand
@@ -235,9 +237,19 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
         if best is not None:
             best_plan, best_ev = best
         n_conv = nA + nB
+        reserve = int(alg.nominal_final_descent_frac * total) if variant == "full" else 0
+        budget.eval_limit = total - reserve
         res = optimize(best_plan, ctx, budget, variant=variant, stats=stats)
+        budget.eval_limit = total
         if res.plan is not None and res.evaluation is not None and res.evaluation.feasible:
             best_plan, best_ev = res.plan, res.evaluation
+        if reserve > 0 and budget.evals_left() > 0:
+            # 第三轮：ALNS 后收尾的成本驱动下降（诊断：贪心单步转空送仍能再降 1–1.4% 成本）
+            p4, e4, n4 = descent_pass(best_plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
+                                      max_eval=reserve)
+            n_conv += n4
+            if e4 is not None and e4.feasible and _better(e4, best_ev, alg):
+                best_plan, best_ev = p4, e4
         if variant != "no_coordinate_polish" and budget.evals_left() > 0:
             p3, e3 = coordinate_polish(best_plan, ctx, stats, budget)
             if p3 is not None and e3 is not None and _better(e3, best_ev, alg):

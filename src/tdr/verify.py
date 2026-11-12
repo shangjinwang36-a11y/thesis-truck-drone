@@ -119,6 +119,7 @@ def verify_plan(inst: Instance, state: StartState | None, plan: Plan, strategy: 
     sumF = sum(tl.truck_finish.values())
     refill = sum(phys.e_cap - tl.e_return.get(d, phys.e_cap)
                  for d in [f"d{i+1}" for i in range(phys.drone_count)])
+    refill += state.prefix_refill_kwh + tl.swap_refill_kwh
     c_km = phys.c_km * (state.prefix_distance_m + dist) / 1000.0
     c_driver = phys.wage_per_s * sumF
     c_veh = phys.cost_vehicle_kwh * Qac

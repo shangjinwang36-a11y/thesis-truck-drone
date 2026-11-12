@@ -21,7 +21,7 @@ from typing import Any
 import numpy as np
 from scipy.optimize import linprog
 
-from .config import PhysicalConfig
+from .config import PhysicalConfig, home_truck
 from .data import Instance
 from .plan import Plan, Sortie
 
@@ -58,6 +58,7 @@ class StartState:
     delivered: set[str] = field(default_factory=set)
     prefix_distance_m: float = 0.0
     prefix_ac_kwh: float = 0.0
+    prefix_refill_kwh: float = 0.0      # 换电配置：此前各段已换下电池的待回库补电量(kWh)
     drone_energy: dict[str, float] = field(default_factory=dict)
     dispatched: set[str] = field(default_factory=set)
     drone_carrier: dict[str, str] = field(default_factory=dict)
@@ -65,6 +66,7 @@ class StartState:
 
 
 def initial_state(inst: Instance, phys: PhysicalConfig) -> StartState:
+    phys.set_active()
     st = StartState(t0=0.0)
     depot = (inst.depot_x, inst.depot_y)
     for k in range(phys.truck_count):
@@ -73,11 +75,12 @@ def initial_state(inst: Instance, phys: PhysicalConfig) -> StartState:
         st.truck_start_time[t] = 0.0
         st.truck_first_travel_s[t] = 0.0
         st.truck_ready_time[t] = 0.0
-        st.truck_ac[t] = phys.truck_initial_ac_kwh
+        # 换电配置：truck_ac 记"剩余满电备用电池块数"；充电配置：剩余交流预算 kWh
+        st.truck_ac[t] = float(phys.spare_batteries) if phys.swap_mode else phys.truck_initial_ac_kwh
         st.truck_onboard[t] = []
     for d in range(phys.drone_count):
         did = f"d{d+1}"
-        st.drone_start[did] = DroneStart("ON_TRUCK", f"t{d+1}", 0.0, depot, phys.e_cap)
+        st.drone_start[did] = DroneStart("ON_TRUCK", phys.home_truck(did), 0.0, depot, phys.e_cap)
         st.drone_energy[did] = phys.e_cap
     return st
 
@@ -139,6 +142,10 @@ class Timeline:
     drone_available: dict[int, float] = field(default_factory=dict)
     drone_ready_before: dict[int, float] = field(default_factory=dict)
     iterations: int = 0
+    swaps: set = field(default_factory=set)             # 需要换电的航次 sid（换电配置）
+    swap_msg: str = ""                                  # 非空：换电后仍无法满足能量
+    swap_refill_kwh: float = 0.0                        # 本段内换下电池的补电量
+    swap_count_by_truck: dict = field(default_factory=dict)
 
 
 def _dist(p: tuple[float, float], q: tuple[float, float]) -> float:
@@ -201,12 +208,25 @@ def schedule_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
     prev_avail: dict[str, float] = {}
     prev_key = None
     tl = Timeline(t0=state.t0)
+    swaps: set[int] = set()
+    swap_msg = ""
+    max_iter = max_iter + (8 if phys.swap_mode else 0)
     for it in range(max_iter):
         tl = Timeline(t0=state.t0)
         _schedule_trucks(plan, inst, phys, state, tl, trucks, drone_arr,
-                         recoveries_at, launches_at, depot_launches, prev_avail, waits)
+                         recoveries_at, launches_at, depot_launches, prev_avail, waits, swaps)
         tl.waits = dict(waits)
         _schedule_drones(plan, inst, phys, state, tl, drones)
+        if phys.swap_mode:
+            new_swaps, swap_msg = _swap_pass(tl, plan, phys, state, swaps)
+            if new_swaps != swaps:
+                swaps = new_swaps
+                prev_key = None
+                drone_arr = {sid: tl.drone_arrival.get(sid, tl.rec_times[sid][0]) for sid in tl.rec_times}
+                prev_avail = dict(tl.drone_ready_before)
+                continue
+        tl.swaps = set(swaps)
+        tl.swap_msg = swap_msg
         key = _timeline_key(tl)
         if prev_key is not None and key == prev_key:
             tl.iterations = it + 1
@@ -234,8 +254,10 @@ def _schedule_trucks(plan: Plan, inst: Instance, phys: PhysicalConfig, state: St
                      recoveries_at: dict[int, list[Sortie]], launches_at: dict[int, list[Sortie]],
                      depot_launches: dict[str, list[Sortie]],
                      prev_avail: dict[str, float] | None = None,
-                     waits: dict[int, float] | None = None) -> None:
+                     waits: dict[int, float] | None = None,
+                     swaps: set[int] | None = None) -> None:
     prev_avail = prev_avail or {}
+    swaps = swaps or set()
     waits = waits or {}
     local_avail: dict[str, float] = {}
     # 货物保管：truck_inv / depot_pool
@@ -276,6 +298,10 @@ def _schedule_trucks(plan: Plan, inst: Instance, phys: PhysicalConfig, state: St
         prep_end: dict[int, float] = {}
         for s in depot_launches.get(truck, []):
             t0 = max(depart_depot, local_avail.get(s.drone, 0.0), prev_avail.get(s.sid, 0.0))
+            if s.sid in swaps:
+                tl.actions.append(ActionRec("W", truck, t0, t0 + phys.swap_s, f"S{s.sid}",
+                                            info={"drone": s.drone, "depot": True}))
+                t0 += phys.swap_s
             prep_end[s.sid] = t0 + phys.prepare_s
             tl.actions.append(ActionRec("P", truck, t0, t0 + phys.prepare_s, f"S{s.sid}",
                                         info={"drone": s.drone, "depot": True}))
@@ -357,6 +383,11 @@ def _schedule_trucks(plan: Plan, inst: Instance, phys: PhysicalConfig, state: St
                 ready += phys.ground_service_s
             for s in launches_at.get(vid, []):
                 p_start = max(ready, local_avail.get(s.drone, 0.0), prev_avail.get(s.sid, 0.0))
+                if s.sid in swaps:
+                    # 换电：司机人工动作，卡车停靠时进行，位于 P 之前，与 G/P/R/U 串行
+                    tl.actions.append(ActionRec("W", truck, p_start, p_start + phys.swap_s, f"S{s.sid}",
+                                                info={"drone": s.drone, "customer": v.customer}))
+                    p_start += phys.swap_s
                 p_end = p_start + phys.prepare_s
                 for p in s.payload_ids:
                     h = holder.get(p, "DEPOT")
@@ -425,8 +456,8 @@ def _schedule_drones(plan: Plan, inst: Instance, phys: PhysicalConfig, state: St
             stages.append(DroneStage("ON_TRUCK", max(st.ready_time, state.t0), max(st.ready_time, state.t0),
                                      truck=on_truck))
         elif st is None:
-            stages.append(DroneStage("ON_TRUCK", 0.0, 0.0, truck=f"t{int(d[1:])}"))
-            on_truck = f"t{int(d[1:])}"
+            stages.append(DroneStage("ON_TRUCK", 0.0, 0.0, truck=home_truck(d)))
+            on_truck = home_truck(d)
         for sid in sids:
             s = plan.sorties[sid]
             tl.drone_ready_before[sid] = cur_time
@@ -438,7 +469,13 @@ def _schedule_drones(plan: Plan, inst: Instance, phys: PhysicalConfig, state: St
                 p_start = p_act.start if p_act else l_start - phys.prepare_s
                 p_end = p_act.end if p_act else l_start
                 ready_start = cur_time
+                w_act = next((a for a in tl.actions if a.kind == "W" and a.ref == f"S{sid}"), None)
                 if on_truck is not None:
+                    if w_act is not None:
+                        if w_act.start > ready_start + 1e-9:
+                            stages.append(DroneStage("ON_TRUCK", ready_start, w_act.start, truck=on_truck))
+                        stages.append(DroneStage("SWAP", w_act.start, w_act.end, truck=on_truck, sid=sid))
+                        ready_start = w_act.end
                     if p_start > ready_start + 1e-9:
                         stages.append(DroneStage("ON_TRUCK", ready_start, p_start, truck=on_truck))
                     stages.append(DroneStage("P", p_start, p_end, truck=on_truck, sid=sid))
@@ -493,7 +530,7 @@ def _schedule_drones(plan: Plan, inst: Instance, phys: PhysicalConfig, state: St
             on_truck = rv.truck
             cur_pos = rpos
             stages.append(DroneStage("ON_TRUCK", cur_time, cur_time, truck=on_truck))
-        final_truck = on_truck or (st.truck if st else f"t{int(d[1:])}")
+        final_truck = on_truck or (st.truck if st else home_truck(d))
         f = tl.truck_finish.get(final_truck, 0.0)
         if stages and stages[-1].kind == "ON_TRUCK":
             stages[-1].end = max(stages[-1].start, f)
@@ -531,7 +568,7 @@ def _compute_distances(plan: Plan, inst: Instance, state: StartState, tl: Timeli
 # 能量
 # ---------------------------------------------------------------------------
 def stage_energy(stage: DroneStage, phys: PhysicalConfig) -> float:
-    if stage.kind in ("ON_TRUCK", "READY", "P", "U", "DONE"):
+    if stage.kind in ("ON_TRUCK", "READY", "P", "U", "DONE", "SWAP"):
         return 0.0
     if stage.kind == "L":
         return phys.hover_energy_kwh(phys.launch_s, stage.mass)
@@ -551,8 +588,77 @@ def _start_energy(state: StartState, d: str, phys: PhysicalConfig) -> float:
     return st.energy if st else phys.e_cap
 
 
+def _swap_pass(tl: Timeline, plan: Plan, phys: PhysicalConfig, state: StartState,
+               swaps: set[int]) -> tuple[set[int], str]:
+    """换电配置：按当前时刻表逐机推演电量，在首个能量违约的航次放飞前加一次换电（惰性换电）.
+
+    违约 = R 结束余电 < E_min 或电量 < 0。该航次已换电仍违约，或违约发生在已起飞的空中残段，
+    则无法靠换电修复，返回非空信息（评价判不可行）。"""
+    new = set(swaps)
+    msg = ""
+    for d, stages in tl.drone_stages.items():
+        e = _start_energy(state, d, phys)
+        for st in stages:
+            if st.kind == "SWAP":
+                e = phys.e_cap
+                continue
+            e -= stage_energy(st, phys)
+            req = phys.e_min if st.kind == "R" else 0.0
+            if e < req - 1e-6:
+                sid = st.sid
+                s = plan.sorties.get(sid) if sid is not None else None
+                if s is None or s.started or sid in swaps:
+                    msg = f"SWAP_CANNOT_FIX:{d}@{st.start:.1f}:e={e:.3f}<{req:.3f}"
+                else:
+                    new.add(sid)
+                break
+    return new, msg
+
+
+def allocate_swaps(tl: Timeline, phys: PhysicalConfig, state: StartState):
+    """换电配置下的"能量分配"：沿阶段推演电量（SWAP 后恢复满电），核对备用电池数。"""
+    drones = list(tl.drone_stages.keys())
+    if tl.swap_msg:
+        tl.energy_ok = False
+        tl.energy_msg = tl.swap_msg
+        tl.deficits = {}
+        for d in drones:
+            tl.e_return[d] = float("nan")
+        return False, tl.energy_msg, {}
+    refill = 0.0
+    tl.swap_count_by_truck = {}
+    for d in drones:
+        e = _start_energy(state, d, phys)
+        energies = [e]
+        for st in tl.drone_stages[d]:
+            if st.kind == "SWAP":
+                refill += phys.e_cap - e
+                e = phys.e_cap
+                tl.swap_count_by_truck[st.truck] = tl.swap_count_by_truck.get(st.truck, 0) + 1
+            else:
+                e -= stage_energy(st, phys)
+            energies.append(e)
+        tl.drone_energy[d] = energies
+        tl.e_return[d] = energies[-1]
+    tl.swap_refill_kwh = refill
+    tl.q_total = 0.0
+    tl.q_by_truck = {k: 0.0 for k in state.truck_ac}
+    for k, n in tl.swap_count_by_truck.items():
+        if n > state.truck_ac.get(k, phys.spare_batteries) + 1e-9:
+            tl.energy_ok = False
+            tl.energy_msg = f"SWAP_SPARES:{k}:{n}>{state.truck_ac.get(k, phys.spare_batteries):.0f}"
+            tl.deficits = {}
+            return False, tl.energy_msg, {}
+    ok = all(tl.e_return.get(d, 0.0) >= -1e-6 for d in drones)
+    tl.energy_ok = ok
+    tl.energy_msg = "" if ok else "NEGATIVE_RETURN"
+    return ok, tl.energy_msg, {}
+
+
 def allocate_charging(tl: Timeline, phys: PhysicalConfig, state: StartState):
     """分阶段充电 LP；返回 (可行, 信息, q字典)."""
+    if phys.swap_mode:
+        return allocate_swaps(tl, phys, state)
     drones = list(tl.drone_stages.keys())
     charge_stages: dict[str, list[tuple[int, float, float, str]]] = {}
     for d in drones:

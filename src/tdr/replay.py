@@ -25,13 +25,14 @@ class ReplayReport:
     delivered: int = 0
     n_segments: int = 0
     terminal: dict[str, dict] = field(default_factory=dict)
+    n_swaps: int = 0
 
     def to_dict(self) -> dict:
         return {"ok": self.ok, "violations": self.violations[:50], "cost": self.cost,
                 "distance_km": self.distance_km, "driver_s": self.driver_s,
                 "charge_ac_kwh": self.charge_ac_kwh, "e_return": self.e_return,
                 "delivered": self.delivered, "n_segments": self.n_segments,
-                "terminal": self.terminal}
+                "terminal": self.terminal, "n_swaps": self.n_swaps}
 
 
 def _d(p, q) -> float:
@@ -58,6 +59,8 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict]) ->
     truck_finish: dict[str, float] = {}
     total_dist = 0.0
     charge_ac = 0.0
+    swap_refill = 0.0
+    n_swaps = 0
     onboard: dict[str, set[str]] = {k: set() for k in start_pos}
     for d, c in carrier.items():
         if c:
@@ -118,7 +121,7 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict]) ->
                     total_dist += dist
                     if a.get("ref") == "DEPOT" and not a.get("partial", False):
                         truck_finish[a["actor"]] = a["end"]
-                elif ak in ("G", "P", "R", "U"):
+                elif ak in ("G", "P", "R", "U", "W"):
                     # 人工动作：不得与驾驶或其他人工动作重叠
                     for (b0, b1) in drive_iv.get(a["actor"], []):
                         if _overlap(a["start"], a["end"], b0, b1):
@@ -129,7 +132,22 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict]) ->
                             v.append(f"MANUAL_OVERLAP:{a['actor']}@{a['start']:.1f}({k2})")
                             break
                     manual_iv[a["actor"]].append((a["start"], a["end"], ak))
-                if ak == "G":
+                if ak == "W":
+                    d = a.get("drone")
+                    k = a["actor"]
+                    if not phys.swap_mode:
+                        v.append(f"SWAP_IN_SPEC_MODE:{d}@{t:.1f}")
+                    if abs((a["end"] - a["start"]) - phys.swap_s) > 1e-6:
+                        v.append(f"SWAP_DURATION:{d}@{t:.1f}")
+                    if carrier.get(d) != k:
+                        v.append(f"SWAP_NOT_ON_TRUCK:{d} carrier={carrier.get(d)} truck={k}")
+                    ac_left[k] = ac_left.get(k, float(phys.spare_batteries)) - 1.0
+                    if ac_left[k] < -1e-9:
+                        v.append(f"SWAP_SPARES:{k}@{t:.1f} left={ac_left[k]:.0f}")
+                    swap_refill += phys.e_cap - energy.get(d, phys.e_cap)
+                    n_swaps += 1
+                    energy[d] = phys.e_cap
+                elif ak == "G":
                     p = a["ref"]
                     cust = a.get("customer")
                     if p in delivered:
@@ -239,7 +257,8 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict]) ->
     rep.charge_ac_kwh = charge_ac
     rep.e_return = {d: float(e) for d, e in energy.items()}
     Qnet = phys.slot_efficiency * charge_ac
-    refill = sum(phys.e_cap - energy.get(d, phys.e_cap) for d in energy)
+    refill = sum(phys.e_cap - energy.get(d, phys.e_cap) for d in energy) + swap_refill
+    rep.n_swaps = n_swaps
     rep.cost = (phys.c_km * total_dist / 1000.0 + phys.wage_per_s * rep.driver_s
                 + phys.cost_vehicle_kwh * Qnet + phys.cost_depot_kwh * refill)
     for d in sorted(energy):

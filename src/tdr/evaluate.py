@@ -5,7 +5,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
-from .config import PhysicalConfig
+from .config import PhysicalConfig, home_truck
 from .data import Instance
 from .plan import Plan
 from .schedule import StartState, Timeline, allocate_charging, schedule_plan, stage_energy
@@ -116,7 +116,7 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
         return ev
     if check_structure:
         errs = plan.validate_structure(inst, phys,
-                                       initial_carrier={d: (st.truck or f"t{int(d[1:])}")
+                                       initial_carrier={d: (st.truck or home_truck(d))
                                                          for d, st in state.drone_start.items()}
                                        if state.t0 > 0 else None,
                                        holders=state.parcel_holder or None)
@@ -135,10 +135,11 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
         ev.status = "INCOMPLETE"
         ev.violations = [f"未安排交付: {len(missing)} 票, 例如 {missing[:5]}"]
         return ev
+    phys.set_active()
     tl = schedule_plan(plan, inst, phys, state)
     ok, msg, q = allocate_charging(tl, phys, state)
     waits: dict[int, float] = {}
-    if not ok and allow_wait_repair:
+    if not ok and allow_wait_repair and not phys.swap_mode:
         # 联合时序—充电修复：在合法客户停靠点延长等待，形成所需充电窗口
         for _ in range(8):
             add = _plan_energy_waits(tl, plan, phys, state, waits)
@@ -185,6 +186,8 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
     sumF = sum(tl.truck_finish.values())
     depot_refill = sum(phys.e_cap - tl.e_return.get(d, phys.e_cap)
                        for d in [f"d{i+1}" for i in range(phys.drone_count)])
+    # 换电配置：已换下电池的待补电量(此前各段 + 本段)也由仓库补电
+    depot_refill += state.prefix_refill_kwh + tl.swap_refill_kwh
     c_km = phys.c_km * D / 1000.0
     c_driver = phys.wage_per_s * sumF
     Qnet = phys.slot_efficiency * Qac
@@ -194,6 +197,7 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
         "truck_km": D / 1000.0, "c_km": c_km, "driver_s": sumF, "c_driver": c_driver,
         "ac_kwh": Qac, "net_kwh": Qnet, "c_vehicle": c_veh,
         "depot_refill_kwh": depot_refill, "c_depot": c_dep,
+        "swaps": float(sum(tl.swap_count_by_truck.values())),
     }
     ev.cost = c_km + c_driver + c_veh + c_dep
     # z：实际出库机体最晚随车入库时刻
@@ -222,7 +226,7 @@ def final_carrier(plan: Plan, drone: str, state: StartState, phys: PhysicalConfi
     st = state.drone_start.get(drone)
     if st is not None and st.truck:
         return st.truck
-    return f"t{int(drone[1:])}"
+    return home_truck(drone)
 
 
 

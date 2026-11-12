@@ -148,7 +148,8 @@ def validate_package(pkg: dict[str, Any]) -> dict[str, Any]:
     if pkg.get("schema_version") != "tdr-6.1":
         errors.append(f"schema_version 应为 tdr-6.1，实际 {pkg.get('schema_version')!r}")
     cfg = pkg.get("config", {})
-    for key, expected in [
+    light = cfg.get("profile") == "light"
+    for key, expected in ([] if light else [
         ("truck_count", 5), ("drone_count", 5), ("truck_drone_slots", 2),
         ("truck_recovery_channels", 1), ("drone_payload_limit_kg", 30),
         ("battery_kwh", 3.9688), ("reserve_fraction", 0.1),
@@ -158,11 +159,23 @@ def validate_package(pkg: dict[str, Any]) -> dict[str, Any]:
         ("slot_efficiency", 0.9), ("aux_efficiency", 0.85), ("depot_efficiency", 0.9),
         ("electricity_cny_kwh", 0.731012), ("truck_speed_m_s", 25 / 3),
         ("drone_speed_m_s", 15), ("shift_slack_s", 1800),
-    ]:
+    ]):
         got = cfg.get(key)
         if got is None or abs(float(got) - float(expected)) > 1e-12:
             errors.append(f"config.{key} 应为 {expected}，实际 {got!r}")
 
+    if light:
+        for key, expected in [("battery_kwh", 0.5), ("reserve_fraction", 0.2), ("truck_drone_slots", 3),
+                              ("drones_per_truck_initial", 2), ("drone_payload_limit_kg", 4.0),
+                              ("swap_s", 60.0), ("spare_batteries", 4), ("slot_ac_kw", 0.0),
+                              ("ground_service_s", 50), ("air_service_s", 60), ("shift_slack_s", 1800),
+                              ("electricity_cny_kwh", 0.731012), ("drone_speed_m_s", 60.0 / 3.6)]:
+            got = cfg.get(key)
+            if got is None or abs(float(got) - float(expected)) > 1e-9:
+                errors.append(f"light config.{key} 应为 {expected}，实际 {got!r}")
+        if not cfg.get("swap_mode"):
+            errors.append("light config.swap_mode 应为 true")
+    mass_cap = 4.0 if light else 30.0
     cases = pkg.get("cases", [])
     names = [c["case_id"] for c in cases]
     expected_names = ["C50", "R50", "RC50", "C100", "R100", "RC100"]
@@ -189,7 +202,7 @@ def validate_package(pkg: dict[str, Any]) -> dict[str, Any]:
                 if not isinstance(v, (int, float)) or v != v or abs(v) == float("inf"):
                     errors.append(f"{case['case_id']}: 非有限数值 {r}")
             m = float(r[3])
-            if m <= 0 or m > 30:
+            if m <= 0 or m > mass_cap + 1e-9:
                 errors.append(f"{case['case_id']}: 质量越界 {r}")
             mass += m
         total += len(rows)
@@ -200,7 +213,7 @@ def validate_package(pkg: dict[str, Any]) -> dict[str, Any]:
         else:
             if mani["n_customers"] != len(rows):
                 errors.append(f"{case['case_id']}: manifest 客户数不符")
-            if abs(mani["total_mass_kg"] - mass) > 1e-9:
+            if abs(mani["total_mass_kg"] - mass) > 1e-6:
                 errors.append(f"{case['case_id']}: manifest 总质量 {mani['total_mass_kg']} != {mass}")
             base_obj = case
             got = canonical_json_sha256(base_obj)
@@ -208,8 +221,9 @@ def validate_package(pkg: dict[str, Any]) -> dict[str, Any]:
                 warnings.append(f"{case['case_id']}: base_data_sha256 与按本实现重建的规范化对象不一致")
     if total != 450:
         errors.append(f"总客户数应为450，实际 {total}")
-    if abs(total_mass - 454.5) > 1e-9:
-        errors.append(f"总质量应为454.5，实际 {total_mass}")
+    exp_mass = 454.5 * (0.8 if light else 1.0)
+    if abs(total_mass - exp_mass) > 1e-6:
+        errors.append(f"总质量应为{exp_mass}，实际 {total_mass}")
 
     ap = pkg.get("algorithm_protocol", {})
     dp = ap.get("default_parameters", {})

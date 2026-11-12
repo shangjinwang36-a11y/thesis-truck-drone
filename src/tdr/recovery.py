@@ -19,7 +19,7 @@ import itertools
 import math
 from dataclasses import dataclass, field
 
-from .config import PhysicalConfig
+from .config import PhysicalConfig, home_truck
 from .data import Instance
 from .evaluate import Evaluation, evaluate_plan
 from .alns import Budget, eval_counted
@@ -177,7 +177,7 @@ class RecoveryCatalog:
         self.state = state
         self.ground_required = set(ground_required or set())
         self.launch_truck = frag.truck or (state.drone_carrier.get(frag.drone, "t1")
-                                           if state else f"t{int(frag.drone[1:])}")
+                                           if state else home_truck(frag.drone))
         self.frag_pos = frag.start_pos or (inst.depot_x, inst.depot_y)
         self._gen = self._entries()
         self.covered_trucks: set[str] = set()

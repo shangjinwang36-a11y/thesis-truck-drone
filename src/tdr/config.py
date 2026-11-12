@@ -7,6 +7,24 @@ from pathlib import Path
 from typing import Any
 
 
+# 当前生效的车队布局（由 set_active(phys) 在评价/调度入口刷新；供只拿到计划、拿不到 phys 的辅助函数使用）
+ACTIVE: dict[str, int] = {"dpt": 1, "n_drones": 5, "n_trucks": 5}
+
+
+def home_truck(drone: str) -> str:
+    return f"t{(int(drone[1:]) - 1) // max(1, ACTIVE['dpt']) + 1}"
+
+
+def home_drones(truck: str) -> list[str]:
+    k = max(1, ACTIVE["dpt"])
+    i = int(truck[1:])
+    return [f"d{(i - 1) * k + j + 1}" for j in range(k) if (i - 1) * k + j + 1 <= ACTIVE["n_drones"]]
+
+
+def all_drones() -> list[str]:
+    return [f"d{i + 1}" for i in range(ACTIVE["n_drones"])]
+
+
 @dataclass(frozen=True)
 class PhysicalConfig:
     truck_count: int = 5
@@ -40,6 +58,15 @@ class PhysicalConfig:
     driver_cny_h: float = 105976.0 / 2088.0
     electricity_cny_kwh: float = 0.731012
     shift_slack_s: float = 1800.0
+    # ---- 第三轮：轻型机 / 换电配置（默认值 = 原规范，行为不变）----
+    swap_mode: bool = False             # True：取消车载充电，改为机位换电
+    swap_s: float = 60.0                # 换电时长（司机人工动作，卡车停靠时进行，与 G/P/R/U 串行）
+    spare_batteries: int = 4            # 每车随车满电备用电池块数（整班累计可换次数上限）
+    payload_ref_kg: float = 30.0        # 能量模型的参考载荷上限（插值端点）
+    range_empty_m: float = 28000.0      # R0(m)=range_empty_m - range_slope_m_per_kg*m（外推到 0% 的参考航程）
+    range_slope_m_per_kg: float = 400.0
+    hover_min_empty: float = 29.0       # 空载悬停至 0% 的分钟数
+    hover_min_ref: float = 18.0         # 参考载荷悬停至 0% 的分钟数
     tolerance_cost_cny: float = 1e-4
     tolerance_time_s: float = 1e-3
     tolerance_energy_kwh: float = 1e-6
@@ -55,11 +82,27 @@ class PhysicalConfig:
 
     @property
     def p0(self) -> float:
-        return self.battery_kwh / (29.0 / 60.0)
+        return self.battery_kwh / (self.hover_min_empty / 60.0)
 
     @property
-    def p30(self) -> float:
-        return self.battery_kwh / (18.0 / 60.0)
+    def p30(self) -> float:          # 参考载荷处的悬停功率（名称沿用旧版）
+        return self.battery_kwh / (self.hover_min_ref / 60.0)
+
+    def set_active(self) -> "PhysicalConfig":
+        ACTIVE["dpt"] = self.drones_per_truck_initial
+        ACTIVE["n_drones"] = self.drone_count
+        ACTIVE["n_trucks"] = self.truck_count
+        return self
+
+    def home_truck(self, drone: str) -> str:
+        """无人机开局所在卡车：d1..d_k 按每车 drones_per_truck_initial 分配."""
+        return f"t{(int(drone[1:]) - 1) // max(1, self.drones_per_truck_initial) + 1}"
+
+    def home_drones(self, truck: str) -> list[str]:
+        k = max(1, self.drones_per_truck_initial)
+        i = int(truck[1:])
+        return [f"d{(i - 1) * k + j + 1}" for j in range(k)
+                if (i - 1) * k + j + 1 <= self.drone_count]
 
     @property
     def c_km(self) -> float:
@@ -79,11 +122,11 @@ class PhysicalConfig:
 
     def hover_power(self, mass_kg: float) -> float:
         m = max(0.0, min(self.drone_payload_limit_kg, mass_kg))
-        return self.beta_hover * (self.p0 + (self.p30 - self.p0) * m / 30.0)
+        return self.beta_hover * (self.p0 + (self.p30 - self.p0) * m / self.payload_ref_kg)
 
     def reference_range_m(self, mass_kg: float) -> float:
         m = max(0.0, min(self.drone_payload_limit_kg, mass_kg))
-        return 28000.0 - 400.0 * m
+        return self.range_empty_m - self.range_slope_m_per_kg * m
 
     def fly_energy_kwh(self, distance_m: float, mass_kg: float) -> float:
         return self.beta_cruise * self.battery_kwh * distance_m / self.reference_range_m(mass_kg)
@@ -94,6 +137,13 @@ class PhysicalConfig:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "PhysicalConfig":
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+    def for_case(self, case_fleet: dict[str, Any] | None, case_id: str) -> "PhysicalConfig":
+        """按算例覆盖车队规模（light 配置：50 客户 5 车 10 机，100 客户 8 车 16 机）."""
+        if not case_fleet or case_id not in case_fleet:
+            return self
+        import dataclasses
+        return dataclasses.replace(self, **case_fleet[case_id])
 
 
 @dataclass
@@ -142,6 +192,7 @@ class AlgorithmConfig:
     nominal_descent_eval_budget: int = 200  # 下降阶段的评价上限（计入 1000 次名义总预算）
     nominal_two_start: bool = True          # 双起点：下降起点与块转换起点各跑一小段 ALNS，择优后用余下预算
     nominal_start_slice: int = 150          # 每个起点的试跑评价数（全部计入 1000 次总预算）
+    nominal_final_descent_frac: float = 0.15  # 第三轮：名义预算末尾留出此比例做一次"转空送"下降收尾（0=关闭）
     max_search_rounds: int = 2000
     geometry_base_starts: int = 5
     coordinate_polish_every_alns_iterations: int = 10
