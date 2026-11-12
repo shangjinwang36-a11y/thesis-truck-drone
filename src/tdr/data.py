@@ -165,7 +165,7 @@ def validate_package(pkg: dict[str, Any]) -> dict[str, Any]:
             errors.append(f"config.{key} 应为 {expected}，实际 {got!r}")
 
     if light:
-        for key, expected in [("battery_kwh", 0.5), ("reserve_fraction", 0.2), ("truck_drone_slots", 3),
+        for key, expected in [("battery_kwh", 0.5), ("reserve_fraction", 0.1), ("truck_drone_slots", 3),
                               ("drones_per_truck_initial", 2), ("drone_payload_limit_kg", 4.0),
                               ("swap_s", 60.0), ("spare_batteries", 4), ("slot_ac_kw", 0.0),
                               ("ground_service_s", 50), ("air_service_s", 60), ("shift_slack_s", 1800),

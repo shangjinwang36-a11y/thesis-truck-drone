@@ -54,11 +54,15 @@ def _light(trucks100=8):
 def test_light_energy_model():
     pkg, phys = _light()
     assert phys.swap_mode and phys.truck_drone_slots == 3 and phys.drones_per_truck_initial == 2
-    assert abs(phys.e_cap - 0.5) < 1e-12 and abs(phys.e_min - 0.1) < 1e-12
-    # 可用航程 R_use(m)=18000-1500m：飞到 20% 应急电量恰好用掉 80% 电量
+    assert abs(phys.e_cap - 0.5) < 1e-12 and abs(phys.e_min - 0.05) < 1e-12     # 第三轮B：储备 10%
+    # 厂商航程 18000-1500m 是按 20% 储备测的；模型存的是外推到 0% 的参考航程 R0=(18000-1500m)/0.8，
+    # 储备改为 10% 后可用航程 = 0.9*R0 = (0.9/0.8)*(18000-1500m)
     for m in (0.0, 2.0, 4.0):
-        r_use = 18000.0 - 1500.0 * m
-        assert abs(phys.fly_energy_kwh(r_use, m) - 0.8 * phys.e_cap) < 1e-9
+        r_use_20 = 18000.0 - 1500.0 * m
+        assert abs(phys.reference_range_m(m) - r_use_20 / 0.8) < 1e-9
+        r_use_10 = (0.9 / 0.8) * r_use_20
+        assert abs(phys.fly_energy_kwh(r_use_10, m) - 0.9 * phys.e_cap) < 1e-9
+        assert abs(phys.fly_energy_kwh(r_use_20, m) - 0.8 * phys.e_cap) < 1e-9
     # 悬停至 0%：空载 22.5 min，4 kg 时 15 min，线性插值
     assert abs(phys.hover_energy_kwh(22.5 * 60, 0.0) - phys.e_cap) < 1e-9
     assert abs(phys.hover_energy_kwh(15 * 60, 4.0) - phys.e_cap) < 1e-9

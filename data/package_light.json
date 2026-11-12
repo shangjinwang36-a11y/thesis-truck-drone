@@ -21,7 +21,7 @@
   "drone_speed_m_s": 16.666666666666668,
   "drone_payload_limit_kg": 4.0,
   "battery_kwh": 0.5,
-  "reserve_fraction": 0.2,
+  "reserve_fraction": 0.1,
   "beta_cruise": 1.0,
   "beta_hover": 1.0,
   "ground_service_s": 50,
@@ -3518,6 +3518,6 @@
  "light_config_notes": {
   "weights": "all parcel masses x 0.8 (max 5.0 -> 4.0 kg)",
   "swap": "battery swap at slot replaces on-truck charging; 60 s driver task before P; 4 spare full batteries per truck",
-  "energy": "E_cap=0.5 kWh (assumption), reserve 20%, R_use(m)=18000-1500m, hover to 0%: 22.5 min empty / 15 min at 4 kg"
+  "energy": "E_cap=0.5 kWh (assumption), reserve 10% (round3b; was 20%). The model stores the 0%-reference range R0(m)=22500-1875m (=R_use/0.8), so usable range at 10% reserve is 0.9*R0(m)=20250-1687.5m = (0.9/0.8)*(18000-1500m); the manufacturer 18 km / 12 km figures were measured to a 20% reserve. Hover to 0%: 22.5 min empty / 15 min at 4 kg"
  }
 }
