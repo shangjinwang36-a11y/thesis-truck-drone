@@ -254,3 +254,15 @@ queue7.sh (v5)：v5_l2_p02_base → v5_l2_p02_softH → v5_l2_p01_base → v5_l2
 - 注：soft H 的成本含加班费(cost_breakdown.overtime_s/c_overtime)，基线(base)与 softH 的成本口径不同，不可直接相减。
 ### 队列
 queue7(v5)：p02 base/softH 已完成，p01 base/softH 进行中；queue8(v6)：p02 land → p02 comb → p01 land → p01 comb 进行中(结果在 r5/results/v6_*)。v6 标志全关时代码路径与 v5 相同。
+
+## 2026-11-13 续2：v7 未起飞航次能量修复 + v5 p=0.1 汇总
+### (1) v7 = proj_r5g (algorithm flag unlaunched_repair，默认关)
+- 触发：联合重选循环里，评价违规为 SWAP_CANNOT_FIX 且对应阶段属“未起飞”航次(换电后仍能量不足；由 ev.timeline 的阶段起点反查 sid)，而没有在飞目标时。
+- 候选(S/X 同一规则，评价计入初始化额度 JOINT 60 + LAND/UNL 120，深度 3→5)：① 改回收访问(离末客最近的 2 个访问；S 仅本放飞车，X 任意车)；② 丢掉最后一个空送客户转地面(repair_ground_only)；③ 整个航次转地面。可行即采用，否则取第一个候选作下一层底板。
+- 测试(24 passed)：test_unlaunched_candidates_conserve_parcels_and_respect_S(包裹守恒/S 限本车/三类齐全)、test_unlaunched_target_parses_non_started_sortie、test_v7_flags_episode_no_invalid。
+- RC50 s9 S(p=0.2)停止点：仅降落 → 仍失败；仅未起飞修复 → 仍失败；降落+未起飞修复 → 可行(直接调 initial_recovery)。端到端(v7 land+unl, 硬H)：RC50 s9 S/X、R50 s4 S、RC50 s7 X 完成；R50 s3 S(H_EXCEEDED+SWAP)、R100 s3 S(失败机 d15 e=0.0189<0.05)仍 STOPPED。
+### (3) v5 p=0.1 seeds 1-10 (base)
+- 配对 47/60；Δ=-0.02±21.18 (CI±6.05)，Δ/C_S=-0.01%；X好/同/差 15/20/12 (p≈0.70)；STOPPED S/X=11/8 (S: SWAP 9, H+SWAP 2；X: SWAP 5, H 1, H+SWAP 2)；INVALID=0；air% 67.7/67.2；跨车 20.7%(242)；失败4.78/env(率 0.093)。逐事件 n=168 Δ=1.20±5.75 (CI±0.87)，0.236%，26/134/8。无改进重规划 S 72/276、X 76/286。审计表 r5/audit_v5_p01_base.txt。
+- v6 land p=0.2：仅 20/60 完成(C100 10 对 Δ=20.62±21.34，3.99%)，其余运行中(队列已拆，仅保留在跑批次)。
+### 队列
+queue7/queue8 脚本已终止(保留在跑批次 v6_l2_p02_land；v5 p01 softH、v6 p02 comb、v6 p01 land/comb 取消，被 v7 取代)。queue9(v7，等 CPU 空闲后启动)：v7_l2_p02_softH → v7_l2_p02_comb → v7_l2_p01_softH → v7_l2_p01_comb → v7_l2_p02_comb_b11/21/31(comb 为 land+softH+unlaunched，≥40 env/案例用 p=0.2 seeds 1-40)。
