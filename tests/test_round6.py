@@ -139,3 +139,20 @@ def test_drop_broken_chain_on_cross_removal(nominals):
     remove_sortie_closure(p2, chain[1], freed)
     assert all(x not in p2.sorties for x in chain[2])
     assert not p2.validate_structure(inst, phys)
+
+
+def test_same_visit_recovery_before_launch_deadlock():
+    """同一访问内先回收后放飞：t3@3 回收来自 t5@3 的机、又要放飞去 t5@3，而 t5@3 反之——死锁必须被检出."""
+    inst, phys, alg = _setup()
+    from tdr.plan import ground_only_plan
+    plan = ground_only_plan(inst, 5, 5)
+    r3, r5 = plan.routes["t3"], plan.routes["t5"]
+    pa = plan.visits[r3[6]].ground[0]
+    pb = plan.visits[r5[6]].ground[0]
+    for v in (r3[6], r5[6]):
+        plan.visits[v].ground.clear()
+    plan.remove_visit(r3[6]); plan.remove_visit(r5[6])
+    # d5(t3 的机) 从 t3@3 放飞，t5@3 回收；d9(t5 的机) 从 t5@3 放飞，t3@3 回收
+    plan.add_sortie("d5", "t3", r3[3], "ARC", 0.5, [pa], r5[3], order=0)
+    plan.add_sortie("d9", "t5", r5[3], "ARC", 0.5, [pb], r3[3], order=0)
+    assert has_wait_cycle(plan)

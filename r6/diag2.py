@@ -14,8 +14,8 @@ from tdr.data import load_instance
 from tdr.experiment import build_case_nominal
 pkg=json.load(open('data/package_light.json'))
 phys=PhysicalConfig.from_dict(pkg['config']); alg=AlgorithmConfig.from_dict(pkg['algorithm_protocol']['default_parameters'])
-inst=load_instance(pkg,'C50'); phys=phys.for_case(pkg.get('case_fleet'),'C50')
-build_case_nominal(inst,phys,alg,'r6/smoke/diag2',eval_budget=300,cross_launch=True)
+CASE=sys.argv[1]; inst=load_instance(pkg,CASE); phys=phys.for_case(pkg.get('case_fleet'),CASE)
+build_case_nominal(inst,phys,alg,'r6/smoke/diag2',eval_budget=1000,cross_launch=True)
 plan,inst,phys,state=cap[0]
 print('cycle?',evaluate.has_wait_cycle(plan))
 for s in plan.sorties.values():

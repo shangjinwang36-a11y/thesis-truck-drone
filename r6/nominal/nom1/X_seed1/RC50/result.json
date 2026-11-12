@@ -1,0 +1,236 @@
+{
+ "case_id": "RC50",
+ "status": "FEASIBLE",
+ "plan_id": "RC50-nominal-1.0.0",
+ "H_s": 5722.35718896567,
+ "cost": 376.28509045858476,
+ "z_s": 3922.3571889656696,
+ "n_sorties": 14,
+ "n_air_parcels": 34,
+ "n_visits": 27,
+ "eval_requests": 976,
+ "wall_s": 7.371098855997843,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 376.28509045858476
+ },
+ "distance_km": 95.05420733044271,
+ "cost_breakdown": {
+  "truck_km": 95.05420733044271,
+  "c_km": 159.39925189863928,
+  "driver_s": 15135.304024629899,
+  "c_driver": 213.38587953839107,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 4.30904433771123,
+  "c_depot": 3.4999590215544014,
+  "swaps": 1.0
+ },
+ "n_cross_sorties": 4,
+ "cross_launch": true,
+ "audit": {
+  "SUPPORT_VISIT": {
+   "calls": 13,
+   "feasible": 7,
+   "infeasible": 6,
+   "best": 3,
+   "accepted": 3
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 17,
+   "feasible": 11,
+   "infeasible": 6,
+   "best": 2,
+   "accepted": 2
+  },
+  "GROUND_TO_AIR": {
+   "calls": 11,
+   "feasible": 4,
+   "infeasible": 7
+  },
+  "R:AIR_FIRST": {
+   "calls": 34,
+   "feasible": 15,
+   "infeasible": 19,
+   "best": 3,
+   "accepted": 4
+  },
+  "CROSS_REPAIR_TRIALS": {
+   "gen": 54,
+   "feasible": 20,
+   "best": 3,
+   "accepted": 3
+  },
+  "CROSS_CONVERT": {
+   "calls": 16,
+   "feasible": 6,
+   "cur_improve": 1,
+   "best": 1,
+   "infeasible": 10
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 17,
+   "feasible": 13,
+   "infeasible": 4,
+   "best": 4,
+   "accepted": 5
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 24,
+   "feasible": 10,
+   "infeasible": 14,
+   "best": 3,
+   "accepted": 3
+  },
+  "ENERGY_CHAIN": {
+   "calls": 12,
+   "infeasible": 7,
+   "feasible": 5
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 8,
+   "infeasible": 4,
+   "feasible": 4,
+   "best": 1,
+   "accepted": 1
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 6,
+   "infeasible": 5,
+   "feasible": 1
+  },
+  "SORTIE_REGROUP": {
+   "calls": 8,
+   "infeasible": 6,
+   "feasible": 2
+  }
+ },
+ "reject": {
+  "NOMINAL_AIR_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 82,
+  "NOMINAL_AIR_BASE|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 4,
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 262,
+  "COORDINATE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 17,
+  "ALNS_BASE|INVALID_STRUCTURE|drone d#: 航次 # 放飞访问早于上一航次回收访问(链次序)": 31,
+  "ALNS_BASE|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 3,
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 1,
+  "CROSS_CONVERT|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 9,
+  "ALNS_BASE|INFEASIBLE_RESOURCE|SCHEDULE_NOT_CONVERGED(cross#truck cycle)": 5
+ },
+ "last_improvement_iter": 57,
+ "n_iterations": 75,
+ "best_trace": [
+  [
+   0,
+   421.9297812756805,
+   4056.548226163378
+  ],
+  [
+   340,
+   419.8281779829533,
+   4056.548226163378
+  ],
+  [
+   392,
+   418.59613119074777,
+   4043.3799317351004
+  ],
+  [
+   397,
+   401.58385915654696,
+   4061.125582131407
+  ],
+  [
+   409,
+   400.35960829034445,
+   4061.125582131407
+  ],
+  [
+   466,
+   384.35558703151213,
+   4031.116710752463
+  ],
+  [
+   477,
+   384.031997323983,
+   4023.1421821743297
+  ],
+  [
+   0,
+   508.6268964399974,
+   4650.648118738141
+  ],
+  [
+   503,
+   461.4573843982501,
+   4548.899806436021
+  ],
+  [
+   515,
+   460.97232147248025,
+   4548.899806436021
+  ],
+  [
+   522,
+   460.5138302215761,
+   4548.899806436021
+  ],
+  [
+   534,
+   460.5131882591314,
+   4548.899806436021
+  ],
+  [
+   561,
+   458.063264861228,
+   4548.899806436021
+  ],
+  [
+   584,
+   457.49342094741843,
+   4509.793290999362
+  ],
+  [
+   596,
+   457.10499817614925,
+   4509.793290999362
+  ],
+  [
+   0,
+   384.031997323983,
+   4023.1421821743297
+  ],
+  [
+   687,
+   383.1385622449652,
+   4023.1421821743297
+  ],
+  [
+   702,
+   382.54696555405854,
+   3975.840745485295
+  ],
+  [
+   714,
+   382.5458930045584,
+   3975.840745485295
+  ],
+  [
+   734,
+   380.635003801707,
+   3975.840745485295
+  ],
+  [
+   746,
+   380.2258663722245,
+   3975.840745485295
+  ],
+  [
+   775,
+   380.1960317489737,
+   3975.840745485295
+  ]
+ ]
+}

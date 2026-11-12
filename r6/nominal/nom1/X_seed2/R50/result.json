@@ -1,0 +1,227 @@
+{
+ "case_id": "R50",
+ "status": "FEASIBLE",
+ "plan_id": "R50-nominal-1.0.0",
+ "H_s": 6133.118632359326,
+ "cost": 481.693348871917,
+ "z_s": 4333.118632359326,
+ "n_sorties": 14,
+ "n_air_parcels": 36,
+ "n_visits": 22,
+ "eval_requests": 962,
+ "wall_s": 7.482690623000963,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 481.693348871917
+ },
+ "distance_km": 129.9987205591482,
+ "cost_breakdown": {
+  "truck_km": 129.9987205591482,
+  "c_km": 217.9987544672524,
+  "driver_s": 18456.532965721653,
+  "c_driver": 260.2104003798582,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 4.2896349476148,
+  "c_depot": 3.4841940248064334,
+  "swaps": 3.0
+ },
+ "n_cross_sorties": 3,
+ "cross_launch": true,
+ "audit": {
+  "SUPPORT_VISIT": {
+   "calls": 19,
+   "feasible": 6,
+   "infeasible": 13
+  },
+  "R:AIR_FIRST": {
+   "calls": 26,
+   "feasible": 8,
+   "infeasible": 18,
+   "best": 1,
+   "accepted": 1
+  },
+  "CROSS_REPAIR_TRIALS": {
+   "gen": 59,
+   "feasible": 14,
+   "best": 4,
+   "accepted": 4
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 31,
+   "infeasible": 22,
+   "feasible": 9,
+   "best": 3,
+   "accepted": 3
+  },
+  "ENERGY_CHAIN": {
+   "calls": 13,
+   "infeasible": 11,
+   "feasible": 2,
+   "best": 1,
+   "accepted": 1
+  },
+  "GROUND_TO_AIR": {
+   "calls": 17,
+   "feasible": 6,
+   "infeasible": 11,
+   "best": 1,
+   "accepted": 1
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 31,
+   "feasible": 11,
+   "best": 4,
+   "accepted": 5,
+   "infeasible": 20
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 11,
+   "infeasible": 9,
+   "feasible": 2,
+   "best": 2,
+   "accepted": 2
+  },
+  "CROSS_CONVERT": {
+   "calls": 16,
+   "feasible": 7,
+   "infeasible": 9,
+   "cur_improve": 1,
+   "best": 1
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 12,
+   "infeasible": 7,
+   "feasible": 5,
+   "best": 2,
+   "accepted": 2
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 10,
+   "infeasible": 6,
+   "feasible": 4,
+   "best": 1,
+   "accepted": 1
+  },
+  "SORTIE_REGROUP": {
+   "calls": 6,
+   "feasible": 3,
+   "accepted": 2,
+   "infeasible": 3,
+   "best": 1
+  }
+ },
+ "reject": {
+  "NOMINAL_AIR_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 73,
+  "NOMINAL_AIR_BASE|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 6,
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 188,
+  "ALNS_BASE|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 26,
+  "ALNS_BASE|INVALID_STRUCTURE|drone d#: 航次 # 放飞访问早于上一航次回收访问(链次序)": 100,
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 1,
+  "CROSS_CONVERT|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 8,
+  "ALNS_BASE|INFEASIBLE_RESOURCE|SCHEDULE_NOT_CONVERGED(cross#truck cycle)": 15,
+  "COORDINATE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 6
+ },
+ "last_improvement_iter": 88,
+ "n_iterations": 88,
+ "best_trace": [
+  [
+   0,
+   518.3440120267591,
+   4574.3561870702
+  ],
+  [
+   377,
+   518.2210181796754,
+   4782.8823586923745
+  ],
+  [
+   389,
+   517.6945183982125,
+   4782.8823586923745
+  ],
+  [
+   455,
+   514.4311031271368,
+   4190.041686773222
+  ],
+  [
+   467,
+   513.4253739786153,
+   4190.041686773222
+  ],
+  [
+   0,
+   543.7762790946658,
+   5382.573185584914
+  ],
+  [
+   538,
+   543.6076719236212,
+   5320.001877638088
+  ],
+  [
+   550,
+   536.1859461854427,
+   5202.1185557213785
+  ],
+  [
+   552,
+   535.760920184789,
+   5202.1185557213785
+  ],
+  [
+   558,
+   510.9349464286597,
+   4611.6554310242955
+  ],
+  [
+   570,
+   503.73080016114227,
+   4611.6554310242955
+  ],
+  [
+   0,
+   503.73080016114227,
+   4611.6554310242955
+  ],
+  [
+   634,
+   498.3195447543509,
+   4412.384894979891
+  ],
+  [
+   646,
+   498.3008368640864,
+   4412.384894979891
+  ],
+  [
+   737,
+   491.3790101963075,
+   4480.690063976059
+  ],
+  [
+   749,
+   490.9961596346644,
+   4480.690063976059
+  ],
+  [
+   786,
+   489.5394663954234,
+   4420.791183962372
+  ],
+  [
+   838,
+   484.44911851353936,
+   4346.828702684517
+  ],
+  [
+   850,
+   483.92659560690703,
+   4336.828702684517
+  ]
+ ]
+}

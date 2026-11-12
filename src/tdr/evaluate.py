@@ -39,7 +39,8 @@ def has_wait_cycle(plan: Plan) -> bool:
     """第六轮：名义跨车航次的等待成环（死锁）检测.
 
     事件图：A(v)到达→D(v)离开→A(下一访问)；放飞 Ls(s)：A(放飞访问)→Ls（STOP 另有 Ls→D(放飞访问)）；
-    无人机可用：前一航次的回收 R(prev)→Ls(s)；回收：Ls(s)→R(s)，A(回收访问)→R(s)，R(s)→D(回收访问)。
+    无人机可用：前一航次的回收 R(prev)→Ls(s)；回收：Ls(s)→R(s)，A(回收访问)→R(s)，R(s)→D(回收访问)；
+    同一访问内先回收后放飞：R(本访问回收)→Ls(本访问放飞)。
     有环 = 互相等待，调度器的固定点迭代必然发散（时刻线性增长）。无环时调度器收敛。"""
     adj: dict[tuple, list[tuple]] = {}
 
@@ -63,6 +64,16 @@ def has_wait_cycle(plan: Plan) -> bool:
             e(ls, rs)
         e(("A", s.rec_vid), rs)
         e(rs, ("D", s.rec_vid))
+    # 同一访问内的先后：回收(R) → 地送(G) → 准备/放飞(P/L)；故本访问的回收先于本访问的放飞
+    recs_at: dict[int, list[int]] = {}
+    for s in plan.sorties.values():
+        if s.rec_vid in plan.visits:
+            recs_at.setdefault(s.rec_vid, []).append(s.sid)
+    for s in plan.sorties.values():
+        if s.launch_vid is not None and s.launch_vid in plan.visits and not s.started:
+            for rsid in recs_at.get(s.launch_vid, []):
+                if rsid != s.sid:
+                    e(("R", rsid), ("L", s.sid))
     for d, sids in plan.drone_sorties.items():
         for a, b in zip(sids, sids[1:]):
             sb = plan.sorties.get(b)

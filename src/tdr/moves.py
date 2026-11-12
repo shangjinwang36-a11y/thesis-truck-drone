@@ -220,6 +220,7 @@ def cross_air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parce
         return rt_cache[t_]
     out: list[AirCandidate] = []
     drones = all_drones()
+    final_on = {t_: len(drones_on_truck(plan, t_)) for t_ in plan.routes}
     for _, tb, bidx, rvid in allv[:near_rec]:
         rpos = _pos(inst, plan, rvid)
         for ta, route_a in plan.routes.items():
@@ -236,6 +237,8 @@ def cross_air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parce
                 for d in drones:
                     k = find_chain_slot(plan, d, ta, aidx, tb, bidx)
                     if k is not None:
+                        if k == len(plan.drone_sorties.get(d, [])) and final_on[tb] + 1 > phys.truck_drone_slots:
+                            continue        # 终态必要条件：返库时每车机位容纳不下（精确的必要条件，不是启发式）
                         drone, pos_ = d, k
                         break
                 if drone is None:
@@ -627,6 +630,14 @@ def apply_air(plan: Plan, inst: Instance, parcel: str, cand: AirCandidate, phys=
     car = drone_carriers(plan)
     if car.get(drone) != cand.truck:
         return False
+    if phys is not None and not any(so.started for so in plan.sorties.values()):
+        # 第六轮（仅名义阶段，S/X 同等）：候选是在同一轮修复开始时算好的，前序插入可能已占用同一机体的时段；
+        # 此前不复核会产生大量“放飞早于上一航次回收(链次序)”的结构违规评价（每个名义解约 10–15% 评价）
+        li_ = -1 if cand.launch_vid is None else plan.routes[plan.visits[cand.launch_vid].truck].index(cand.launch_vid)
+        rv_ = plan.visits[cand.rec_vid]
+        ri_ = plan.routes[rv_.truck].index(cand.rec_vid)
+        if not sortie_slot_free(plan, drone, li_, ri_):
+            return False
     plan.add_sortie(drone, cand.truck, cand.launch_vid, cand.mode,
                     cand.lam, [parcel], cand.rec_vid)
     return True

@@ -133,7 +133,8 @@ def conversion_pass(plan: Plan, inst: Instance, phys: PhysicalConfig, alg: Algor
 
 
 def descent_pass(plan: Plan, inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
-                 state, stats: SearchStats, best_ev, budget: Budget, max_eval: int = 450):
+                 state, stats: SearchStats, best_ev, budget: Budget, max_eval: int = 450,
+                 allow_cross: bool = False):
     """第二轮：成本驱动的"转空送"下降（取代旧的按节省里程排序的块转换）.
 
     每个地送客户按"卡车去掉它能省的绕行"从大到小依次尝试：取该票最好的 ≤3 个空送候选
@@ -174,7 +175,7 @@ def descent_pass(plan: Plan, inst: Instance, phys: PhysicalConfig, alg: Algorith
                 continue                      # 已被前面的接受改走
             base = plan.clone()
             remove_parcel(base, p)
-            if getattr(state, "nominal_cross", False):
+            if allow_cross and getattr(state, "nominal_cross", False):
                 _all = air_candidates(base, inst, phys, p, max_new=3, state=state)
                 acs = [x for x in _all if not x.cross][:3] + [x for x in _all if x.cross][:2]
             else:
@@ -252,7 +253,7 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
         if reserve > 0 and budget.evals_left() > 0:
             # 第三轮：ALNS 后收尾的成本驱动下降（诊断：贪心单步转空送仍能再降 1–1.4% 成本）
             p4, e4, n4 = descent_pass(best_plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
-                                      max_eval=reserve)
+                                      max_eval=reserve, allow_cross=True)
             n_conv += n4
             if e4 is not None and e4.feasible and _better(e4, best_ev, alg):
                 best_plan, best_ev = p4, e4
