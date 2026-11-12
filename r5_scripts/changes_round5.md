@@ -231,3 +231,26 @@ p=0.2 seeds1-10 全体（v3 运行中，`r5/v3_l2_p02_b1.json`，C100 排序在�
 ### (2a) 降落等待(land_and_wait)：本轮未实现(原因见报告)。
 ### 队列
 queue7.sh (v5)：v5_l2_p02_base → v5_l2_p02_softH → v5_l2_p01_base → v5_l2_p01_softH。v4 队列已终止(保留 partial_killed_v4_l2_p02_b1.json)。
+
+## 2026-11-13 续(v5 结果、INVALID 根因结论、v6 降落等待)
+### (1) “模拟循环为何放行评价器现在拒绝的计划”——结论：不是缓存/旁路
+- 调试脚本(dbg10/cap8)用 `TDR_ROOT` 环境变量选代码目录，而我的 shell 里残留 `TDR_ROOT=proj_r5c`(v3 旧代码)，所以“修复后仍 INVALID”的复现其实仍在跑旧评价器。显式 `TDR_ROOT=proj_r5d` 重跑 RC100 s4 X p=0.2：COMPLETED_VERIFIED，循环内 SIMULATE/FINAL/CLONE/深拷贝状态的评价结果一致、无缓存无旁路。根因就是 truck_slot_check 的账漏计(上轮已修)，不需再改行为 ⇒ 不为(1)标 v6。
+- 回归：test_slot_ledger_counts_drone_after_recovery_until_final、test_slot_ledger_matches_replay_on_episode。v5 两批(p=0.2 base/softH)共 120 条 INVALID_EXECUTION=0 (v3 p=0.2 为 1)。
+- 教训：队列脚本内部显式 export TDR_ROOT，队列结果不受影响(v5→proj_r5d, v6→proj_r5f)。
+### (2) 降落等待 land_and_wait (phys.land_and_wait, 默认关) — v6 = proj_r5f
+- 模型：回收阶段无法带 E_min 抵达任何车的在飞/失败机，可降落在“下一个空送客户点”(无剩余空送票则取最近客户点)，继续空送子集只能 ∅ 或首票；回收访问设在该点(目录给出接机车：S 仅原放飞车，X 任意车，同一候选构造)；落地等待(WAIT)与回收(R)阶段零能耗，R 不要求 E_min(电量仍须 ≥0)。仅作为兜底：在常规候选/残段/重建/联合重选都无可行解后才尝试(S/X 同路径、同额外额度 JOINT 60 + LAND 120)。
+- 一致性：Sortie.landed → DroneStage.landed(WAIT/R) → stage_energy=0、_swap_pass/LP/_check/evaluate E_MIN_AT_R/verify RESERVE 均对 landed 的 R 免 E_min；collect_segment 日志的阶段/R 动作带 "landed"，replay 对 landed 的 WAIT/R 零能耗、免 R_RESERVE；truncate 把 landed 随在飞残段延续(落地等待期间被截断仍零耗能)；_set_recovery 改派时清除 landed。
+- 测试：test_landed_flag_zero_energy_and_clone、test_land_and_wait_candidates_symmetric_and_flagged(21 passed)。
+- 现状：RC50 s9 S 的停止点上降落候选被生成并评价(landing_tries=24)，d9→d10 逐机降落可推进，但随后暴露一架非在飞航次 d4 的 SWAP_CANNOT_FIX(电量<0，即便换新电池也不足)，该违规不属联合重选的处理范围 ⇒ 仍 STOPPED。降落并非万能；剩余 SWAP_CANNOT_FIX 多属“非在飞航次需求超满电容量”。
+### (3) v5 结果 (p=0.2, seeds 1-10, 同预算 1000, MILP, slot_aware+joint+reassign)
+| 配置 | 完成配对 | Δ(S−X)均值±sd (CI95) | Δ/C_S | X好/同/差 (符号检验p) | STOPPED S/X | air% S/X | 跨车占比 | 失败/env |
+|---|---|---|---|---|---|---|---|---|
+| v3 p0.2 | 32/60 | 9.08±23.24 (8.05) | 2.15% | 16/7/9 (0.23) | 19/25 | 59.5/61.5 | 24.6% | 9.33 |
+| v5 base | 35/60 | 11.87±21.19 (7.02) | 2.71% | 21/7/7 (0.0125) | 19/22 | 60.3/62.0 | 24.2% | 9.33 |
+| v5 softH | 52/60 | 11.94±38.30 (10.41) | 2.09% | 32/7/13 (0.0066) | 5/4 | 61.1/61.2 | 22.3% | 10.85 |
+- 逐事件(同状态)：v5 base n=227 Δ=0.82±4.80 (CI±0.62) 0.165% 29/184/14；softH n=232 Δ=1.54±13.28 (CI±1.71) 0.304% 34/181/17。
+- STOPPED 分解：v5 base S: SWAP 14 / H 2 / H+SWAP 3；X: SWAP 14 / H 4 / H+SWAP 4；INVALID=0。softH：S SWAP 5，X SWAP 4(无 H 类停止)。
+- 审计表：r5/audit_v5_p02_base.txt, audit_v5_p02_softH.txt(算子 calls/accept/improve、无改进重规划 base S 154/541 X 143/520；softH S 182/646 X 182/616)。
+- 注：soft H 的成本含加班费(cost_breakdown.overtime_s/c_overtime)，基线(base)与 softH 的成本口径不同，不可直接相减。
+### 队列
+queue7(v5)：p02 base/softH 已完成，p01 base/softH 进行中；queue8(v6)：p02 land → p02 comb → p01 land → p01 comb 进行中(结果在 r5/results/v6_*)。v6 标志全关时代码路径与 v5 相同。
