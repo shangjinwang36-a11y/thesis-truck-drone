@@ -1,0 +1,241 @@
+{
+ "case_id": "R50",
+ "status": "FEASIBLE",
+ "plan_id": "R50-nominal-1.0.0",
+ "H_s": 5901.30189221728,
+ "cost": 460.4132629509991,
+ "z_s": 4101.30189221728,
+ "n_sorties": 14,
+ "n_air_parcels": 33,
+ "n_visits": 21,
+ "eval_requests": 910,
+ "wall_s": 9.248183636002068,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 460.4132629509991
+ },
+ "distance_km": 121.64099365998234,
+ "cost_breakdown": {
+  "truck_km": 121.64099365998234,
+  "c_km": 203.98343149823418,
+  "driver_s": 17937.233475230612,
+  "c_driver": 252.88902921070658,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 4.359329283038491,
+  "c_depot": 3.54080224205837,
+  "swaps": 3.0
+ },
+ "n_cross_sorties": 3,
+ "cross_launch": true,
+ "audit": {
+  "SUPPORT_VISIT": {
+   "calls": 20,
+   "infeasible": 6,
+   "feasible": 14,
+   "best": 1,
+   "accepted": 1
+  },
+  "R:AIR_FIRST": {
+   "calls": 23,
+   "infeasible": 17,
+   "feasible": 6,
+   "best": 1,
+   "accepted": 1
+  },
+  "CROSS_REPAIR_TRIALS": {
+   "gen": 63,
+   "feasible": 31,
+   "best": 3,
+   "accepted": 3
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 31,
+   "feasible": 22,
+   "best": 5,
+   "accepted": 5,
+   "infeasible": 9
+  },
+  "CROSS_CONVERT": {
+   "calls": 16,
+   "feasible": 9,
+   "cur_improve": 4,
+   "best": 4,
+   "infeasible": 7
+  },
+  "ENERGY_CHAIN": {
+   "calls": 9,
+   "feasible": 5,
+   "best": 1,
+   "accepted": 1,
+   "infeasible": 4
+  },
+  "GROUND_TO_AIR": {
+   "calls": 16,
+   "feasible": 11,
+   "infeasible": 5,
+   "best": 3,
+   "accepted": 3
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 26,
+   "infeasible": 8,
+   "feasible": 18,
+   "best": 2,
+   "accepted": 2
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 10,
+   "infeasible": 7,
+   "feasible": 3
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 12,
+   "feasible": 7,
+   "best": 1,
+   "accepted": 1,
+   "infeasible": 5
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 10,
+   "feasible": 4,
+   "best": 2,
+   "accepted": 2,
+   "infeasible": 6
+  },
+  "SORTIE_REGROUP": {
+   "calls": 3,
+   "feasible": 2,
+   "infeasible": 1
+  }
+ },
+ "reject": {
+  "NOMINAL_AIR_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 63,
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 279,
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 1,
+  "CROSS_CONVERT|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 6,
+  "COORDINATE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 13
+ },
+ "last_improvement_iter": 62,
+ "n_iterations": 80,
+ "best_trace": [
+  [
+   0,
+   473.6113164963704,
+   4130.750098351933
+  ],
+  [
+   340,
+   471.5843420674059,
+   4160.750098351933
+  ],
+  [
+   345,
+   470.4617831786299,
+   4199.144444661022
+  ],
+  [
+   357,
+   469.3268753032887,
+   4133.76951334171
+  ],
+  [
+   390,
+   469.2241834520417,
+   4177.505687365012
+  ],
+  [
+   402,
+   468.96568083418856,
+   4177.505687365012
+  ],
+  [
+   427,
+   468.5827914417635,
+   4202.818811054194
+  ],
+  [
+   439,
+   467.9450560472658,
+   4202.818811054194
+  ],
+  [
+   451,
+   466.8981340243839,
+   4202.818811054194
+  ],
+  [
+   456,
+   462.95294142346023,
+   4173.574738763211
+  ],
+  [
+   468,
+   462.84175389050495,
+   4173.067843419297
+  ],
+  [
+   0,
+   543.7762790946658,
+   5382.573185584914
+  ],
+  [
+   488,
+   540.7434064138647,
+   5382.573185584914
+  ],
+  [
+   500,
+   533.4489736322021,
+   5264.689863668204
+  ],
+  [
+   502,
+   501.90365055276897,
+   5270.3048085711225
+  ],
+  [
+   531,
+   501.4752482369479,
+   5270.3048085711225
+  ],
+  [
+   536,
+   474.8484167976629,
+   4300.121764349353
+  ],
+  [
+   548,
+   469.1064453200117,
+   4300.121764349353
+  ],
+  [
+   570,
+   468.6261471088151,
+   4300.121764349353
+  ],
+  [
+   613,
+   463.20348291334227,
+   4171.118085681936
+  ],
+  [
+   625,
+   462.81801550065836,
+   4171.118085681936
+  ],
+  [
+   0,
+   462.81801550065836,
+   4171.118085681936
+  ],
+  [
+   732,
+   461.4440537049502,
+   4101.30189221728
+  ]
+ ]
+}

@@ -70,6 +70,9 @@ def propose_convert(plan, ctx, n: int, tried: set):
                     continue
                 tt = arr_b[bi] - dep_a[la]
                 mass = sum(inst.parcel_mass[p] for p in s.air)
+                t_air_ = air_time(inst, phys, sp, s.air, rp)
+                if e + phys.hover_energy_kwh(max(0.0, tt - t_air_), 0.0) > phys.e_cap - phys.e_min + phys.energy_tol:
+                    continue      # 悬停等车的电量预检（X 专用候选的合法性过滤）
                 sc = save - sync_cost(phys, air_time(inst, phys, sp, s.air, rp), tt, mass) \
                     - phys.cost_depot_kwh * e
                 cands.append((-sc, s.sid, vid, bool(removable)))

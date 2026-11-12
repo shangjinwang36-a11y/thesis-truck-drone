@@ -105,8 +105,8 @@ if __name__ == '__main__':
     with Pool(args.workers) as p:
         for r in p.imap_unordered(task, tasks):
             res.append(r)
-            ss = {k: (v['status'][:9] if isinstance(v, dict) else '') for k, v in r.items() if isinstance(v, dict)}
-            print(r['case'], r['seed'], {k: (round(v['cost'], 2) if v.get('cost') else None) for k, v in r.items() if isinstance(v, dict)}, ss, f't={time.time()-t0:.0f}s', flush=True)
+            ss = {k: (v['status'][:9] if isinstance(v, dict) else '') for k, v in r.items() if k in ('S', 'X')}
+            print(r['case'], r['seed'], {k: (round(v['cost'], 2) if v.get('cost') else None) for k, v in r.items() if k in ('S', 'X')}, ss, f't={time.time()-t0:.0f}s', flush=True)
             json.dump(dict(meta=meta, runs=res), open(OUT / f'{args.name}.json', 'w'), indent=1, default=str)
     meta['end'] = time.strftime('%Y-%m-%d %H:%M:%S')
     json.dump(dict(meta=meta, runs=res), open(OUT / f'{args.name}.json', 'w'), indent=1, default=str)

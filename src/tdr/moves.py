@@ -246,6 +246,10 @@ def cross_air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parce
                 arr_b, _ = _rt(tb)
                 _, dep_a = _rt(ta)
                 tt = arr_b[bidx] - dep_a[aidx]
+                # 合法性预检（仅 X 的跨车候选）：无人机早到则在回收点悬停等车，悬停电量也必须在可用电量内
+                t_air_ = air_time(inst, phys, lpos, [parcel], rpos)
+                if e + phys.hover_energy_kwh(max(0.0, tt - t_air_), 0.0) > phys.e_cap - phys.e_min + phys.energy_tol:
+                    continue
                 proxy = (w * (phys.prepare_s + phys.recovery_s) + cdep * e
                          + sync_cost(phys, air_time(inst, phys, lpos, [parcel], rpos), tt,
                                      inst.parcel_mass[parcel]))
