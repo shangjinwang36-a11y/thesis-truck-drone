@@ -91,8 +91,12 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
     if alg.nominal_truck_starts and phys.truck_count > 5:
         starts = [5, phys.truck_count]
     res, start_used, start_costs = None, None, {}
+    import dataclasses
+    phys_nom = phys
+    if alg.nominal_reserve_margin > 0:
+        phys_nom = dataclasses.replace(phys, reserve_fraction=phys.reserve_fraction + alg.nominal_reserve_margin)
     for ns in starts:
-        r_ = build_nominal(inst, phys, alg, derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0),
+        r_ = build_nominal(inst, phys_nom, alg, derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0),
                            eval_budget=eval_budget, variant=variant, n_used=ns)
         c_ = r_.evaluation.cost if (r_.plan is not None and r_.evaluation is not None and r_.evaluation.feasible) else None
         start_costs[str(ns)] = c_
@@ -107,6 +111,10 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         _write_json(out / "result.json", meta)
         return meta
     ev = res.evaluation
+    if phys_nom is not phys:
+        # 以真实储备重评价（抬高储备的可行解在真实参数下必可行），成本/H/核验均按真实参数
+        ev = evaluate_plan(res.plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+        assert ev.feasible, ev.violations
     H = max(ev.timeline.truck_finish.values()) + phys.shift_slack_s
     from .replay import verify_replay
     from .simulate import collect_segment, initial_run_state

@@ -63,6 +63,8 @@ def cmd_nominal(args) -> int:
     pkg = _load(_pkg_path(args))
     phys, alg = _phys_alg(pkg, args)
     cases = CASE_IDS if args.case == "all" else [args.case]
+    if getattr(args, "reserve_margin", None):
+        alg.nominal_reserve_margin = args.reserve_margin
     if getattr(args, "start_trucks", None):
         alg.nominal_start_trucks = args.start_trucks
     metas = []
@@ -176,6 +178,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--case", default="all")
     p.add_argument("--out", default="outputs/nominal")
     p.add_argument("--eval-budget", type=int, default=None)
+    p.add_argument("--reserve-margin", type=float, default=None,
+                   help="名义规划额外储备(占 E_cap 比例，默认 0=关闭)")
     p.add_argument("--start-trucks", type=int, default=None,
                    help="名义初解启用的车数(其余车留空路线)；默认=满车队")
     p.set_defaults(func=cmd_nominal)
