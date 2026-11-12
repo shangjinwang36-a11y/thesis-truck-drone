@@ -72,7 +72,8 @@ def cmd_nominal(args) -> int:
         inst = load_instance(pkg, case)
         phys_c = phys.for_case(pkg.get("case_fleet"), case)
         m = build_case_nominal(inst, phys_c, alg, Path(args.out) / case,
-                               eval_budget=args.eval_budget)
+                               eval_budget=args.eval_budget,
+                               cross_launch=bool(getattr(args, "cross_launch", False)))
         print(json.dumps(m, ensure_ascii=False))
         metas.append(m)
     return 0 if all(m.get("status") == "FEASIBLE" for m in metas) else 1
@@ -178,6 +179,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--case", default="all")
     p.add_argument("--out", default="outputs/nominal")
     p.add_argument("--eval-budget", type=int, default=None)
+    p.add_argument("--cross-launch", action="store_true",
+                   help="第六轮：X 的名义规划允许跨车航次（A放飞→B回收）；缺省=S（同车）")
     p.add_argument("--reserve-margin", type=float, default=None,
                    help="名义规划额外储备(占 E_cap 比例，默认 0=关闭)")
     p.add_argument("--start-trucks", type=int, default=None,

@@ -65,6 +65,7 @@ class StartState:
     dispatched: set[str] = field(default_factory=set)
     drone_carrier: dict[str, str] = field(default_factory=dict)
     note: str = ""
+    nominal_cross: bool = False     # 第六轮：X 的名义规划允许跨车航次（仅名义阶段使用）
 
 
 def initial_state(inst: Instance, phys: PhysicalConfig) -> StartState:
@@ -146,6 +147,7 @@ class Timeline:
     drone_available: dict[int, float] = field(default_factory=dict)
     drone_ready_before: dict[int, float] = field(default_factory=dict)
     iterations: int = 0
+    converged: bool = True                              # 第六轮：固定点是否收敛（跨车名义航次可能成环）
     swaps: set = field(default_factory=set)             # 需要换电的航次 sid（换电配置）
     swap_msg: str = ""                                  # 非空：换电后仍无法满足能量
     swap_refill_kwh: float = 0.0                        # 本段内换下电池的补电量
@@ -234,6 +236,7 @@ def schedule_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
         key = _timeline_key(tl)
         if prev_key is not None and key == prev_key:
             tl.iterations = it + 1
+            tl.converged = True
             break
         prev_key = key
         drone_arr = {sid: tl.drone_arrival.get(sid, tl.rec_times[sid][0]) for sid in tl.rec_times}
@@ -241,6 +244,7 @@ def schedule_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
         tl.iterations = it + 1
     else:
         tl.iterations = max_iter
+        tl.converged = False
     _compute_distances(plan, inst, state, tl, trucks)
     return tl
 
@@ -263,7 +267,7 @@ def _schedule_trucks(plan: Plan, inst: Instance, phys: PhysicalConfig, state: St
     prev_avail = prev_avail or {}
     swaps = swaps or set()
     waits = waits or {}
-    local_avail: dict[str, float] = {}
+    local_avail: dict[tuple, float] = {}   # 第六轮：按（车，机）记录，避免跨车回收的可用时刻泄漏到别车的放飞
     # 货物保管：truck_inv / depot_pool
     holder = state.parcel_holder or {}
     truck_inv: dict[str, set[str]] = {k: set() for k in trucks}
@@ -301,7 +305,7 @@ def _schedule_trucks(plan: Plan, inst: Instance, phys: PhysicalConfig, state: St
         depart_depot = ready
         prep_end: dict[int, float] = {}
         for s in depot_launches.get(truck, []):
-            t0 = max(depart_depot, local_avail.get(s.drone, 0.0), prev_avail.get(s.sid, 0.0))
+            t0 = max(depart_depot, local_avail.get((truck, s.drone), 0.0), prev_avail.get(s.sid, 0.0))
             if s.sid in swaps:
                 tl.actions.append(ActionRec("W", truck, t0, t0 + phys.swap_s, f"S{s.sid}",
                                             info={"drone": s.drone, "depot": True}))
@@ -358,7 +362,7 @@ def _schedule_trucks(plan: Plan, inst: Instance, phys: PhysicalConfig, state: St
                     u_end = r_end
                 ready = u_end
                 channel_free = r_end
-                local_avail[s.drone] = u_end
+                local_avail[(truck, s.drone)] = u_end
                 tl.rec_times[s.sid] = (r_start, r_end)
                 tl.drone_available[s.sid] = u_end
                 tl.wait_by_sortie[s.sid] = max(0.0, r_start - arr)
@@ -386,7 +390,7 @@ def _schedule_trucks(plan: Plan, inst: Instance, phys: PhysicalConfig, state: St
                                             info={"customer": v.customer}))
                 ready += phys.ground_service_s
             for s in launches_at.get(vid, []):
-                p_start = max(ready, local_avail.get(s.drone, 0.0), prev_avail.get(s.sid, 0.0))
+                p_start = max(ready, local_avail.get((truck, s.drone), 0.0), prev_avail.get(s.sid, 0.0))
                 if s.sid in swaps:
                     # 换电：司机人工动作，卡车停靠时进行，位于 P 之前，与 G/P/R/U 串行
                     tl.actions.append(ActionRec("W", truck, p_start, p_start + phys.swap_s, f"S{s.sid}",

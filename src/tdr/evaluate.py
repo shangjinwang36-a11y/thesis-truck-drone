@@ -28,9 +28,74 @@ class Evaluation:
         return (self.cost or float("inf"), self.z or float("inf"))
 
 
+def is_cross_sortie(plan: Plan, s) -> bool:
+    """第六轮：放飞车 ≠ 回收车 的（非空中残段）航次."""
+    if s.started or s.launch_vid is None or s.launch_vid not in plan.visits or s.rec_vid not in plan.visits:
+        return False
+    return plan.visits[s.launch_vid].truck != plan.visits[s.rec_vid].truck
+
+
+def has_wait_cycle(plan: Plan) -> bool:
+    """第六轮：名义跨车航次的等待成环（死锁）检测.
+
+    事件图：A(v)到达→D(v)离开→A(下一访问)；放飞 Ls(s)：A(放飞访问)→Ls（STOP 另有 Ls→D(放飞访问)）；
+    无人机可用：前一航次的回收 R(prev)→Ls(s)；回收：Ls(s)→R(s)，A(回收访问)→R(s)，R(s)→D(回收访问)。
+    有环 = 互相等待，调度器的固定点迭代必然发散（时刻线性增长）。无环时调度器收敛。"""
+    adj: dict[tuple, list[tuple]] = {}
+
+    def e(u, v):
+        adj.setdefault(u, []).append(v)
+        adj.setdefault(v, [])
+    for t, route in plan.routes.items():
+        for i, vid in enumerate(route):
+            e(("A", vid), ("D", vid))
+            if i + 1 < len(route):
+                e(("D", vid), ("A", route[i + 1]))
+    for s in plan.sorties.values():
+        if s.rec_vid not in plan.visits:
+            continue
+        rs = ("R", s.sid)
+        if s.launch_vid is not None and s.launch_vid in plan.visits and not s.started:
+            ls = ("L", s.sid)
+            e(("A", s.launch_vid), ls)
+            if s.mode == "STOP":
+                e(ls, ("D", s.launch_vid))
+            e(ls, rs)
+        e(("A", s.rec_vid), rs)
+        e(rs, ("D", s.rec_vid))
+    for d, sids in plan.drone_sorties.items():
+        for a, b in zip(sids, sids[1:]):
+            sb = plan.sorties.get(b)
+            if sb is not None and not sb.started and sb.launch_vid is not None:
+                e(("R", a), ("L", b))
+    color: dict[tuple, int] = {}
+    for root in adj:
+        if color.get(root):
+            continue
+        stack = [(root, iter(adj[root]))]
+        color[root] = 1
+        while stack:
+            node, it = stack[-1]
+            for nx in it:
+                c = color.get(nx, 0)
+                if c == 1:
+                    return True
+                if c == 0:
+                    color[nx] = 1
+                    stack.append((nx, iter(adj[nx])))
+                    break
+            else:
+                color[node] = 2
+                stack.pop()
+    return False
+
+
 def truck_slot_check(plan: Plan, inst: Instance, phys: PhysicalConfig, tl: Timeline,
                      state: StartState) -> list[str]:
-    """每车机位连续账本：R 开始预留 → R 结束在车 → P/READY 在车 → L 结束释放 → … → 最终入库."""
+    """每车机位连续账本：R 开始预留 → R 结束在车 → P/READY 在车 → L 结束释放 → … → 最终入库.
+
+    第六轮：回收结束后到下一次放飞(或返库)之间，无人机仍占用回收车的机位
+    （名义跨车回收后，回收车上的机数可能超过机位数）。"""
     errs: list[str] = []
     for k in [f"t{i+1}" for i in range(phys.truck_count)]:
         intervals: list[tuple[float, float, str]] = []
@@ -39,21 +104,25 @@ def truck_slot_check(plan: Plan, inst: Instance, phys: PhysicalConfig, tl: Timel
             on_start = state.t0 if (st is not None and st.kind == "ON_TRUCK" and st.truck == k) else None
             for sid in plan.drone_sorties.get(d, []):
                 s = plan.sorties[sid]
+                rec_here = s.rec_vid in plan.visits and plan.visits[s.rec_vid].truck == k
                 if s.started:
                     # 空中残段：只有当其回收车就是本车时，回收结束才在本车占位
-                    if s.rec_vid in plan.visits and plan.visits[s.rec_vid].truck == k:
+                    on_start = None
+                    if rec_here:
                         rt = tl.rec_times.get(sid)
                         if rt is not None:
                             on_start = rt[1]
                     continue
-                if s.truck != k:
-                    continue
-                lt = tl.launch_times.get(sid)
-                if lt is None:
-                    continue
-                start = on_start if on_start is not None else lt[0]
-                intervals.append((start, lt[1], f"{d}:on{sid}"))
+                if s.truck == k:
+                    lt = tl.launch_times.get(sid)
+                    if lt is not None:
+                        start = on_start if on_start is not None else lt[0]
+                        intervals.append((start, lt[1], f"{d}:on{sid}"))
                 on_start = None
+                if rec_here:
+                    rt = tl.rec_times.get(sid)
+                    if rt is not None:
+                        on_start = rt[1]
             if on_start is not None:
                 intervals.append((on_start, tl.truck_finish.get(k, on_start), f"{d}:final"))
         for s in plan.sorties.values():
@@ -136,7 +205,16 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
         ev.violations = [f"未安排交付: {len(missing)} 票, 例如 {missing[:5]}"]
         return ev
     phys.set_active()
+    if any(is_cross_sortie(plan, s) for s in plan.sorties.values()) and has_wait_cycle(plan):
+        ev.status = "INFEASIBLE_RESOURCE"
+        ev.violations = ["CROSS_WAIT_CYCLE"]
+        return ev
     tl = schedule_plan(plan, inst, phys, state)
+    if not tl.converged and any(is_cross_sortie(plan, s) for s in plan.sorties.values()):
+        ev.status = "INFEASIBLE_RESOURCE"
+        ev.violations = ["SCHEDULE_NOT_CONVERGED(cross-truck cycle)"]
+        ev.timeline = tl
+        return ev
     ok, msg, q = allocate_charging(tl, phys, state)
     waits: dict[int, float] = {}
     if not ok and allow_wait_repair and not phys.swap_mode:

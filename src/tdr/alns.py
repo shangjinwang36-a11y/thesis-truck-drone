@@ -45,6 +45,13 @@ class SearchStats:
     cover_subsets: set[int] = field(default_factory=set)
     lp_calls: int = 0
     last_improvement_eval: int = 0
+    last_improvement_iter: int = 0
+    audit: dict = field(default_factory=dict)       # 第六轮：算子审计 {算子: {计数}}
+    reject: dict = field(default_factory=dict)      # 第六轮：不可行原因 {原因: 次数}
+
+    def aud(self, name: str, key: str, n: int = 1) -> None:
+        d = self.audit.setdefault(name, {})
+        d[key] = d.get(key, 0) + n
 
     def add_eval(self, reason: str) -> None:
         self.eval_requests += 1
@@ -119,6 +126,11 @@ def eval_counted(plan: Plan, inst: Instance, phys: PhysicalConfig, state: StartS
     stats.eval_by_reason[reason] = stats.eval_by_reason.get(reason, 0) + 1
     stats.eval_requests = budget.used
     stats.lp_calls += int(ev.counts.get("lp_calls", 0)) if ev.counts else 0
+    if not ev.feasible:
+        import re as _re
+        v0 = _re.sub(r"[-0-9.]+", "#", (ev.violations[0] if ev.violations else ""))[:48]
+        k_ = f"{reason}|{ev.status}|{v0}"
+        stats.reject[k_] = stats.reject.get(k_, 0) + 1
     return ev
 
 
@@ -432,6 +444,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             op, rep, sact = sel.choose(skey, rng_op)
         n_d[op] += 1
         n_r[rep] += 1
+        stats.aud(op, "calls")
+        stats.aud("R:" + rep, "calls")
         stats.destroy_used[op] = stats.destroy_used.get(op, 0) + 1
         stats.repair_used[rep] = stats.repair_used.get(rep, 0) + 1
         adj = adjustable_parcels(cur_plan, inst)
@@ -444,6 +458,7 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         if used_op != op:
             stats.destroy_fallback[op] = stats.destroy_fallback.get(op, 0) + 1
         if not freed:
+            stats.aud(op, "freed0")
             _reward(s_d, op, 0.0)
             _reward(s_r, rep, 0.0)
             if sel is not None:
@@ -459,6 +474,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                                forbid_air=ctx.ground_required,
                                min_pos=ctx.state.truck_min_insert or None, state=ctx.state)
         if leftover:
+            stats.aud(op, "leftover")
+            stats.aud("R:" + rep, "leftover")
             _reward(s_d, op, 0.0)
             _reward(s_r, rep, 0.0)
             if sel is not None:
@@ -468,10 +485,16 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             continue
         # 基础几何评价（5 个 λ 起点）
         new_sortie = any(sid >= cur_plan.next_sid for sid in trial.sorties)
+        from .evaluate import is_cross_sortie as _isx
+        trial_cross = any(_isx(trial, so) for so in trial.sorties.values() if so.sid >= cur_plan.next_sid)
+        if trial_cross:
+            stats.aud("CROSS_REPAIR_TRIALS", "gen")
         cand_ev, cand_plan = _geometry_evaluate(
             trial, ctx, stats, "ALNS_BASE", budget,
             multistart=(new_sortie or not alg.geometry_new_sortie_only))
         if cand_ev is None:
+            stats.aud(op, "infeasible")
+            stats.aud("R:" + rep, "infeasible")
             _reward(s_d, op, 0.0)
             _reward(s_r, rep, 0.0)
             if sel is not None:
@@ -481,7 +504,16 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             continue
         reward = 0.0
         accepted = False
+        stats.aud(op, "feasible")
+        stats.aud("R:" + rep, "feasible")
+        if trial_cross:
+            stats.aud("CROSS_REPAIR_TRIALS", "feasible")
         if _better(cand_ev, best_ev, alg):
+            stats.aud(op, "best")
+            stats.aud("R:" + rep, "best")
+            if trial_cross:
+                stats.aud("CROSS_REPAIR_TRIALS", "best")
+            stats.last_improvement_iter = stats.iterations
             best_ev, best_plan = cand_ev, cand_plan.clone()
             reward = alg.score_global_best
             accepted = True
@@ -489,6 +521,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             stats.last_improvement_eval = stats.eval_requests
             stats.best_trace.append((stats.eval_requests, best_ev.cost or 0.0, best_ev.z or 0.0))
         elif _better(cand_ev, cur_ev, alg):
+            stats.aud(op, "cur_improve")
+            stats.aud("R:" + rep, "cur_improve")
             reward = alg.score_current_improvement
             accepted = True
             stagnation = 0
@@ -515,6 +549,10 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 reward = 0.0
                 stagnation += 1
         if accepted:
+            stats.aud(op, "accepted")
+            stats.aud("R:" + rep, "accepted")
+            if trial_cross:
+                stats.aud("CROSS_REPAIR_TRIALS", "accepted")
             cur_plan, cur_ev = cand_plan.clone(), cand_ev
         _reward(s_d, op, reward)
         _reward(s_r, rep, reward)
@@ -562,6 +600,20 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 if _better(e_x, best_ev, alg):
                     best_ev, best_plan = e_x, p_x.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+        # 第六轮：X 名义专用“同车航次改跨车回收”算子（S 的 state.nominal_cross=False，永不触发；同一份名义预算）
+        if (getattr(ctx.state, "nominal_cross", False) and ctx.mode == "nominal"
+                and stats.iterations % alg.cross_period == alg.cross_period // 2
+                and budget.evals_left() > 0):
+            from .cross_nominal import try_cross_convert
+            p_x, e_x = try_cross_convert(cur_plan, ctx, budget, stats)
+            if p_x is not None and e_x is not None and _better(e_x, cur_ev, alg):
+                stats.aud("CROSS_CONVERT", "cur_improve")
+                cur_plan, cur_ev = p_x, e_x
+                if _better(e_x, best_ev, alg):
+                    stats.aud("CROSS_CONVERT", "best")
+                    stats.last_improvement_iter = stats.iterations
+                    best_ev, best_plan = e_x, p_x.clone()
+                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 局部事件重排
         if variant != "no_local_mip" and (stats.iterations % alg.mip_period_rounds == 0
                                           or stagnation >= alg.mip_stagnation_rounds):
@@ -594,6 +646,9 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                     "cover_trucks": sorted(stats.cover_trucks),
                     "lp_calls": stats.lp_calls,
                     "last_improvement_eval": stats.last_improvement_eval,
+                    "last_improvement_iter": stats.last_improvement_iter,
+                    "audit": {k: dict(v) for k, v in stats.audit.items()},
+                    "reject": dict(stats.reject),
                     "best_trace": stats.best_trace}
     final_ev = best_ev
     status = "FEASIBLE_LIMIT"

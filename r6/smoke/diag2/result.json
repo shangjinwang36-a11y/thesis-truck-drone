@@ -1,0 +1,144 @@
+{
+ "case_id": "C50",
+ "status": "FEASIBLE",
+ "plan_id": "C50-nominal-1.0.0",
+ "H_s": 4392.764013390824,
+ "cost": 236.8062826533003,
+ "z_s": 2592.764013390824,
+ "n_sorties": 13,
+ "n_air_parcels": 27,
+ "n_visits": 31,
+ "eval_requests": 300,
+ "wall_s": 3.126490982998803,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 236.8062826533003
+ },
+ "distance_km": 55.29471369884336,
+ "cost_breakdown": {
+  "truck_km": 55.29471369884336,
+  "c_km": 92.7253642430014,
+  "driver_s": 10063.827233559932,
+  "c_driver": 141.8853973637382,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 2.7030595146243903,
+  "c_depot": 2.195521046560672,
+  "swaps": 1.0
+ },
+ "n_cross_sorties": 3,
+ "cross_launch": true,
+ "audit": {
+  "ENERGY_CHAIN": {
+   "calls": 4,
+   "infeasible": 2,
+   "feasible": 2
+  },
+  "R:AIR_FIRST": {
+   "calls": 4,
+   "infeasible": 1,
+   "feasible": 3
+  },
+  "CROSS_REPAIR_TRIALS": {
+   "gen": 10,
+   "feasible": 4,
+   "best": 2,
+   "accepted": 2
+  },
+  "GROUND_TO_AIR": {
+   "calls": 2,
+   "feasible": 1,
+   "infeasible": 1
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 5,
+   "feasible": 4,
+   "infeasible": 1,
+   "best": 1,
+   "accepted": 1
+  },
+  "CROSS_CONVERT": {
+   "calls": 4,
+   "feasible": 1,
+   "infeasible": 3,
+   "cur_improve": 1,
+   "best": 1
+  },
+  "SUPPORT_VISIT": {
+   "calls": 2,
+   "feasible": 2
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 2,
+   "infeasible": 2
+  },
+  "SORTIE_REGROUP": {
+   "calls": 3,
+   "feasible": 2,
+   "infeasible": 1,
+   "best": 1,
+   "accepted": 1
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 7,
+   "feasible": 3,
+   "infeasible": 4,
+   "best": 1,
+   "accepted": 1
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 2,
+   "feasible": 2,
+   "best": 1,
+   "accepted": 1
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 1,
+   "feasible": 1
+  }
+ },
+ "reject": {
+  "NOMINAL_AIR_BASE|INFEASIBLE_RESOURCE|SCHEDULE_NOT_CONVERGED(cross#truck cycle)": 18,
+  "ALNS_BASE|INFEASIBLE_RESOURCE|SCHEDULE_NOT_CONVERGED(cross#truck cycle)": 25,
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 12,
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 2,
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SCHEDULE_NOT_CONVERGED(cross#truck cycle)": 1
+ },
+ "last_improvement_iter": 15,
+ "n_iterations": 16,
+ "best_trace": [
+  [
+   0,
+   243.99487639523548,
+   2348.7234455016264
+  ],
+  [
+   214,
+   240.56068795199704,
+   2378.7234455016264
+  ],
+  [
+   268,
+   239.2090029197896,
+   2441.8814794896125
+  ],
+  [
+   280,
+   238.7303871364768,
+   2429.530617824391
+  ],
+  [
+   285,
+   237.14929577344867,
+   2597.4676296045795
+  ],
+  [
+   297,
+   236.8062826533003,
+   2592.764013390824
+  ]
+ ]
+}

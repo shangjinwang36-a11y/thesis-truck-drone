@@ -82,7 +82,7 @@ def _write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
 # ---------------------------------------------------------------------------
 def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                        out_dir: str | Path, eval_budget: int | None = None,
-                       variant: str = "full") -> dict:
+                       variant: str = "full", cross_launch: bool = False) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     rngs = derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0)
@@ -97,7 +97,8 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         phys_nom = dataclasses.replace(phys, reserve_fraction=phys.reserve_fraction + alg.nominal_reserve_margin)
     for ns in starts:
         r_ = build_nominal(inst, phys_nom, alg, derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0),
-                           eval_budget=eval_budget, variant=variant, n_used=ns)
+                           eval_budget=eval_budget, variant=variant, n_used=ns,
+                           cross_launch=cross_launch)
         c_ = r_.evaluation.cost if (r_.plan is not None and r_.evaluation is not None and r_.evaluation.feasible) else None
         start_costs[str(ns)] = c_
         if c_ is not None and (res is None or c_ < res.evaluation.cost):
@@ -116,6 +117,10 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         ev = evaluate_plan(res.plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
         assert ev.feasible, ev.violations
     H = max(ev.timeline.truck_finish.values()) + phys.shift_slack_s
+    from .evaluate import is_cross_sortie as is_cross_sortie_
+    if not cross_launch:   # S：名义阶段不得出现跨车航次
+        from .evaluate import is_cross_sortie
+        assert not any(is_cross_sortie(res.plan, s) for s in res.plan.sorties.values()), "S nominal has cross sortie"
     from .replay import verify_replay
     from .simulate import collect_segment, initial_run_state
     st0 = initial_run_state(res.plan, inst, phys)
@@ -167,6 +172,12 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         "start_trucks": start_used, "start_costs": start_costs,
         "distance_km": ev.cost_breakdown.get("truck_km"),
         "cost_breakdown": ev.cost_breakdown,
+        "n_cross_sorties": sum(1 for s_ in res.plan.sorties.values() if is_cross_sortie_(res.plan, s_)),
+        "cross_launch": bool(cross_launch),
+        "audit": res.stats.counts.get("audit"), "reject": res.stats.counts.get("reject"),
+        "last_improvement_iter": res.stats.counts.get("last_improvement_iter"),
+        "n_iterations": res.stats.counts.get("n_alns_iterations"),
+        "best_trace": res.stats.counts.get("best_trace"),
     }
     _write_json(out / "result.json", meta)
     return meta

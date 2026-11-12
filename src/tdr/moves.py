@@ -30,6 +30,9 @@ class AirCandidate:
     proxy: float = 0.0
     energy: float = 0.0
     drone: str | None = None
+    rec_truck: str | None = None      # 第六轮：回收车（≠放飞车 即名义跨车航次）
+    chain_pos: int | None = None      # 第六轮：机体航次链插入位置（链含跨车航次时必须显式给出）
+    cross: bool = False
 
 
 @dataclass
@@ -76,7 +79,30 @@ def remove_parcel(plan: Plan, parcel: str, freed: list[str] | None = None) -> li
         freed.append(parcel)
         if s is not None and not s.air and not s.handover:
             plan.remove_sortie(s.sid)
+            _drop_broken_chain(plan, s.drone, freed)
     return freed
+
+
+def _drop_broken_chain(plan: Plan, drone: str, freed: list[str]) -> None:
+    """第六轮：删除跨车航次后，机体链上承运车衔接断裂的后续航次一并删除（其货物释放）。
+    不含跨车航次的链（S 与 X 的纯同车链）上，删除任一航次后衔接仍成立，本函数不做任何事。"""
+    from .config import home_truck
+    sids = list(plan.drone_sorties.get(drone, []))
+    carrier = home_truck(drone)
+    for i, sid in enumerate(sids):
+        s = plan.sorties.get(sid)
+        if s is None or s.started:
+            return
+        if s.truck != carrier:
+            for x in sids[i:]:
+                so = plan.sorties.get(x)
+                if so is not None and not so.started:
+                    freed.extend(so.air)
+                    freed.extend(so.handover)
+                    plan.remove_sortie(x)
+            return
+        if s.rec_vid in plan.visits:
+            carrier = plan.visits[s.rec_vid].truck
 
 
 def _maybe_remove_visit(plan: Plan, vid: int) -> None:
@@ -96,6 +122,7 @@ def remove_sortie_closure(plan: Plan, sid: int, freed: list[str]) -> list[str]:
     freed.extend(s.air)
     freed.extend(s.handover)
     plan.remove_sortie(sid)
+    _drop_broken_chain(plan, s.drone, freed)
     return freed
 
 
@@ -114,6 +141,132 @@ def drone_chain(plan: Plan, drone: str) -> list[tuple[int, int, int]]:
         ri = plan.routes[rv.truck].index(rv.vid)
         out.append((sid, li, ri))
     return out
+
+
+# ---------------------------------------------------------------------------
+# 第六轮：名义跨车航次（放飞车 ≠ 回收车）的机体链辅助
+# ---------------------------------------------------------------------------
+def chain_has_cross(plan: Plan, drone: str) -> bool:
+    for sid in plan.drone_sorties.get(drone, []):
+        s = plan.sorties[sid]
+        if s.started or s.launch_vid is None or s.launch_vid not in plan.visits or s.rec_vid not in plan.visits:
+            continue
+        if plan.visits[s.launch_vid].truck != plan.visits[s.rec_vid].truck:
+            return True
+    return False
+
+
+def find_chain_slot(plan: Plan, drone: str, launch_truck: str, a: int, rec_truck: str, b: int) -> int | None:
+    """在无人机 drone 的航次链中，为新航次(放飞车 launch_truck 路线下标 a → 回收车 rec_truck 路线下标 b)
+    找一个满足“承运车衔接 + 同车路线次序”的插入位置（名义阶段，无空中残段）；无则 None.
+    前一航次回收车须 = launch_truck 且回收下标 < a；后一航次放飞车须 = rec_truck 且放飞下标 > b；首航次承运车为出厂车."""
+    from .config import home_truck
+    chain = [plan.sorties[x] for x in plan.drone_sorties.get(drone, [])]
+    if any(s.started for s in chain):
+        return None
+    for k in range(len(chain) + 1):
+        if k == 0:
+            before = home_truck(drone)
+            prev_ok = True
+        else:
+            pv = chain[k - 1]
+            if pv.rec_vid not in plan.visits:
+                continue
+            before = plan.visits[pv.rec_vid].truck
+            prev_ok = (before != launch_truck) or plan.routes[before].index(pv.rec_vid) < a
+        if before != launch_truck or not prev_ok:
+            continue
+        if k < len(chain):
+            nx = chain[k]
+            if nx.launch_vid is None or nx.launch_vid not in plan.visits:
+                continue
+            nt = plan.visits[nx.launch_vid].truck
+            if nt != rec_truck:
+                continue
+            if plan.routes[nt].index(nx.launch_vid) <= b:
+                continue
+        return k
+    return None
+
+
+def _truck_of(plan: Plan, vid: int) -> str:
+    return plan.visits[vid].truck
+
+
+def cross_air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str,
+                         max_cross: int = 4, near_rec: int = 8, near_launch: int = 4) -> list["AirCandidate"]:
+    """第六轮（仅 X 的名义规划）：新建“A 车放飞 → B 车回收”的单票空送航次候选.
+    回收点 = B 车路线上已有客户访问（与既有“回收只在客户点”一致）；放飞点 = A 车路线上的已有访问之后；
+    无人机取放飞车当前可用于该时段的机体（链衔接检查）；能量/载荷在此预检，时序/机位/保管由完整评价核验."""
+    cust = inst.parcel_to_customer[parcel]
+    c = inst.customer(cust)
+    cpos = (c.x, c.y)
+    if inst.parcel_mass[parcel] > phys.drone_payload_limit_kg + 1e-9:
+        return []
+    from .config import all_drones
+    w = phys.wage_per_s
+    cdep = phys.cost_depot_kwh
+    allv = []
+    for tk, route in plan.routes.items():
+        for i, vid in enumerate(route):
+            p = _pos(inst, plan, vid)
+            allv.append((math.hypot(p[0] - cpos[0], p[1] - cpos[1]), tk, i, vid))
+    allv.sort(key=lambda x: (x[0], x[3]))
+    rt_cache: dict[str, tuple[list[float], list[float]]] = {}
+
+    def _rt(t_):
+        if t_ not in rt_cache:
+            rt_cache[t_] = route_times(plan, inst, phys, t_)
+        return rt_cache[t_]
+    out: list[AirCandidate] = []
+    drones = all_drones()
+    for _, tb, bidx, rvid in allv[:near_rec]:
+        rpos = _pos(inst, plan, rvid)
+        for ta, route_a in plan.routes.items():
+            if ta == tb or not route_a:
+                continue
+            la = sorted(((math.hypot(_pos(inst, plan, v)[0] - cpos[0], _pos(inst, plan, v)[1] - cpos[1]), i, v)
+                         for i, v in enumerate(route_a)), key=lambda x: (x[0], x[2]))[:near_launch]
+            for _, aidx, lvid in la:
+                lpos = _pos(inst, plan, lvid)
+                e = air_energy(inst, phys, lpos, [parcel], rpos)
+                if e > phys.e_cap - phys.e_min + phys.energy_tol:
+                    continue
+                drone, pos_ = None, None
+                for d in drones:
+                    k = find_chain_slot(plan, d, ta, aidx, tb, bidx)
+                    if k is not None:
+                        drone, pos_ = d, k
+                        break
+                if drone is None:
+                    continue
+                arr_b, _ = _rt(tb)
+                _, dep_a = _rt(ta)
+                tt = arr_b[bidx] - dep_a[aidx]
+                proxy = (w * (phys.prepare_s + phys.recovery_s) + cdep * e
+                         + sync_cost(phys, air_time(inst, phys, lpos, [parcel], rpos), tt,
+                                     inst.parcel_mass[parcel]))
+                for mode, lam, eps in (("ARC", 0.5, 0.0), ("STOP", 0.0, 1e-6)):
+                    out.append(AirCandidate("NEW", ta, lvid, mode, lam, rvid, proxy=proxy + eps, energy=e,
+                                            drone=drone, rec_truck=tb, chain_pos=pos_, cross=True))
+    out.sort(key=lambda x: (x.proxy, x.truck or "", x.rec_vid, x.launch_vid or 0, x.mode))
+    from .evaluate import has_wait_cycle
+    seen = set()
+    picked = []
+    for cd in out:
+        key = (cd.truck, cd.launch_vid, cd.rec_vid, cd.mode)
+        if key in seen:
+            continue
+        seen.add(key)
+        trial = plan.clone()
+        if not apply_air(trial, inst, parcel, cd):     # 合法性过滤（链衔接 + 无等待环），与同车候选的 slot_free 检查同类
+            continue
+        if has_wait_cycle(trial):
+            continue
+        picked.append(cd)
+        if len(picked) >= max_cross:
+            break
+    return picked
 
 
 def sortie_slot_free(plan: Plan, drone: str, launch_idx: int, rec_idx: int) -> bool:
@@ -383,7 +536,16 @@ def air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str
             if b < low:
                 continue
             for a in set(range(max(low, b - 4), b)):
-                drone = next((d for d in drones if sortie_slot_free(plan, d, a, b)), None)
+                drone, chain_pos = None, None
+                for d in drones:
+                    if chain_has_cross(plan, d):
+                        k_ = find_chain_slot(plan, d, truck, a, truck, b)
+                        if k_ is not None:
+                            drone, chain_pos = d, k_
+                            break
+                    elif sortie_slot_free(plan, d, a, b):
+                        drone = d
+                        break
                 if drone is None:
                     continue
                 lpos = _pos(inst, plan, route[a])
@@ -397,9 +559,9 @@ def air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str
                     proxy += sync_cost(phys, air_time(inst, phys, lpos, [parcel], rpos), tt,
                                        inst.parcel_mass[parcel])
                 out.append(AirCandidate("NEW", truck, route[a], "ARC", 0.5, rvid, proxy=proxy,
-                                        energy=e, drone=drone))
+                                        energy=e, drone=drone, chain_pos=chain_pos))
                 out.append(AirCandidate("NEW", truck, route[a], "STOP", 0.0, rvid,
-                                        proxy=proxy + 1e-6, energy=e, drone=drone))
+                                        proxy=proxy + 1e-6, energy=e, drone=drone, chain_pos=chain_pos))
     out.sort(key=lambda x: (x.proxy, x.truck or "", x.rec_vid, x.sid or 0))
     seen = set()
     picked = []
@@ -411,6 +573,10 @@ def air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str
         picked.append(cand_)
         if len(picked) >= max_new:
             break
+    if getattr(state, "nominal_cross", False):
+        # 第六轮（仅 X 名义）：在 S 同样的候选之外追加跨车候选（X ⊇ S）；按代理分合并排序
+        picked = picked + cross_air_candidates(plan, inst, phys, parcel)
+        picked.sort(key=lambda x: x.proxy)
     return picked
 
 
@@ -444,6 +610,20 @@ def apply_air(plan: Plan, inst: Instance, parcel: str, cand: AirCandidate, phys=
     if cand.launch_vid is not None and cand.launch_vid not in plan.visits:
         return False
     drone = cand.drone or drone_of_truck(plan, cand.truck)
+    if cand.cross or cand.chain_pos is not None:
+        # 第六轮：链含跨车航次，按当前计划重新核对链衔接（候选可能已因同一轮前序插入而失效）
+        if cand.launch_vid is None:
+            return False
+        lt_ = plan.visits[cand.launch_vid].truck
+        rt_ = plan.visits[cand.rec_vid].truck
+        a_ = plan.routes[lt_].index(cand.launch_vid)
+        b_ = plan.routes[rt_].index(cand.rec_vid)
+        pos_ = find_chain_slot(plan, drone, lt_, a_, rt_, b_)
+        if pos_ is None:
+            return False
+        plan.add_sortie(drone, cand.truck, cand.launch_vid, cand.mode,
+                        cand.lam, [parcel], cand.rec_vid, order=pos_)
+        return True
     car = drone_carriers(plan)
     if car.get(drone) != cand.truck:
         return False

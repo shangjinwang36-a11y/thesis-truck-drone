@@ -174,7 +174,11 @@ def descent_pass(plan: Plan, inst: Instance, phys: PhysicalConfig, alg: Algorith
                 continue                      # 已被前面的接受改走
             base = plan.clone()
             remove_parcel(base, p)
-            acs = air_candidates(base, inst, phys, p, max_new=3, state=None)[:3]
+            if getattr(state, "nominal_cross", False):
+                _all = air_candidates(base, inst, phys, p, max_new=3, state=state)
+                acs = [x for x in _all if not x.cross][:3] + [x for x in _all if x.cross][:2]
+            else:
+                acs = air_candidates(base, inst, phys, p, max_new=3, state=None)[:3]
             win = None
             for ac in acs:
                 if not room():
@@ -204,9 +208,11 @@ def descent_pass(plan: Plan, inst: Instance, phys: PhysicalConfig, alg: Algorith
 
 def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                   rngs: dict[str, random.Random], eval_budget: int | None = None,
-                  variant: str = "full", n_used: int | None = None) -> SolveResult:
+                  variant: str = "full", n_used: int | None = None,
+                  cross_launch: bool = False) -> SolveResult:
     t0 = time.perf_counter()
     state = initial_state(inst, phys)
+    state.nominal_cross = bool(cross_launch)     # 第六轮：True=X（名义阶段允许跨车航次）；False=S（行为与之前完全一致）
     stats = SearchStats()
     budget = Budget(eval_budget if eval_budget is not None else alg.nominal_eval_budget, None)
     plan = ground_only_plan(inst, n_used or phys.truck_count, phys.truck_count)
