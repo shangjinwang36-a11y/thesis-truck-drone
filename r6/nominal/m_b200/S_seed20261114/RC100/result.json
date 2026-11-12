@@ -1,0 +1,122 @@
+{
+ "case_id": "RC100",
+ "status": "FEASIBLE",
+ "plan_id": "RC100-nominal-1.0.0",
+ "H_s": 5816.752578098141,
+ "cost": 677.6082837092422,
+ "z_s": 4016.752578098142,
+ "n_sorties": 31,
+ "n_air_parcels": 66,
+ "n_visits": 49,
+ "eval_requests": 1000,
+ "wall_s": 16.07607540099707,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 677.6082837092422
+ },
+ "distance_km": 173.92109097380515,
+ "cost_breakdown": {
+  "truck_km": 173.92109097380515,
+  "c_km": 291.65349508670306,
+  "driver_s": 26949.027296120083,
+  "c_driver": 379.94227819466016,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 7.4024221012664935,
+  "c_depot": 6.0125104278789125,
+  "swaps": 9.0
+ },
+ "n_cross_sorties": 0,
+ "cross_launch": false,
+ "audit": {
+  "SORTIE_REGROUP": {
+   "calls": 8,
+   "feasible": 5,
+   "infeasible": 3,
+   "cur_improve": 1,
+   "accepted": 1
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 12,
+   "feasible": 7,
+   "infeasible": 5,
+   "accepted": 2
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 9,
+   "infeasible": 5,
+   "feasible": 4
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 2,
+   "infeasible": 2
+  },
+  "R:AIR_FIRST": {
+   "calls": 18,
+   "infeasible": 9,
+   "feasible": 9,
+   "cur_improve": 1,
+   "accepted": 1
+  },
+  "SUPPORT_VISIT": {
+   "calls": 5,
+   "infeasible": 2,
+   "feasible": 3
+  },
+  "GROUND_TO_AIR": {
+   "calls": 4,
+   "feasible": 2,
+   "accepted": 1,
+   "infeasible": 2
+  },
+  "ENERGY_CHAIN": {
+   "calls": 5,
+   "infeasible": 2,
+   "feasible": 3,
+   "accepted": 2,
+   "best": 1
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 10,
+   "feasible": 8,
+   "infeasible": 2,
+   "cur_improve": 1,
+   "accepted": 2,
+   "best": 1
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 7,
+   "feasible": 7,
+   "cur_improve": 1,
+   "accepted": 1
+  }
+ },
+ "reject": {
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 144
+ },
+ "last_improvement_iter": 37,
+ "n_iterations": 40,
+ "best_trace": [
+  [
+   0,
+   680.2394026833588,
+   4136.758866505288
+  ],
+  [
+   204,
+   677.7789562356103,
+   4016.752578098142
+  ],
+  [
+   216,
+   677.6082837092422,
+   4016.752578098142
+  ]
+ ],
+ "two_phase_b": 200,
+ "phase1_evals": 772,
+ "phase1_cost": 680.2394026833588
+}

@@ -1,0 +1,153 @@
+{
+ "case_id": "C100",
+ "status": "FEASIBLE",
+ "plan_id": "C100-nominal-1.0.0",
+ "H_s": 4780.240798776813,
+ "cost": 454.1754555445702,
+ "z_s": 2980.240798776813,
+ "n_sorties": 30,
+ "n_air_parcels": 68,
+ "n_visits": 48,
+ "eval_requests": 1000,
+ "wall_s": 37.18066931000067,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 454.1754555445702
+ },
+ "distance_km": 112.56447894247002,
+ "cost_breakdown": {
+  "truck_km": 112.56447894247002,
+  "c_km": 188.76275167299625,
+  "driver_s": 18575.044776221137,
+  "c_driver": 261.88124537101044,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 4.3478255493851075,
+  "c_depot": 3.531458500563451,
+  "swaps": 0.0
+ },
+ "n_cross_sorties": 3,
+ "cross_launch": true,
+ "audit": {
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 9,
+   "feasible": 9
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 12,
+   "feasible": 11,
+   "infeasible": 1
+  },
+  "CROSS_REPAIR_TRIALS": {
+   "gen": 25,
+   "feasible": 21
+  },
+  "PLAN_NO_CROSS": {
+   "TC_feasible": 2
+  },
+  "R:AIR_FIRST": {
+   "calls": 17,
+   "feasible": 16,
+   "infeasible": 1
+  },
+  "CROSS_CONVERT": {
+   "calls": 16,
+   "feasible": 7,
+   "cur_improve": 3,
+   "best": 3,
+   "infeasible": 9
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 15,
+   "feasible": 11,
+   "infeasible": 4
+  },
+  "PLAN_HAS_CROSS": {
+   "TC_feasible": 19,
+   "TN_feasible": 17,
+   "TN_infeasible": 2,
+   "TC_infeasible": 4
+  },
+  "SUPPORT_VISIT": {
+   "calls": 9,
+   "feasible": 9
+  },
+  "SORTIE_REGROUP": {
+   "calls": 4,
+   "feasible": 4
+  },
+  "GROUND_TO_AIR": {
+   "calls": 7,
+   "feasible": 5,
+   "infeasible": 2
+  },
+  "ENERGY_CHAIN": {
+   "calls": 5,
+   "feasible": 5
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 3,
+   "feasible": 2,
+   "infeasible": 1
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 7,
+   "feasible": 4,
+   "infeasible": 3
+  }
+ },
+ "reject": {
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 53,
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 9
+ },
+ "last_improvement_iter": 37,
+ "n_iterations": 44,
+ "best_trace": [
+  [
+   0,
+   468.7355536589103,
+   2980.240798776813
+  ],
+  [
+   13,
+   461.31284485778184,
+   2980.240798776813
+  ],
+  [
+   63,
+   461.275155467661,
+   2980.240798776813
+  ],
+  [
+   75,
+   455.07304179388154,
+   2980.240798776813
+  ],
+  [
+   125,
+   455.0325330873409,
+   2980.240798776813
+  ],
+  [
+   146,
+   454.8885392817499,
+   2980.240798776813
+  ],
+  [
+   200,
+   454.26537273515686,
+   2980.240798776813
+  ],
+  [
+   227,
+   454.1754555445702,
+   2980.240798776813
+  ]
+ ],
+ "two_phase_b": 200,
+ "phase1_evals": 757,
+ "phase1_cost": 468.7355536589103
+}

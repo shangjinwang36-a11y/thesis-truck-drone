@@ -115,3 +115,47 @@ class TestWorld:
         return EpisodeAudit(self.__case_id, -1, GENERATOR_VERSION, platform.python_version(),
                             self.__eligible_count, len(self.__failed),
                             tuple(sorted(self.__failed)), tuple(sorted(self.__observed)))
+
+
+def bernoulli_failure_flags(case_id: str, environment_seed: int, parcel_ids, p: float) -> frozenset:
+    """每个包裹独立以概率 p 失败：u(parcel)=SHA256([版本,'bernoulli',case,seed,parcel])/2^256，失败 iff u<p.
+    u 与 p、计划、策略(S/X)均无关 → (a) S/X 完全相同；(b) 不同 p 之间失败集合嵌套（共同随机数）."""
+    failed = []
+    for pid in sorted(parcel_ids):
+        enc = json.dumps([GENERATOR_VERSION, "bernoulli", case_id, environment_seed, pid],
+                         ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        u = int.from_bytes(hashlib.sha256(enc).digest(), "big") / float(1 << 256)
+        if u < p:
+            failed.append(pid)
+    return frozenset(failed)
+
+
+class BernoulliWorld(HiddenWorld):
+    """失败模式 'bernoulli'：每个（若被空送的）客户独立以概率 p 失败；失败在无人机到达时才揭示.
+    只有被计划空送并实际到达的包裹会被观察到；configured_failure_count 为全部客户中被标记者数(含从未被空送者)."""
+
+    def __init__(self, inst: Instance, case_id: str, environment_seed: int, p: float):
+        if not 0.0 <= p <= 1.0:
+            raise ValueError("p 必须在 [0,1]")
+        # 不调用 HiddenWorld.__init__（其 M∈{1,2} 抽样不适用）；name-mangled 字段在此初始化
+        self._HiddenWorld__case_id = case_id
+        self._HiddenWorld__seed = environment_seed
+        self.p = p
+        self._HiddenWorld__failed = bernoulli_failure_flags(
+            case_id, environment_seed, [c.parcel_id for c in inst.customers], p)
+        self._HiddenWorld__observed = set()
+        self._HiddenWorld__arrivals = {}
+        self._HiddenWorld__closed = False
+        self._HiddenWorld__eligible_count = len(inst.customers)
+
+
+def make_world(inst: Instance, case_id: str, environment_seed: int, failure_mode: str = "default",
+               p: float | None = None):
+    """失败模式工厂：'default'(规范：M∈{1,2}) | 'bernoulli'(每个空送客户独立概率 p)."""
+    if failure_mode == "default":
+        return HiddenWorld(inst, case_id, environment_seed)
+    if failure_mode == "bernoulli":
+        if p is None:
+            raise ValueError("bernoulli 模式需要 p")
+        return BernoulliWorld(inst, case_id, environment_seed, p)
+    raise ValueError(f"未知失败模式 {failure_mode}")

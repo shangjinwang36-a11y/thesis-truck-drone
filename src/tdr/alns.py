@@ -492,6 +492,9 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         cand_ev, cand_plan = _geometry_evaluate(
             trial, ctx, stats, "ALNS_BASE", budget,
             multistart=(new_sortie or not alg.geometry_new_sortie_only))
+        if ctx.state.nominal_cross:
+            _cp = any(_isx(cur_plan, so) for so in cur_plan.sorties.values())
+            stats.aud("PLAN_HAS_CROSS" if _cp else "PLAN_NO_CROSS", ("TC_" if trial_cross else "TN_") + ("infeasible" if cand_ev is None else "feasible"))
         if cand_ev is None:
             stats.aud(op, "infeasible")
             stats.aud("R:" + rep, "infeasible")
@@ -575,7 +578,13 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         # 恢复邻域：继续展开受影响残段的接机车/接机点/部分继续（预算允许时）
         if ctx.catalog is not None and stats.iterations % 10 == 0 and budget.evals_left() > 0:
             p_r, e_r = try_recovery_reassign(cur_plan, ctx, budget, stats)
-            if p_r is not None and e_r is not None and _better(e_r, cur_ev, alg):
+            if (p_r is not None and e_r is not None
+                    and _better(e_r, best_ev if alg.reassign_adopt_only_if_best else cur_ev, alg)):
+                # 第五轮修复(并入第六轮)：目录候选由名义残余计划重建、不含当前 ALNS 进展；
+                # flag=True 时只在优于全局最优时才替换当前解，避免丢弃进展。S/X 同一规则。
+                stats.audit['reassign:adopt_gap_max'] = max(stats.audit.get('reassign:adopt_gap_max', -1e9),
+                                                            (e_r.cost or 0.0) - (best_ev.cost or 0.0))
+                stats.aud('REASSIGN', 'adopt')
                 cur_plan, cur_ev = p_r, e_r
                 if _better(e_r, best_ev, alg):
                     best_ev, best_plan = e_r, p_r.clone()
@@ -647,7 +656,7 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                     "lp_calls": stats.lp_calls,
                     "last_improvement_eval": stats.last_improvement_eval,
                     "last_improvement_iter": stats.last_improvement_iter,
-                    "audit": {k: dict(v) for k, v in stats.audit.items()},
+                    "audit": {k: (dict(v) if isinstance(v, dict) else v) for k, v in stats.audit.items()},
                     "reject": dict(stats.reject),
                     "best_trace": stats.best_trace}
     final_ev = best_ev

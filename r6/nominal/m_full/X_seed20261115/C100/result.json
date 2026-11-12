@@ -1,0 +1,257 @@
+{
+ "case_id": "C100",
+ "status": "FEASIBLE",
+ "plan_id": "C100-nominal-1.0.0",
+ "H_s": 4811.214478501522,
+ "cost": 451.79638512257617,
+ "z_s": 3011.2144785015216,
+ "n_sorties": 28,
+ "n_air_parcels": 61,
+ "n_visits": 52,
+ "eval_requests": 1000,
+ "wall_s": 34.943080719000136,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 451.79638512257617
+ },
+ "distance_km": 110.95567885821524,
+ "cost_breakdown": {
+  "truck_km": 110.95567885821524,
+  "c_km": 186.0649065477069,
+  "driver_s": 18590.360210307117,
+  "c_driver": 262.09717082368917,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 4.474450455070588,
+  "c_depot": 3.634307751180067,
+  "swaps": 1.0
+ },
+ "n_cross_sorties": 4,
+ "cross_launch": true,
+ "audit": {
+  "SUPPORT_VISIT": {
+   "calls": 16,
+   "feasible": 15,
+   "best": 3,
+   "accepted": 3,
+   "infeasible": 1
+  },
+  "R:AIR_FIRST": {
+   "calls": 20,
+   "feasible": 14,
+   "infeasible": 6,
+   "best": 2,
+   "accepted": 2
+  },
+  "CROSS_REPAIR_TRIALS": {
+   "gen": 46,
+   "feasible": 37,
+   "best": 3,
+   "accepted": 3
+  },
+  "PLAN_NO_CROSS": {
+   "TC_feasible": 5,
+   "TN_feasible": 2
+  },
+  "GROUND_TO_AIR": {
+   "calls": 3,
+   "feasible": 3
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 22,
+   "feasible": 20,
+   "best": 2,
+   "accepted": 2,
+   "infeasible": 2
+  },
+  "CROSS_CONVERT": {
+   "calls": 24,
+   "feasible": 13,
+   "cur_improve": 7,
+   "best": 7,
+   "infeasible": 11
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 25,
+   "feasible": 23,
+   "best": 2,
+   "accepted": 2,
+   "infeasible": 2
+  },
+  "PLAN_HAS_CROSS": {
+   "TC_feasible": 32,
+   "TN_feasible": 18,
+   "TC_infeasible": 9,
+   "TN_infeasible": 1
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 15,
+   "feasible": 14,
+   "infeasible": 1,
+   "best": 1,
+   "accepted": 1
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 18,
+   "feasible": 16,
+   "best": 2,
+   "accepted": 2,
+   "infeasible": 2
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 7,
+   "infeasible": 4,
+   "feasible": 3
+  },
+  "ENERGY_CHAIN": {
+   "calls": 6,
+   "feasible": 5,
+   "infeasible": 1
+  },
+  "SORTIE_REGROUP": {
+   "calls": 2,
+   "infeasible": 1,
+   "feasible": 1
+  }
+ },
+ "reject": {
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 80,
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 11,
+  "ALNS_BASE|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 10
+ },
+ "last_improvement_iter": 58,
+ "n_iterations": 67,
+ "best_trace": [
+  [
+   0,
+   488.3966970679479,
+   2902.7018582377927
+  ],
+  [
+   374,
+   483.112731379135,
+   2902.7018582377927
+  ],
+  [
+   401,
+   480.95118806550005,
+   2902.7018582377927
+  ],
+  [
+   406,
+   474.82047295867477,
+   3060.04813571042
+  ],
+  [
+   418,
+   474.1919856692346,
+   3027.9261175546694
+  ],
+  [
+   440,
+   474.1708566776807,
+   3027.9261175546694
+  ],
+  [
+   460,
+   467.2624442411853,
+   3036.5091029558625
+  ],
+  [
+   472,
+   466.9560454980061,
+   3036.5091029558625
+  ],
+  [
+   0,
+   511.02874558293513,
+   2869.5154079603453
+  ],
+  [
+   522,
+   509.70654879071304,
+   2869.5154079603453
+  ],
+  [
+   539,
+   504.2008235788675,
+   2923.6118501966494
+  ],
+  [
+   563,
+   489.624216739075,
+   2923.6118501966494
+  ],
+  [
+   590,
+   489.47871969719824,
+   2923.6118501966494
+  ],
+  [
+   602,
+   476.83647785455827,
+   2923.6118501966494
+  ],
+  [
+   629,
+   472.2785089783832,
+   2807.5598391285034
+  ],
+  [
+   656,
+   472.2384551509465,
+   2807.5598391285034
+  ],
+  [
+   0,
+   466.9560454980061,
+   3036.5091029558625
+  ],
+  [
+   667,
+   465.7066971160339,
+   3055.2886525784206
+  ],
+  [
+   679,
+   465.1147110807987,
+   3055.2886525784206
+  ],
+  [
+   708,
+   461.6287225166022,
+   3055.2886525784206
+  ],
+  [
+   735,
+   461.538235348801,
+   3055.2886525784206
+  ],
+  [
+   749,
+   461.17754896173835,
+   3025.2886525784206
+  ],
+  [
+   777,
+   457.82078467024195,
+   3015.5432300465814
+  ],
+  [
+   789,
+   457.7403025713962,
+   3011.2144785015216
+  ],
+  [
+   811,
+   457.7273839988442,
+   3011.2144785015216
+  ]
+ ],
+ "two_phase_b": null,
+ "phase1_evals": null,
+ "phase1_cost": null
+}

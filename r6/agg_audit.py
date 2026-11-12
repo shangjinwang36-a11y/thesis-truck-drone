@@ -9,6 +9,7 @@ for f in glob.glob(f'r6/nominal/{tag}/*_seed*/*/result.json'):
     if m.get('status') != 'FEASIBLE': continue
     N[st] += 1
     for k, v in (m.get('audit') or {}).items():
+        if not isinstance(v, dict): continue
         for kk, vv in v.items(): A[st][k][kk] += vv
     for k, v in (m.get('reject') or {}).items():
         REJ[st][re.sub(r'^[A-Z_]+\|', '', k)] += v

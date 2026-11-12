@@ -17,7 +17,7 @@ ap.add_argument('--seed0', type=int, default=1)
 ap.add_argument('--forced', type=int, default=0); ap.add_argument('--budget', type=int, default=1000)
 ap.add_argument('--alg-json', default=None); ap.add_argument('--phys-json', default=None)
 ap.add_argument('--cut-mode', default='snapshot'); ap.add_argument('--workers', type=int, default=7)
-ap.add_argument('--strats', default='S,X')
+ap.add_argument('--strats', default='S,X'); ap.add_argument('--reassign-old', action='store_true')
 args = ap.parse_args()
 OUT = Path(ROOT) / 'r6' / 'results'; OUT.mkdir(parents=True, exist_ok=True)
 
@@ -34,6 +34,7 @@ def setup():
     alg.recovery_eval_budget_override = args.budget
     alg.recovery_time_limit_override_s = None
     alg.recovery_decision = 'milp'
+    alg.reassign_adopt_only_if_best = not args.reassign_old   # 第五轮修复，S/X 对称
     return pkg, phys, alg
 
 
