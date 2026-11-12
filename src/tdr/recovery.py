@@ -640,6 +640,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
     cap = init_catalog_entries if init_catalog_entries is not None else \
         (max_candidates if max_candidates is not None else 10 ** 9)   # 实际由初始化预算限制
     tried = 0
+    tried_entries: list[dict] = []
     while (tried < cap or best is None):
         _rescue_check()
         if budget is not None and budget.evals_left() <= 0:
@@ -651,6 +652,8 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
             break
         entry = entries[0]
         tried += 1
+        if len(tried_entries) < 12:
+            tried_entries.append(entry)
         info["n_catalog_entries"] = tried
         catalog.n_evaluated += 1
         catalog.covered_trucks.add(entry["truck"])
@@ -668,6 +671,24 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
             _consider(cp, ev, entry, "CATALOG")
         if exhausted:
             continue
+
+    # ②-F 第二轮兜底：残段/目录/MILP 都没有可行解（常见于多次失败后剩余航次的充电/能量不可行），
+    # 退回"清空未来重建"路径，对前若干个条目各试一次；S/X 规则相同、额外评价额度相同。
+    if best is None and tried_entries and budget is not None:
+        info["fallback_used"] = True
+        budget.eval_limit = (budget.eval_limit or 0) + 24
+        for ent in tried_entries:
+            if budget.evals_left() <= 0:
+                break
+            rb = build_candidates(base, pool, frag.sid, ent, inst, phys, state, H, ground_required)
+            if not rb:
+                continue
+            cp, ev, _, rs = _first_feasible(rb, inst, phys, state, H, stats, budget)
+            reasons += rs
+            if cp is not None:
+                info["rebuild_cost"] = ev.cost
+                _consider(cp, ev, ent, "REBUILD_FALLBACK")
+                break
 
     # ③ REBUILD：对照候选——用当前最优接机安排，但清空未来重建（旧做法）
     if best is not None and best_entry is not None and (budget is None or budget.evals_left() > 0):
