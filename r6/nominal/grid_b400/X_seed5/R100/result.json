@@ -1,0 +1,245 @@
+{
+ "case_id": "R100",
+ "status": "FEASIBLE",
+ "plan_id": "R100-nominal-1.0.0",
+ "H_s": 6379.536256762861,
+ "cost": 727.0537542368737,
+ "z_s": 4579.536256762861,
+ "n_sorties": 32,
+ "n_air_parcels": 83,
+ "n_visits": 48,
+ "eval_requests": 1000,
+ "wall_s": 42.69160048899357,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 727.0537542368737
+ },
+ "distance_km": 188.35740211673053,
+ "cost_breakdown": {
+  "truck_km": 188.35740211673053,
+  "c_km": 315.86217833160896,
+  "driver_s": 28686.60529429987,
+  "c_driver": 404.4396129561413,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 8.312813817298672,
+  "c_depot": 6.7519629491234845,
+  "swaps": 13.0
+ },
+ "n_cross_sorties": 4,
+ "cross_launch": true,
+ "audit": {
+  "AFFECTED_SORTIE": {
+   "calls": 10,
+   "feasible": 8,
+   "best": 5,
+   "accepted": 7,
+   "cur_improve": 2,
+   "infeasible": 2
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 19,
+   "feasible": 13,
+   "best": 5,
+   "accepted": 8,
+   "cur_improve": 1,
+   "infeasible": 6
+  },
+  "SORTIE_REGROUP": {
+   "calls": 9,
+   "feasible": 5,
+   "infeasible": 4,
+   "accepted": 4,
+   "cur_improve": 1,
+   "best": 2
+  },
+  "CROSS_CONVERT": {
+   "calls": 16,
+   "feasible": 10,
+   "cur_improve": 2,
+   "infeasible": 6,
+   "best": 1
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 2,
+   "feasible": 1,
+   "infeasible": 1
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 9,
+   "infeasible": 6,
+   "feasible": 3,
+   "accepted": 2,
+   "best": 1
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 12,
+   "feasible": 7,
+   "accepted": 3,
+   "infeasible": 5,
+   "best": 2
+  },
+  "CROSS_REPAIR_TRIALS": {
+   "gen": 18,
+   "feasible": 6,
+   "accepted": 2,
+   "best": 1
+  },
+  "R:AIR_FIRST": {
+   "calls": 21,
+   "feasible": 13,
+   "cur_improve": 2,
+   "accepted": 6,
+   "infeasible": 8,
+   "best": 4
+  },
+  "ENERGY_CHAIN": {
+   "calls": 9,
+   "feasible": 6,
+   "best": 1,
+   "accepted": 1,
+   "infeasible": 3
+  },
+  "SUPPORT_VISIT": {
+   "calls": 2,
+   "feasible": 2,
+   "accepted": 1
+  },
+  "GROUND_TO_AIR": {
+   "calls": 5,
+   "infeasible": 5
+  }
+ },
+ "reject": {
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 170,
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 2,
+  "CROSS_CONVERT|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 4,
+  "COORDINATE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 14,
+  "ALNS_BASE|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 3
+ },
+ "last_improvement_iter": 49,
+ "n_iterations": 49,
+ "best_trace": [
+  [
+   0,
+   766.7763203238491,
+   4240.313176566752
+  ],
+  [
+   6,
+   764.4950895605738,
+   4230.313176566752
+  ],
+  [
+   18,
+   764.1999178327242,
+   4230.313176566752
+  ],
+  [
+   106,
+   762.1747680176597,
+   4513.6117716233575
+  ],
+  [
+   118,
+   761.9284202011885,
+   4513.6117716233575
+  ],
+  [
+   128,
+   760.2671475474993,
+   4554.803087453688
+  ],
+  [
+   140,
+   759.9273860232838,
+   4554.803087453688
+  ],
+  [
+   157,
+   754.8805621907886,
+   4513.6117716233575
+  ],
+  [
+   169,
+   754.8623556150528,
+   4513.6117716233575
+  ],
+  [
+   174,
+   753.3378343957098,
+   4492.26002745201
+  ],
+  [
+   186,
+   753.1717942758352,
+   4492.26002745201
+  ],
+  [
+   191,
+   747.1994567966369,
+   4724.843841043751
+  ],
+  [
+   203,
+   746.7871552842086,
+   4724.843841043751
+  ],
+  [
+   259,
+   746.7689487084727,
+   4724.843841043751
+  ],
+  [
+   294,
+   743.2026852273416,
+   4499.365285731988
+  ],
+  [
+   306,
+   743.0465014056856,
+   4499.365285731988
+  ],
+  [
+   308,
+   742.375663404961,
+   4470.717029903336
+  ],
+  [
+   314,
+   734.1572926772926,
+   4381.5778993649865
+  ],
+  [
+   326,
+   734.1390861015567,
+   4381.5778993649865
+  ],
+  [
+   336,
+   732.2119050705519,
+   4256.492510112026
+  ],
+  [
+   348,
+   732.0557212488958,
+   4256.492510112026
+  ],
+  [
+   390,
+   727.0744921415283,
+   4579.536256762861
+  ],
+  [
+   400,
+   727.0537542368737,
+   4579.536256762861
+  ]
+ ],
+ "two_phase_b": 400,
+ "phase1_evals": 600,
+ "phase1_cost": 766.7763203238491
+}

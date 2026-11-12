@@ -1,0 +1,247 @@
+{
+ "case_id": "RC50",
+ "status": "FEASIBLE",
+ "plan_id": "RC50-nominal-1.0.0",
+ "H_s": 5802.008726382281,
+ "cost": 352.02550127605343,
+ "z_s": 4002.008726382281,
+ "n_sorties": 16,
+ "n_air_parcels": 34,
+ "n_visits": 28,
+ "eval_requests": 926,
+ "wall_s": 8.97451379300037,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 352.02550127605343
+ },
+ "distance_km": 91.09676906172137,
+ "cost_breakdown": {
+  "truck_km": 91.09676906172137,
+  "c_km": 152.76290494267244,
+  "driver_s": 13870.659305708537,
+  "c_driver": 195.55621947926883,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 4.563179768185674,
+  "c_depot": 3.706376854112162,
+  "swaps": 5.0
+ },
+ "n_cross_sorties": 3,
+ "cross_launch": true,
+ "audit": {
+  "SUPPORT_VISIT": {
+   "calls": 8,
+   "feasible": 6,
+   "best": 2,
+   "accepted": 2,
+   "infeasible": 2
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 23,
+   "feasible": 15,
+   "infeasible": 8,
+   "best": 3,
+   "accepted": 3
+  },
+  "CROSS_REPAIR_TRIALS": {
+   "gen": 51,
+   "feasible": 16,
+   "best": 2,
+   "accepted": 2
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 10,
+   "infeasible": 9,
+   "feasible": 1
+  },
+  "R:AIR_FIRST": {
+   "calls": 30,
+   "infeasible": 23,
+   "feasible": 7,
+   "best": 4,
+   "accepted": 4
+  },
+  "GROUND_TO_AIR": {
+   "calls": 14,
+   "feasible": 5,
+   "infeasible": 9,
+   "best": 2,
+   "accepted": 2
+  },
+  "SORTIE_REGROUP": {
+   "calls": 8,
+   "feasible": 3,
+   "infeasible": 5
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 10,
+   "infeasible": 6,
+   "feasible": 4
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 9,
+   "infeasible": 3,
+   "feasible": 6
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 23,
+   "feasible": 13,
+   "infeasible": 10,
+   "best": 3,
+   "accepted": 3
+  },
+  "CROSS_CONVERT": {
+   "calls": 14,
+   "feasible": 3,
+   "cur_improve": 2,
+   "best": 2,
+   "infeasible": 11
+  },
+  "ENERGY_CHAIN": {
+   "calls": 17,
+   "feasible": 10,
+   "best": 6,
+   "accepted": 6,
+   "infeasible": 7
+  }
+ },
+ "reject": {
+  "NOMINAL_AIR_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 81,
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 304,
+  "COORDINATE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 17,
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 2,
+  "CROSS_CONVERT|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 9
+ },
+ "last_improvement_iter": 67,
+ "n_iterations": 76,
+ "best_trace": [
+  [
+   0,
+   380.89347573866803,
+   3978.3748689441554
+  ],
+  [
+   365,
+   378.37786423578393,
+   3978.3748689441554
+  ],
+  [
+   380,
+   371.0766066644238,
+   4320.105248974785
+  ],
+  [
+   392,
+   370.8617786569078,
+   4320.105248974785
+  ],
+  [
+   412,
+   369.69761640203063,
+   4212.0314882101775
+  ],
+  [
+   424,
+   369.6454758506779,
+   4212.0314882101775
+  ],
+  [
+   434,
+   368.99647262701944,
+   4212.0314882101775
+  ],
+  [
+   446,
+   368.9948277517199,
+   4212.0314882101775
+  ],
+  [
+   453,
+   366.7312828350645,
+   4212.0314882101775
+  ],
+  [
+   0,
+   508.6268964399974,
+   4650.648118738141
+  ],
+  [
+   488,
+   467.2208719818413,
+   5021.2363943395285
+  ],
+  [
+   500,
+   466.2446713791084,
+   5021.2363943395285
+  ],
+  [
+   505,
+   465.22487495739796,
+   5021.2363943395285
+  ],
+  [
+   517,
+   464.29981556960365,
+   5021.2363943395285
+  ],
+  [
+   549,
+   461.1179775251152,
+   4977.576399773442
+  ],
+  [
+   613,
+   460.33471051166794,
+   4937.576399773442
+  ],
+  [
+   625,
+   460.1357202941945,
+   4937.576399773442
+  ],
+  [
+   0,
+   366.7312828350645,
+   4212.0314882101775
+  ],
+  [
+   682,
+   366.7054280055433,
+   4212.0314882101775
+  ],
+  [
+   706,
+   360.3363694465625,
+   4213.556815687907
+  ],
+  [
+   718,
+   359.24035683308267,
+   4169.701007018296
+  ],
+  [
+   761,
+   358.7197501059936,
+   4178.303008496838
+  ],
+  [
+   773,
+   358.5900193843443,
+   4169.701007018296
+  ],
+  [
+   793,
+   357.5932883166789,
+   4115.00819076271
+  ],
+  [
+   805,
+   356.5942229668019,
+   4115.00819076271
+  ]
+ ]
+}

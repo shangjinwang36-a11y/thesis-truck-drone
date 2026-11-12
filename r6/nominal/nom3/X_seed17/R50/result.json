@@ -1,0 +1,258 @@
+{
+ "case_id": "R50",
+ "status": "FEASIBLE",
+ "plan_id": "R50-nominal-1.0.0",
+ "H_s": 6149.314107646019,
+ "cost": 449.8579407524153,
+ "z_s": 4349.314107646019,
+ "n_sorties": 16,
+ "n_air_parcels": 40,
+ "n_visits": 28,
+ "eval_requests": 942,
+ "wall_s": 16.388698495000426,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 449.8579407524153
+ },
+ "distance_km": 121.39267202747445,
+ "cost_breakdown": {
+  "truck_km": 121.39267202747445,
+  "c_km": 203.56701350303274,
+  "driver_s": 17195.10778842135,
+  "c_driver": 242.42613119754958,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 4.75822072229963,
+  "c_depot": 3.8647960518329962,
+  "swaps": 4.0
+ },
+ "n_cross_sorties": 4,
+ "cross_launch": true,
+ "audit": {
+  "SUPPORT_VISIT": {
+   "calls": 26,
+   "feasible": 20,
+   "best": 6,
+   "accepted": 6,
+   "infeasible": 6
+  },
+  "R:AIR_FIRST": {
+   "calls": 24,
+   "feasible": 15,
+   "best": 3,
+   "accepted": 3,
+   "infeasible": 9
+  },
+  "CROSS_REPAIR_TRIALS": {
+   "gen": 41,
+   "feasible": 25,
+   "best": 7,
+   "accepted": 7
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 14,
+   "feasible": 10,
+   "best": 3,
+   "accepted": 3,
+   "infeasible": 4
+  },
+  "CROSS_CONVERT": {
+   "calls": 16,
+   "infeasible": 11,
+   "feasible": 5,
+   "cur_improve": 2,
+   "best": 2
+  },
+  "GROUND_TO_AIR": {
+   "calls": 9,
+   "feasible": 2,
+   "infeasible": 7
+  },
+  "SORTIE_REGROUP": {
+   "calls": 9,
+   "feasible": 7,
+   "best": 2,
+   "accepted": 2,
+   "infeasible": 2
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 32,
+   "feasible": 22,
+   "best": 4,
+   "accepted": 4,
+   "infeasible": 10
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 8,
+   "feasible": 5,
+   "infeasible": 3
+  },
+  "ENERGY_CHAIN": {
+   "calls": 9,
+   "feasible": 7,
+   "infeasible": 2,
+   "best": 1,
+   "accepted": 1
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 4,
+   "feasible": 4,
+   "best": 1,
+   "accepted": 1
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 5,
+   "infeasible": 3,
+   "feasible": 2
+  }
+ },
+ "reject": {
+  "NOMINAL_AIR_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 63,
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 226,
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 4,
+  "COORDINATE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 8,
+  "CROSS_CONVERT|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 7
+ },
+ "last_improvement_iter": 46,
+ "n_iterations": 70,
+ "best_trace": [
+  [
+   0,
+   473.6113164963704,
+   4130.750098351933
+  ],
+  [
+   333,
+   472.40843412625486,
+   4239.144444661022
+  ],
+  [
+   345,
+   472.11702807730364,
+   4239.144444661022
+  ],
+  [
+   350,
+   471.180220935133,
+   4289.5012611645525
+  ],
+  [
+   362,
+   471.0296032083704,
+   4289.5012611645525
+  ],
+  [
+   374,
+   466.4532273433603,
+   4205.023296437772
+  ],
+  [
+   386,
+   466.2959892901791,
+   4205.023296437772
+  ],
+  [
+   403,
+   466.22420599737757,
+   4205.023296437772
+  ],
+  [
+   430,
+   466.20034810667806,
+   4205.023296437772
+  ],
+  [
+   442,
+   465.3208321170132,
+   4205.023296437772
+  ],
+  [
+   474,
+   460.67335718137156,
+   4399.0844957511945
+  ],
+  [
+   477,
+   460.3373662532732,
+   4389.0844957511945
+  ],
+  [
+   0,
+   543.7762790946658,
+   5382.573185584914
+  ],
+  [
+   498,
+   521.8599475233191,
+   5055.20903768262
+  ],
+  [
+   542,
+   521.7587804856726,
+   5055.20903768262
+  ],
+  [
+   559,
+   519.6735221457988,
+   4606.0550932404985
+  ],
+  [
+   571,
+   506.1751528607218,
+   4351.546667428897
+  ],
+  [
+   627,
+   503.4425717419582,
+   4351.546667428897
+  ],
+  [
+   0,
+   460.3373662532732,
+   4389.0844957511945
+  ],
+  [
+   650,
+   456.1121407971033,
+   4264.976307016188
+  ],
+  [
+   662,
+   455.7834481525854,
+   4264.976307016188
+  ],
+  [
+   667,
+   453.580051224709,
+   4339.314107646019
+  ],
+  [
+   679,
+   453.2440602966107,
+   4329.314107646019
+  ],
+  [
+   684,
+   452.263235731043,
+   4359.314107646019
+  ],
+  [
+   696,
+   451.92724480294464,
+   4349.314107646019
+  ],
+  [
+   730,
+   451.9153121016437,
+   4349.314107646019
+  ],
+  [
+   796,
+   451.9033809462867,
+   4349.314107646019
+  ]
+ ]
+}

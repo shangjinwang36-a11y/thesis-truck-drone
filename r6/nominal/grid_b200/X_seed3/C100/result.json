@@ -1,0 +1,132 @@
+{
+ "case_id": "C100",
+ "status": "FEASIBLE",
+ "plan_id": "C100-nominal-1.0.0",
+ "H_s": 4718.190539601399,
+ "cost": 459.84519267205235,
+ "z_s": 2918.190539601399,
+ "n_sorties": 29,
+ "n_air_parcels": 55,
+ "n_visits": 56,
+ "eval_requests": 1000,
+ "wall_s": 31.42787786899862,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 459.84519267205235
+ },
+ "distance_km": 112.52103219442809,
+ "cost_breakdown": {
+  "truck_km": 112.52103219442809,
+  "c_km": 188.6898945178023,
+  "driver_s": 19008.05014875179,
+  "c_driver": 267.9859943811355,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 3.90195153540992,
+  "c_depot": 3.169303773114529,
+  "swaps": 0.0
+ },
+ "n_cross_sorties": 3,
+ "cross_launch": true,
+ "audit": {
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 4,
+   "infeasible": 1,
+   "feasible": 3
+  },
+  "R:AIR_FIRST": {
+   "calls": 11,
+   "infeasible": 2,
+   "feasible": 9
+  },
+  "CROSS_REPAIR_TRIALS": {
+   "gen": 24,
+   "feasible": 18
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 24,
+   "feasible": 17,
+   "infeasible": 7
+  },
+  "CROSS_CONVERT": {
+   "calls": 14,
+   "feasible": 9,
+   "cur_improve": 4,
+   "best": 3,
+   "infeasible": 5
+  },
+  "SUPPORT_VISIT": {
+   "calls": 6,
+   "feasible": 5,
+   "infeasible": 1
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 7,
+   "feasible": 5,
+   "infeasible": 2
+  },
+  "ENERGY_CHAIN": {
+   "calls": 7,
+   "feasible": 6,
+   "infeasible": 1
+  },
+  "GROUND_TO_AIR": {
+   "calls": 5,
+   "infeasible": 2,
+   "feasible": 3
+  },
+  "SORTIE_REGROUP": {
+   "calls": 4,
+   "feasible": 4
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 6,
+   "infeasible": 2,
+   "feasible": 4
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 4,
+   "feasible": 4
+  }
+ },
+ "reject": {
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 54,
+  "ALNS_BASE|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 5,
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 5
+ },
+ "last_improvement_iter": 17,
+ "n_iterations": 39,
+ "best_trace": [
+  [
+   0,
+   469.3927350816877,
+   2899.3244680217695
+  ],
+  [
+   13,
+   461.9297037532287,
+   2899.3244680217695
+  ],
+  [
+   61,
+   460.14941665731806,
+   2899.3244680217695
+  ],
+  [
+   88,
+   459.98918647764333,
+   2918.190539601399
+  ],
+  [
+   163,
+   459.84519267205235,
+   2918.190539601399
+  ]
+ ],
+ "two_phase_b": 200,
+ "phase1_evals": 800,
+ "phase1_cost": 469.3927350816877
+}

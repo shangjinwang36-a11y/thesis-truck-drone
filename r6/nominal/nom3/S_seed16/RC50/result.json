@@ -1,0 +1,171 @@
+{
+ "case_id": "RC50",
+ "status": "FEASIBLE",
+ "plan_id": "RC50-nominal-1.0.0",
+ "H_s": 5862.45488480411,
+ "cost": 373.96406479708673,
+ "z_s": 4062.45488480411,
+ "n_sorties": 17,
+ "n_air_parcels": 41,
+ "n_visits": 26,
+ "eval_requests": 891,
+ "wall_s": 9.547789071999432,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 373.96406479708673
+ },
+ "distance_km": 97.1892677279595,
+ "cost_breakdown": {
+  "truck_km": 97.1892677279595,
+  "c_km": 162.97959873104716,
+  "driver_s": 14692.766010920846,
+  "c_driver": 207.1467340854283,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 4.72490025136404,
+  "c_depot": 3.8377319806112546,
+  "swaps": 5.0
+ },
+ "n_cross_sorties": 0,
+ "cross_launch": false,
+ "audit": {
+  "RANDOM_DEPENDENCY": {
+   "calls": 14,
+   "feasible": 9,
+   "infeasible": 5
+  },
+  "R:AIR_FIRST": {
+   "calls": 38,
+   "feasible": 27,
+   "infeasible": 11,
+   "best": 2,
+   "accepted": 3
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 21,
+   "feasible": 17,
+   "infeasible": 4,
+   "accepted": 2,
+   "best": 1
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 20,
+   "feasible": 18,
+   "infeasible": 2,
+   "best": 1,
+   "accepted": 1
+  },
+  "SORTIE_REGROUP": {
+   "calls": 9,
+   "feasible": 8,
+   "infeasible": 1
+  },
+  "ENERGY_CHAIN": {
+   "calls": 9,
+   "feasible": 6,
+   "infeasible": 3
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 30,
+   "feasible": 21,
+   "infeasible": 9,
+   "accepted": 1
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 10,
+   "feasible": 8,
+   "infeasible": 2,
+   "best": 1,
+   "accepted": 1
+  },
+  "GROUND_TO_AIR": {
+   "calls": 16,
+   "feasible": 12,
+   "best": 1,
+   "accepted": 2,
+   "infeasible": 4
+  },
+  "SUPPORT_VISIT": {
+   "calls": 9,
+   "infeasible": 3,
+   "feasible": 6
+  }
+ },
+ "reject": {
+  "NOMINAL_AIR_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 81,
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 279,
+  "COORDINATE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 7
+ },
+ "last_improvement_iter": 60,
+ "n_iterations": 88,
+ "best_trace": [
+  [
+   0,
+   380.89347573866803,
+   3978.3748689441554
+  ],
+  [
+   390,
+   380.89154773077956,
+   3978.3748689441554
+  ],
+  [
+   0,
+   508.6268964399974,
+   4650.648118738141
+  ],
+  [
+   515,
+   507.51241846136566,
+   4650.648118738141
+  ],
+  [
+   525,
+   500.13656873494335,
+   4882.136416839242
+  ],
+  [
+   537,
+   496.4666265863392,
+   4623.03532866406
+  ],
+  [
+   585,
+   494.62767012094173,
+   4546.776579032352
+  ],
+  [
+   627,
+   491.2197503709618,
+   4533.765914094925
+  ],
+  [
+   0,
+   380.89154773077956,
+   3978.3748689441554
+  ],
+  [
+   674,
+   380.7229721902253,
+   3978.3748689441554
+  ],
+  [
+   686,
+   380.4310005360876,
+   3978.3748689441554
+  ],
+  [
+   744,
+   380.2979093395626,
+   3978.3748689441554
+  ],
+  [
+   808,
+   376.1078229004716,
+   4062.45488480411
+  ]
+ ]
+}

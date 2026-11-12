@@ -1,0 +1,230 @@
+{
+ "case_id": "C100",
+ "status": "FEASIBLE",
+ "plan_id": "C100-nominal-1.0.0",
+ "H_s": 4976.706388986211,
+ "cost": 449.7144040390131,
+ "z_s": 3176.7063889862106,
+ "n_sorties": 26,
+ "n_air_parcels": 59,
+ "n_visits": 52,
+ "eval_requests": 1000,
+ "wall_s": 58.14034138600255,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 449.7144040390131
+ },
+ "distance_km": 105.50091201841255,
+ "cost_breakdown": {
+  "truck_km": 105.50091201841255,
+  "c_km": 176.91764439103656,
+  "driver_s": 19055.535972816346,
+  "c_driver": 268.65547576830363,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 5.098624224644219,
+  "c_depot": 4.14128387967291,
+  "swaps": 3.0
+ },
+ "n_cross_sorties": 6,
+ "cross_launch": true,
+ "audit": {
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 13,
+   "feasible": 10,
+   "best": 2,
+   "accepted": 5,
+   "infeasible": 3
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 19,
+   "feasible": 14,
+   "best": 2,
+   "accepted": 4,
+   "infeasible": 5
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 22,
+   "feasible": 15,
+   "accepted": 5,
+   "infeasible": 7,
+   "best": 4
+  },
+  "CROSS_REPAIR_TRIALS": {
+   "gen": 36,
+   "feasible": 24,
+   "accepted": 8,
+   "best": 4
+  },
+  "CROSS_CONVERT": {
+   "calls": 14,
+   "infeasible": 5,
+   "feasible": 9,
+   "cur_improve": 3,
+   "best": 2
+  },
+  "ENERGY_CHAIN": {
+   "calls": 5,
+   "feasible": 3,
+   "infeasible": 2
+  },
+  "SUPPORT_VISIT": {
+   "calls": 3,
+   "infeasible": 2,
+   "feasible": 1
+  },
+  "GROUND_TO_AIR": {
+   "calls": 9,
+   "infeasible": 3,
+   "feasible": 6,
+   "accepted": 1
+  },
+  "R:AIR_FIRST": {
+   "calls": 15,
+   "infeasible": 5,
+   "feasible": 10,
+   "accepted": 2,
+   "best": 1
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 8,
+   "infeasible": 1,
+   "feasible": 7,
+   "best": 2,
+   "accepted": 2
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 11,
+   "feasible": 7,
+   "best": 3,
+   "accepted": 3,
+   "infeasible": 4
+  },
+  "SORTIE_REGROUP": {
+   "calls": 7,
+   "infeasible": 2,
+   "feasible": 5
+  }
+ },
+ "reject": {
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 3,
+  "CROSS_CONVERT|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 2,
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 109,
+  "ALNS_BASE|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 5
+ },
+ "last_improvement_iter": 37,
+ "n_iterations": 56,
+ "best_trace": [
+  [
+   0,
+   480.3429613411569,
+   3058.1481210963966
+  ],
+  [
+   6,
+   480.146594406387,
+   2999.428602632824
+  ],
+  [
+   18,
+   480.0677437863804,
+   2999.428602632824
+  ],
+  [
+   82,
+   478.73238303308665,
+   3297.447132504646
+  ],
+  [
+   94,
+   478.45480725124867,
+   3297.447132504646
+  ],
+  [
+   99,
+   469.55777572419305,
+   3220.3632121965675
+  ],
+  [
+   111,
+   469.44067310961975,
+   3220.3632121965675
+  ],
+  [
+   128,
+   468.45930503189044,
+   3220.3632121965675
+  ],
+  [
+   151,
+   468.42774449690967,
+   3220.3632121965675
+  ],
+  [
+   178,
+   467.44804341726615,
+   3339.2942507808607
+  ],
+  [
+   190,
+   467.2303613899467,
+   3339.2942507808607
+  ],
+  [
+   197,
+   466.8997364079437,
+   3409.2942507808607
+  ],
+  [
+   209,
+   466.8453059841807,
+   3409.2942507808607
+  ],
+  [
+   231,
+   466.8387930393113,
+   3409.2942507808607
+  ],
+  [
+   253,
+   462.7658695794595,
+   3657.5091456098253
+  ],
+  [
+   265,
+   461.62009971415915,
+   3657.5091456098253
+  ],
+  [
+   280,
+   452.29916880460354,
+   3202.159666930029
+  ],
+  [
+   292,
+   451.96682179617756,
+   3192.9999857140288
+  ],
+  [
+   294,
+   450.710174122101,
+   3192.9999857140288
+  ],
+  [
+   317,
+   449.7333008101152,
+   3176.7063889862106
+  ],
+  [
+   377,
+   449.7144040390131,
+   3176.7063889862106
+  ]
+ ],
+ "two_phase_b": 400,
+ "phase1_evals": 600,
+ "phase1_cost": 480.3429613411569
+}

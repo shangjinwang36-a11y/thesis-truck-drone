@@ -1,0 +1,155 @@
+{
+ "case_id": "R100",
+ "status": "FEASIBLE",
+ "plan_id": "R100-nominal-1.0.0",
+ "H_s": 6284.969303433456,
+ "cost": 738.0445374369292,
+ "z_s": 4484.969303433456,
+ "n_sorties": 32,
+ "n_air_parcels": 91,
+ "n_visits": 41,
+ "eval_requests": 1000,
+ "wall_s": 17.245947019997402,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 738.0445374369292
+ },
+ "distance_km": 190.3341724799617,
+ "cost_breakdown": {
+  "truck_km": 190.3341724799617,
+  "c_km": 319.17708385682215,
+  "driver_s": 29210.76981429191,
+  "c_driver": 411.82957399949436,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 8.664825779264238,
+  "c_depot": 7.037879580612787,
+  "swaps": 12.0
+ },
+ "n_cross_sorties": 0,
+ "cross_launch": false,
+ "audit": {
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 8,
+   "feasible": 8,
+   "best": 3,
+   "accepted": 4
+  },
+  "R:AIR_FIRST": {
+   "calls": 16,
+   "feasible": 13,
+   "best": 4,
+   "accepted": 7,
+   "infeasible": 3
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 10,
+   "feasible": 5,
+   "infeasible": 5,
+   "best": 3,
+   "accepted": 3
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 14,
+   "feasible": 13,
+   "best": 1,
+   "accepted": 2,
+   "infeasible": 1
+  },
+  "SUPPORT_VISIT": {
+   "calls": 8,
+   "feasible": 6,
+   "infeasible": 2
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 10,
+   "feasible": 5,
+   "infeasible": 5,
+   "best": 1,
+   "accepted": 1
+  },
+  "SORTIE_REGROUP": {
+   "calls": 5,
+   "feasible": 5,
+   "accepted": 2
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 3,
+   "infeasible": 2,
+   "feasible": 1
+  },
+  "ENERGY_CHAIN": {
+   "calls": 4,
+   "feasible": 4,
+   "accepted": 1
+  },
+  "GROUND_TO_AIR": {
+   "calls": 2,
+   "feasible": 2
+  }
+ },
+ "reject": {
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 118,
+  "COORDINATE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 3
+ },
+ "last_improvement_iter": 39,
+ "n_iterations": 40,
+ "best_trace": [
+  [
+   0,
+   750.0925701631681,
+   4538.501322692506
+  ],
+  [
+   6,
+   750.0615465942253,
+   4376.02943821265
+  ],
+  [
+   38,
+   743.1556563294339,
+   4376.02943821265
+  ],
+  [
+   50,
+   743.1347623977745,
+   4376.02943821265
+  ],
+  [
+   124,
+   741.2435118747767,
+   4419.477137607713
+  ],
+  [
+   136,
+   741.2226179431171,
+   4419.477137607713
+  ],
+  [
+   160,
+   740.7598161074451,
+   4419.477137607713
+  ],
+  [
+   170,
+   738.9415272635109,
+   4357.7478401972785
+  ],
+  [
+   207,
+   738.7112617652723,
+   4357.7478401972785
+  ],
+  [
+   250,
+   738.0445374369292,
+   4484.969303433456
+  ]
+ ],
+ "two_phase_b": 200,
+ "phase1_evals": 721,
+ "phase1_cost": 750.0925701631681
+}

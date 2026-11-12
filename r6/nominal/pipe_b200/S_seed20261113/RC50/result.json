@@ -1,0 +1,146 @@
+{
+ "case_id": "RC50",
+ "status": "FEASIBLE",
+ "plan_id": "RC50-nominal-1.0.0",
+ "H_s": 6065.137104621637,
+ "cost": 349.2573325878243,
+ "z_s": 4265.137104621637,
+ "n_sorties": 16,
+ "n_air_parcels": 31,
+ "n_visits": 27,
+ "eval_requests": 1000,
+ "wall_s": 8.716708634994575,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 349.2573325878243
+ },
+ "distance_km": 85.83344442272316,
+ "cost_breakdown": {
+  "truck_km": 85.83344442272316,
+  "c_km": 143.93667795579714,
+  "driver_s": 14314.401553642612,
+  "c_driver": 201.81234289176635,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 4.31932795389782,
+  "c_depot": 3.5083117402608366,
+  "swaps": 5.0
+ },
+ "n_cross_sorties": 0,
+ "cross_launch": false,
+ "audit": {
+  "GROUND_TO_AIR": {
+   "calls": 6,
+   "feasible": 2,
+   "infeasible": 4
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 23,
+   "feasible": 19,
+   "infeasible": 4,
+   "accepted": 6,
+   "best": 2,
+   "cur_improve": 2
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 4,
+   "infeasible": 3,
+   "feasible": 1
+  },
+  "R:AIR_FIRST": {
+   "calls": 16,
+   "infeasible": 11,
+   "feasible": 5,
+   "accepted": 1
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 10,
+   "infeasible": 3,
+   "feasible": 7,
+   "best": 1,
+   "accepted": 1
+  },
+  "ENERGY_CHAIN": {
+   "calls": 5,
+   "infeasible": 2,
+   "feasible": 3,
+   "cur_improve": 1,
+   "accepted": 1
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 9,
+   "feasible": 6,
+   "infeasible": 3,
+   "best": 1,
+   "accepted": 1
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 9,
+   "infeasible": 3,
+   "feasible": 6
+  },
+  "SORTIE_REGROUP": {
+   "calls": 4,
+   "feasible": 4,
+   "accepted": 3,
+   "best": 1
+  },
+  "SUPPORT_VISIT": {
+   "calls": 12,
+   "feasible": 9,
+   "best": 1,
+   "accepted": 3,
+   "infeasible": 3,
+   "cur_improve": 1
+  }
+ },
+ "reject": {
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 115,
+  "COORDINATE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 1
+ },
+ "last_improvement_iter": 48,
+ "n_iterations": 49,
+ "best_trace": [
+  [
+   0,
+   376.0087234152842,
+   3914.386308270188
+  ],
+  [
+   104,
+   375.9205383485771,
+   4228.673174729574
+  ],
+  [
+   116,
+   374.56811036323535,
+   4148.673174729574
+  ],
+  [
+   248,
+   367.96172415332205,
+   4285.137104621637
+  ],
+  [
+   260,
+   367.800201570329,
+   4285.137104621637
+  ],
+  [
+   265,
+   349.4252607688105,
+   4265.137104621637
+  ],
+  [
+   277,
+   349.2573325878243,
+   4265.137104621637
+  ]
+ ],
+ "two_phase_b": 200,
+ "phase1_evals": 721,
+ "phase1_cost": 376.0087234152842
+}
