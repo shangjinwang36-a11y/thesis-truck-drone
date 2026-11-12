@@ -102,24 +102,26 @@ def test_x_startup_not_worse_than_s_same_env(env, budget):
 
 # ---------------------------------------------------------------- 修复：多次失败的截断/续接
 @pytest.mark.skipif(not NOM2.exists(), reason="needs outputs_summary/nominal2")
-@pytest.mark.parametrize("failed", [
-    ("p005", "p044", "p015", "p014", "p043", "p020"),    # 截断点恰为回收末，U 未完成 → HOLDER/CUSTODY
-    ("p001", "p049", "p029", "p012", "p008", "p044"),    # 同一时刻连续截断 → 残段缺少起始坐标
+@pytest.mark.parametrize("case,failed", [
+    ("C50", ("p005", "p044", "p015", "p014", "p043", "p020")),   # 截断点恰为回收末，U 未完成 → HOLDER/CUSTODY
+    ("C50", ("p001", "p049", "p029", "p012", "p008", "p044")),   # 同一时刻连续截断 → 残段缺少起始坐标
+    ("C50", ("p044", "p005", "p046")),                           # 截断点落入 U 内部
+    ("R50", ("p050", "p045", "p016", "p007", "p020", "p043")),   # 失败机后续 P/L/R/U 幽灵动作、装机后截断
 ])
 @pytest.mark.parametrize("strategy", ["S", "X"])
-def test_multi_failure_episode_verified(failed, strategy):
+def test_multi_failure_episode_verified(case, failed, strategy):
     pkg = json.loads((ROOT / "data" / "package.json").read_text(encoding="utf-8"))
     phys = PhysicalConfig.from_dict(pkg["config"])
     alg = AlgorithmConfig.from_dict(pkg["algorithm_protocol"]["default_parameters"])
-    inst = load_instance(pkg, "C50")
-    plan, cost, H = load_case_nominal(inst, NOM2 / "C50")
+    inst = load_instance(pkg, case)
+    plan, cost, H = load_case_nominal(inst, NOM2 / case)
     air = {p for s in plan.sorties.values() for p in s.air}
     failed = tuple(p for p in failed if p in air)
     if len(failed) < 3:
         pytest.skip("nominal2 没有这些空送票")
     nom_ev = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
-    ep = run_episode(inst, plan, nom_ev, H, phys, TestWorld(inst, "C50", failed), strategy, alg,
-                     derive_rngs(alg.base_algorithm_seed, "C50", "recovery", 0),
+    ep = run_episode(inst, plan, nom_ev, H, phys, TestWorld(inst, case, failed), strategy, alg,
+                     derive_rngs(alg.base_algorithm_seed, case, "recovery", 0),
                      recovery_eval_budget=150)
     assert ep.status == "COMPLETED_VERIFIED", ep.notes
 
