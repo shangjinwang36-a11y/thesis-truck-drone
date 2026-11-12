@@ -640,10 +640,77 @@ def _landing_candidates(plan: Plan, tgt_sid: int, inst: Instance, phys: Physical
     return out
 
 
+
+def _unlaunched_target(plan: Plan, ev: Evaluation, done_u: set[int]) -> int | None:
+    """SWAP_CANNOT_FIX:<机体>@t 且该机在 t 对应的是“未起飞”航次(换电后仍能量不足)时，返回该航次 sid."""
+    import re
+    tl = getattr(ev, "timeline", None)
+    for v in ev.violations:
+        m = re.match(r"SWAP_CANNOT_FIX:(d\d+)@([0-9.]+):", v)
+        if not m:
+            continue
+        d, t = m.group(1), float(m.group(2))
+        sid_hit = None
+        if tl is not None:
+            for st in tl.drone_stages.get(d, []):
+                if st.sid is not None and abs(st.start - t) < 0.06:
+                    sid_hit = st.sid
+                    break
+        cands = [sid_hit] if sid_hit is not None else list(plan.drone_sorties.get(d, []))
+        for sid in cands:
+            so = plan.sorties.get(sid)
+            if so is not None and not so.started and sid not in done_u:
+                return sid
+    return None
+
+
+def _unlaunched_candidates(plan: Plan, sid: int, inst: Instance, phys: PhysicalConfig,
+                           state: StartState, strategy: str) -> list[Plan]:
+    """v7：对“未起飞但能量不可行”的航次生成修复候选（S/X 同一规则，仅回收点可选范围按策略限制）：
+    ① 改回收访问(最近的 2 个访问；S 只限本放飞车，X 任意车)；② 丢掉最后一个空送客户转地面；③ 整个航次转地面。"""
+    from .moves import repair_ground_only, repair_ground_append, remove_sortie_closure
+    so = plan.sorties.get(sid)
+    if so is None or so.started or not so.air:
+        return []
+    out: list[Plan] = []
+    last = inst.customer(inst.parcel_to_customer[so.air[-1]])
+    launch_truck = so.truck
+    lv = plan.visits.get(so.launch_vid) if so.launch_vid is not None else None
+    cand_v = []
+    for vid, v in plan.visits.items():
+        if vid == so.rec_vid or vid == so.launch_vid:
+            continue
+        if strategy == "S" and v.truck != launch_truck:
+            continue
+        if v.truck == launch_truck and lv is not None:
+            route = plan.routes.get(launch_truck, [])
+            if vid not in route or so.launch_vid not in route or route.index(vid) <= route.index(so.launch_vid):
+                continue
+        c = inst.customer(v.customer)
+        cand_v.append((math.hypot(c.x - last.x, c.y - last.y), v.truck, vid))
+    cand_v.sort()
+    for _, _, vid in cand_v[:2]:
+        c = plan.clone()
+        c.sorties[sid].rec_vid = vid
+        out.append(c)
+    if len(so.air) >= 2:
+        c = plan.clone()
+        p = c.sorties[sid].air.pop()
+        c, rem = repair_ground_only(c, inst, phys, [p], dict(state.truck_min_insert), state)
+        if not rem:
+            out.append(c)
+    c = plan.clone()
+    freed = remove_sortie_closure(c, sid, [])
+    c, rem = repair_ground_only(c, inst, phys, freed, dict(state.truck_min_insert), state)
+    if not rem:
+        out.append(c)
+    return out
+
+
 def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfig, state: StartState,
                     H: float | None, ground_required: set[str], strategy: str, stats, budget,
                     tried_entries: list[dict], info: dict, consider, guard_n: int,
-                    slot_aware: bool = False) -> bool:
+                    slot_aware: bool = False, unlaunched: bool = False) -> bool:
     """第五轮·联合重选：失败机的回收方案找不到可行解、且违规来自“别的在飞无人机”(SWAP_CANNOT_FIX/SLOT_OVER)时，
     对这些在飞航次也重选接机车/接机点/继续子集（S 只能回原放飞车，X 任意车；同一目录/同一候选构造/同一预算规则）。
     贪心深度≤3，每层最多 3 个条目×2 种补位，评价计入初始化预算（额外额度 JOINT_EXTRA_EVALS，S/X 相同）。"""
@@ -658,13 +725,14 @@ def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfi
             info['landing_seeds'] = info.get('landing_seeds', 0) + 1
     if not seeds or budget is None:
         return False
-    budget.eval_limit = (budget.eval_limit or 0) + JOINT_EXTRA_EVALS + (LAND_EXTRA_EVALS if phys.land_and_wait else 0)
+    budget.eval_limit = (budget.eval_limit or 0) + JOINT_EXTRA_EVALS + (LAND_EXTRA_EVALS if (phys.land_and_wait or unlaunched) else 0)
     info["joint_used"] = True
     info["joint_retargets"] = 0
     for seed in seeds:
         plan_j = seed
         done: set[int] = set()
-        for _depth in range(3):
+        done_u: set[int] = set()
+        for _depth in range(3 + (2 if (phys.land_and_wait or unlaunched) else 0)):
             if budget.evals_left() <= 0:
                 return False
             ev = eval_counted(plan_j, inst, phys, state, H, "RECOVERY_INITIAL_BASE", stats, budget)
@@ -696,6 +764,30 @@ def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfi
                 if first_rel is not None and tgt is None:
                     plan_j = first_rel
                     continue
+            if tgt is None and unlaunched:
+                usid = _unlaunched_target(plan_j, ev, done_u)
+                if usid is not None:
+                    done_u.add(usid)
+                    first_u = None
+                    for cnd in _unlaunched_candidates(plan_j, usid, inst, phys, state, strategy):
+                        if budget.evals_left() <= 0:
+                            return False
+                        ev2 = eval_counted(cnd, inst, phys, state, H, "RECOVERY_INITIAL_BASE", stats, budget)
+                        if ev2 is None:
+                            return False
+                        info["unlaunched_tries"] = info.get("unlaunched_tries", 0) + 1
+                        if ev2.feasible:
+                            fs = cnd.sorties[frag.sid]
+                            info["unlaunched_ok"] = info.get("unlaunched_ok", 0) + 1
+                            consider(cnd, ev2, {"truck": cnd.visits[fs.rec_vid].truck, "kind": "visit",
+                                                "ref": fs.rec_vid, "support": False, "served": list(fs.air)},
+                                     "JOINT_UNLAUNCHED")
+                            return True
+                        if first_u is None:
+                            first_u = cnd
+                    if first_u is not None:
+                        plan_j = first_u
+                        continue
             if tgt is None:
                 break
             done.add(tgt)
@@ -753,7 +845,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                      init_catalog_entries: int | None = None,
                      rescue_evals: int = 0, info: dict | None = None,
                      use_milp: bool = False, milp_top_k: int = 6, joint: bool = False,
-                     slot_aware: bool = False
+                     slot_aware: bool = False, unlaunched: bool = False
                      ) -> tuple[RecoveryOption | None, list[str], RecoveryCatalog | None]:
     """恢复初始解（修复1）：RESIDUAL → CATALOG（残段最小改动）→ REBUILD（旧清空重建，对照）.
 
@@ -922,9 +1014,9 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                 break
 
     # ②-J 第五轮：联合重选所有在飞无人机的接机（S/X 同一路径）；仅当仍无任何可行解时启用
-    if (joint or phys.land_and_wait) and best is None and budget is not None:
+    if (joint or phys.land_and_wait or unlaunched) and best is None and budget is not None:
         _joint_retarget(res, frag, inst, phys, state, H, ground_required, strategy, stats, budget,
-                        tried_entries, info, _consider, catalog.guard_n, slot_aware)
+                        tried_entries, info, _consider, catalog.guard_n, slot_aware, unlaunched)
 
     # ③ REBUILD：对照候选——用当前最优接机安排，但清空未来重建（旧做法）
     if best is not None and best_entry is not None and (budget is None or budget.evals_left() > 0):

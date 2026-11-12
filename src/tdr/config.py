@@ -227,6 +227,8 @@ class AlgorithmConfig:
     joint_inflight_retarget: bool = False
     # 第五轮 v4：机位感知恢复(目录估计成本按接机车机位占用惩罚 + SLOT_OVER 时提前排队航次的放飞访问)，S/X 对称
     slot_aware_recovery: bool = False
+    # 第五轮 v7：未起飞航次的能量违规修复(联合重选/兜底中)：改回收点 / 丢掉最后空送客户给地面 / 整个航次转地面，S/X 同一规则
+    unlaunched_repair: bool = False
     cross_n: int = 2
     crn_per_iteration: bool = False          # 共同随机数：按(种子,算例,重规划,轮次)重置随机流（S/X 对称）
     cross_ops_gate: bool = True              # False=对照：同车情形也启用（S、X 同等）

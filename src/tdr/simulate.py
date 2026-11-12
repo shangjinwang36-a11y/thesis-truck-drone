@@ -874,7 +874,8 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                                                  info=init_info,
                                                  use_milp=(alg.recovery_decision == "milp"),
                                                  joint=alg.joint_inflight_retarget,
-                                                 slot_aware=alg.slot_aware_recovery)
+                                                 slot_aware=alg.slot_aware_recovery,
+                                                 unlaunched=alg.unlaunched_repair)
         if opt is None:
             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
             res.notes.append(f"STOP_CONTEXT:replan={replan_index + 1},t_fail={a.time:.1f},t_cut={t_cut:.1f},"
@@ -916,6 +917,8 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             "slot_relief_tries": init_info.get("slot_relief_tries", 0),
             "slot_relief_ok": init_info.get("slot_relief_ok", 0),
             "landing_tries": init_info.get("landing_tries", 0),
+            "unlaunched_tries": init_info.get("unlaunched_tries", 0),
+            "unlaunched_ok": init_info.get("unlaunched_ok", 0),
             "landing_ok": init_info.get("landing_ok", 0),
             "landing_seeds": init_info.get("landing_seeds", 0),
             "init_cost": init_info.get("init_cost"),

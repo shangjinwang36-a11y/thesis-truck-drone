@@ -477,3 +477,82 @@ def test_land_and_wait_candidates_symmetric_and_flagged():
                 assert c.sorties[so.sid].landed and len(c.sorties[so.sid].air) <= 1
             n += 1
     assert n >= 1
+
+
+def _all_parcels(pl):
+    out = []
+    for v in pl.visits.values():
+        out += v.ground
+    for s in pl.sorties.values():
+        out += s.air + s.handover
+    return sorted(out)
+
+
+def test_unlaunched_candidates_conserve_parcels_and_respect_S():
+    """v7：未起飞航次修复候选：包裹守恒；S 的改回收点只在本放飞车；三类候选(改回收点/丢末客/整转地面)齐全."""
+    from tdr.recovery import _unlaunched_candidates
+    from tdr.schedule import initial_state
+    inst, phys, plan = _light_plan()
+    st = initial_state(inst, phys)
+    base = _all_parcels(plan)
+    sid = next((s.sid for s in plan.sorties.values() if len(s.air) >= 2 and not s.started), None)
+    assert sid is not None
+    so = plan.sorties[sid]
+    for strat in ("S", "X"):
+        cs = _unlaunched_candidates(plan, sid, inst, phys, st, strat)
+        assert len(cs) >= 2
+        kinds = set()
+        for c in cs:
+            assert _all_parcels(c) == base
+            if sid not in c.sorties:
+                kinds.add("ground")
+            elif len(c.sorties[sid].air) == len(so.air) - 1:
+                kinds.add("drop_last")
+            elif c.sorties[sid].rec_vid != so.rec_vid:
+                kinds.add("rec")
+                if strat == "S":
+                    assert c.visits[c.sorties[sid].rec_vid].truck == so.truck
+        assert {"ground", "drop_last"} <= kinds
+    # 原计划不被修改
+    assert _all_parcels(plan) == base and plan.sorties[sid].air == so.air
+
+
+def test_unlaunched_target_parses_non_started_sortie():
+    from tdr.recovery import _unlaunched_target
+    from tdr.evaluate import evaluate_plan
+    from tdr.schedule import initial_state
+    inst, phys, plan = _light_plan()
+    st = initial_state(inst, phys)
+    ev = evaluate_plan(plan, inst, phys, st, None, "NOMINAL")
+    s = next(x for x in plan.sorties.values() if not x.started)
+    stg = next(g for g in ev.timeline.drone_stages[s.drone] if g.sid == s.sid)
+    ev.violations = [f"SWAP_CANNOT_FIX:{s.drone}@{stg.start:.1f}:e=-0.1<0.0"]
+    assert _unlaunched_target(plan, ev, set()) == s.sid
+    other = _unlaunched_target(plan, ev, {s.sid})
+    assert other != s.sid
+
+
+def test_v7_flags_episode_no_invalid():
+    """v7 全开(land+unlaunched)：端到端不产生 INVALID_EXECUTION；默认关闭."""
+    import dataclasses, json as _j
+    from tdr.config import AlgorithmConfig
+    from tdr.evaluate import evaluate_plan
+    from tdr.experiment import load_case_nominal
+    from tdr.schedule import initial_state
+    from tdr import simulate
+    inst, phys, plan = _light_plan()
+    pkg = _j.load(open(ROOT / "data" / "package_light.json"))
+    ad = dict(pkg["algorithm_protocol"]["default_parameters"])
+    assert AlgorithmConfig.from_dict(ad).unlaunched_repair is False
+    ad.update(joint_inflight_retarget=True, unlaunched_repair=True)
+    alg = AlgorithmConfig.from_dict(ad)
+    alg.recovery_eval_budget_override = 60; alg.recovery_time_limit_override_s = None
+    alg.recovery_decision = "milp"
+    phys = dataclasses.replace(phys, land_and_wait=True)
+    _, _, H = load_case_nominal(inst, ROOT / "tests" / "fixtures" / "light" / "C50")
+    nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
+    for seed in (1, 2):
+        ep = simulate.run_episode(inst, plan, nom, H, phys, BernoulliWorld(inst, "C50", seed, 0.3), "S", alg,
+                                  simulate.derive_rngs(alg.base_algorithm_seed, "C50", "recovery", 0),
+                                  recovery_eval_budget=60, max_replans=5)
+        assert ep.status != "INVALID_EXECUTION", ep.notes
