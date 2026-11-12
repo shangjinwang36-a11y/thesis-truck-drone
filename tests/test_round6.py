@@ -156,3 +156,39 @@ def test_same_visit_recovery_before_launch_deadlock():
     plan.add_sortie("d5", "t3", r3[3], "ARC", 0.5, [pa], r5[3], order=0)
     plan.add_sortie("d9", "t5", r5[3], "ARC", 0.5, [pb], r3[3], order=0)
     assert has_wait_cycle(plan)
+
+
+FIX6 = ROOT / "tests" / "fixtures" / "r6"
+
+
+def test_carrier_at_committed_recovery_truncation_cross_plan():
+    """R100 seed7（X 名义含跨车航次）：失败时刻 d8 正处于已承诺的回收 R 中，其承运车必须取该航次回收车(t4)，
+    而不是整班最终承运车(t2)——修复前 INITIAL_RECOVERY_FAILED:航次36放飞车t4与承运车t2不符(STOPPED)."""
+    from tdr.hidden_world import HiddenWorld
+    from tdr import simulate
+    inst, phys, alg = _setup("R100")
+    alg.recovery_eval_budget_override = 1000
+    alg.recovery_time_limit_override_s = None
+    alg.recovery_decision = "milp"
+    _, _, H = load_case_nominal(inst, FIX6 / "S" / "R100")
+    plan, _, _ = load_case_nominal(inst, FIX6 / "X" / "R100")
+    assert any(is_cross_sortie(plan, s) for s in plan.sorties.values())
+    nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "N")
+    rngs = simulate.derive_rngs(alg.base_algorithm_seed, "R100", "recovery", 0)
+    ep = simulate.run_episode(inst, plan, nom, H, phys, HiddenWorld(inst, "R100", 7), "X", alg, rngs,
+                              recovery_eval_budget=1000)
+    assert not any("不符" in n for n in ep.notes), ep.notes
+    assert ep.status == "COMPLETED_VERIFIED", (ep.status, ep.notes[:2])
+
+
+def test_two_phase_phase1_identical_and_equal_budget(tmp_path):
+    inst, phys, alg = _setup("C50")
+    ms = {}
+    for strat in ("S", "X"):
+        ms[strat] = build_case_nominal(inst, phys, alg, tmp_path / strat, eval_budget=400,
+                                       cross_launch=(strat == "X"), two_phase_b=150)
+    assert ms["S"]["phase1_cost"] == ms["X"]["phase1_cost"], "阶段1 必须逐位相同"
+    assert ms["S"]["phase1_evals"] == ms["X"]["phase1_evals"]
+    assert ms["S"]["n_cross_sorties"] == 0
+    assert ms["S"]["verified"] and ms["X"]["verified"]
+    assert ms["X"]["cost"] <= ms["X"]["phase1_cost"] + 1e-9 and ms["S"]["cost"] <= ms["S"]["phase1_cost"] + 1e-9
