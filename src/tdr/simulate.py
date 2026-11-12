@@ -365,6 +365,10 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
         for sid in plan.drone_sorties.get(d, []):
             if sid in inflight:
                 cur = sid
+        if d == failed_drone:
+            # 第四轮 H2：失败机原地悬停，它在旧计划里之后的航次(幽灵航次)不是“在飞”；
+            # 当前航次必为失败航次，否则失败航次被当成已完成弹出机体链(NO_FRAGMENT)。
+            cur = failed_sid
         launched = [sid for sid in plan.drone_sorties.get(d, [])
                     if ((tl.launch_times.get(sid) or (0, 0, None))[1] <= t_cut + 1e-9)
                     or (plan.sorties[sid].started and plan.sorties[sid].start_time <= t_cut + 1e-9)]
