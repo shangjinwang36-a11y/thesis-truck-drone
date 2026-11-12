@@ -264,3 +264,78 @@ def test_joint_catalog_S_restricted_to_own_launch_truck_X_any():
 def test_joint_flag_default_off_and_runs():
     from tdr.config import AlgorithmConfig
     assert AlgorithmConfig().joint_inflight_retarget is False
+
+
+def test_slot_relief_candidates_advance_queued_launch_only():
+    """v4：SLOT_OVER 时只把排队航次的放飞访问提前(≤2 位)，其余字段不变；放飞访问不早于同机体上一航次回收访问."""
+    from tdr.evaluate import evaluate_plan
+    from tdr.recovery import _slot_relief_candidates
+    from tdr.schedule import initial_state
+    inst, phys, plan = _light_plan()
+    st = initial_state(inst, phys)
+    ev = evaluate_plan(plan, inst, phys, st, None, "NOMINAL")
+    assert ev.timeline is not None
+    truck = next(so.truck for so in plan.sorties.values() if so.truck)
+    ev.violations = [f"SLOT_OVER:{truck}@0.0=9"]
+    cands = _slot_relief_candidates(plan, ev, -1, st, max_n=20)
+    assert cands, "名义解中应存在可提前放飞的排队航次"
+    route = plan.routes[truck]
+    for c in cands:
+        diff = [sid for sid, so in plan.sorties.items() if c.sorties[sid].launch_vid != so.launch_vid]
+        assert len(diff) == 1
+        sid = diff[0]
+        a, b = route.index(plan.sorties[sid].launch_vid), route.index(c.sorties[sid].launch_vid)
+        assert 1 <= a - b <= 2
+        so = plan.sorties[sid]
+        assert c.sorties[sid].rec_vid == so.rec_vid and c.sorties[sid].air == so.air
+        assert plan.sorties[sid].launch_vid == plan.sorties[sid].launch_vid  # 原计划不被修改
+    # 无 SLOT_OVER 违规 → 无候选
+    ev.violations = ["H_EXCEEDED:t1@1>0"]
+    assert _slot_relief_candidates(plan, ev, -1, st) == []
+
+
+def test_slot_aware_catalog_is_symmetric_and_only_reorders():
+    """v4：机位感知只改排序(不删条目)；S 只有放飞车一个车，条目集合不变；X 中满员车条目不排在非满员车之前."""
+    from tdr.recovery import RecoveryCatalog
+    from tdr.moves import drone_carriers
+    from tdr.config import AlgorithmConfig
+    from tdr.evaluate import evaluate_plan
+    from tdr.hidden_world import BernoulliWorld
+    from tdr.experiment import load_case_nominal
+    from tdr.schedule import initial_state
+    from tdr import simulate
+    inst, phys, plan = _light_plan()
+    pkg = json.load(open(ROOT / "data" / "package_light.json"))
+    alg = AlgorithmConfig.from_dict(pkg["algorithm_protocol"]["default_parameters"])
+    alg.recovery_eval_budget_override = 60
+    alg.recovery_time_limit_override_s = None
+    alg.recovery_decision = "milp"
+    nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+    _, _, H = load_case_nominal(inst, ROOT / "tests" / "fixtures" / "light" / "C50")
+    cap = []
+    orig = simulate.initial_recovery
+
+    def wrap(new_plan, state2, *a, **kw):
+        cap.append((new_plan.clone(), state2))
+        return orig(new_plan, state2, *a, **kw)
+    simulate.initial_recovery = wrap
+    try:
+        w = BernoulliWorld(inst, "C50", 3, 0.3)
+        simulate.run_episode(inst, plan, nom, H, phys, w, "X", alg,
+                             simulate.derive_rngs(alg.base_algorithm_seed, "C50", "recovery", 0),
+                             recovery_eval_budget=60, max_replans=3)
+    finally:
+        simulate.initial_recovery = orig
+    assert cap
+    n = 0
+    for pl, st in cap:
+        for so in pl.sorties.values():
+            if not so.started or so.start_pos is None:
+                continue
+            key = lambda e: (e["truck"], e["kind"], e["ref"])
+            for strat in ("S", "X"):
+                A = RecoveryCatalog(pl, so, inst, strat, st, set(), phys=phys, guard_n=10, slot_aware=False).next_entries(300)
+                B = RecoveryCatalog(pl, so, inst, strat, st, set(), phys=phys, guard_n=10, slot_aware=True).next_entries(300)
+                assert sorted(map(key, A)) == sorted(map(key, B))
+            n += 1
+    assert n >= 1

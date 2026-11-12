@@ -218,6 +218,8 @@ class AlgorithmConfig:
     reassign_adopt_only_if_best: bool = False
     # 第五轮：恢复初始化无可行解且违规来自别的在飞无人机时，联合重选这些在飞航次的接机车/点（S/X 对称）
     joint_inflight_retarget: bool = False
+    # 第五轮 v4：机位感知恢复(目录估计成本按接机车机位占用惩罚 + SLOT_OVER 时提前排队航次的放飞访问)，S/X 对称
+    slot_aware_recovery: bool = False
     cross_n: int = 2
     crn_per_iteration: bool = False          # 共同随机数：按(种子,算例,重规划,轮次)重置随机流（S/X 对称）
     cross_ops_gate: bool = True              # False=对照：同车情形也启用（S、X 同等）

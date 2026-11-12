@@ -184,8 +184,9 @@ class RecoveryCatalog:
 
     def __init__(self, plan: Plan, frag: Sortie, inst: Instance, strategy: str,
                  state: StartState | None = None, ground_required: set[str] | None = None,
-                 phys: PhysicalConfig | None = None, guard_n: int = 40):
+                 phys: PhysicalConfig | None = None, guard_n: int = 40, slot_aware: bool = False):
         self.phys = phys
+        self.slot_aware = slot_aware      # 第五轮 v4：按接机车机位占用给估计成本加惩罚（S/X 同一公式）
         self.guard_n = guard_n      # X 的第一批评价必须包含 S 排序的前 guard_n 个候选（第二轮修复2）
         self._base_plan = plan
         self.frag = frag
@@ -245,6 +246,13 @@ class RecoveryCatalog:
         ppos = {p: (inst.customer(inst.parcel_to_customer[p]).x,
                     inst.customer(inst.parcel_to_customer[p]).y) for p in rem + fixed_back}
         pcust = {p: inst.parcel_to_customer[p] for p in rem + fixed_back}
+        occ: dict[str, int] = {}
+        if self.slot_aware:
+            from .moves import drone_carriers
+            for d_, t_ in drone_carriers(plan, state).items():
+                if d_ != frag.drone:
+                    occ[t_] = occ.get(t_, 0) + 1
+        slots_ = getattr(phys, "truck_drone_slots", 2)
 
         def est(stop, served: list[str]) -> float:
             cost = stop.cost
@@ -266,6 +274,8 @@ class RecoveryCatalog:
             cost += c_e * en + phys.wage_per_s * w2
             if en > e0 - phys.e_min + phys.energy_tol:
                 cost += 1e4                  # 能量上界不满足：排到最后，但不删除（以完整评价为准）
+            if self.slot_aware and occ.get(stop.truck, 0) + 1 > slots_:
+                cost += 5e3                  # 接机车机位已满(其它机体占满)：排后，不删除（以完整评价为准）
             return cost
 
         items = []
@@ -552,9 +562,54 @@ def _joint_target(plan: Plan, ev: Evaluation, frag_sid: int, done: set[int]) -> 
     return None
 
 
+
+def _slot_relief_candidates(plan: Plan, ev: Evaluation, frag_sid: int, state: StartState,
+                            max_n: int = 4) -> list[Plan]:
+    """机位缓解修复（v4，S/X 同一规则）：评价报 SLOT_OVER:<车>@t 时，把该车上仍占着机位的“排队等放飞”的未起飞航次
+    的放飞访问提前到路线上更早的访问(最多提前 2 个位置，不早于 truck_min_insert、不早于同机体上一航次的回收访问)，
+    使其更早离车从而释放机位。候选交完整评价器核验。"""
+    import re
+    m = None
+    for v in ev.violations:
+        m = re.match(r"SLOT_OVER:(t\d+)@([0-9.]+)=", v)
+        if m:
+            break
+    tl = getattr(ev, "timeline", None)
+    if m is None or tl is None:
+        return []
+    T, t = m.group(1), float(m.group(2))
+    route = plan.routes.get(T, [])
+    low = (state.truck_min_insert or {}).get(T, 0)
+    queued = sorted((tl.launch_times[sid][1], sid) for sid, so in plan.sorties.items()
+                    if not so.started and so.truck == T and sid in tl.launch_times
+                    and tl.launch_times[sid][1] > t - 1e-6 and so.launch_vid in route)
+    out: list[Plan] = []
+    for _, sid in queued:
+        so = plan.sorties[sid]
+        li = route.index(so.launch_vid)
+        prev_rec = -1
+        for q in plan.drone_sorties.get(so.drone, []):
+            if q == sid:
+                break
+            qs = plan.sorties.get(q)
+            if qs is not None and qs.rec_vid in route and plan.visits[qs.rec_vid].truck == T:
+                prev_rec = max(prev_rec, route.index(qs.rec_vid))
+        for back in (1, 2):
+            ni = li - back
+            if ni < max(low, prev_rec) or ni < 0:
+                continue
+            cand = plan.clone()
+            cand.sorties[sid].launch_vid = route[ni]
+            out.append(cand)
+            if len(out) >= max_n:
+                return out
+    return out
+
+
 def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfig, state: StartState,
                     H: float | None, ground_required: set[str], strategy: str, stats, budget,
-                    tried_entries: list[dict], info: dict, consider, guard_n: int) -> bool:
+                    tried_entries: list[dict], info: dict, consider, guard_n: int,
+                    slot_aware: bool = False) -> bool:
     """第五轮·联合重选：失败机的回收方案找不到可行解、且违规来自“别的在飞无人机”(SWAP_CANNOT_FIX/SLOT_OVER)时，
     对这些在飞航次也重选接机车/接机点/继续子集（S 只能回原放飞车，X 任意车；同一目录/同一候选构造/同一预算规则）。
     贪心深度≤3，每层最多 3 个条目×2 种补位，评价计入初始化预算（额外额度 JOINT_EXTRA_EVALS，S/X 相同）。"""
@@ -583,11 +638,31 @@ def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfi
                                       "support": False, "served": list(fs.air)}, "JOINT")
                 return True
             tgt = _joint_target(plan_j, ev, frag.sid, done)
+            if slot_aware and any(v.startswith('SLOT_OVER') for v in ev.violations):
+                first_rel = None
+                for cnd in _slot_relief_candidates(plan_j, ev, frag.sid, state):
+                    if budget.evals_left() <= 0:
+                        return False
+                    ev2 = eval_counted(cnd, inst, phys, state, H, "RECOVERY_INITIAL_BASE", stats, budget)
+                    if ev2 is None:
+                        return False
+                    info["slot_relief_tries"] = info.get("slot_relief_tries", 0) + 1
+                    if ev2.feasible:
+                        fs = cnd.sorties[frag.sid]
+                        info["slot_relief_ok"] = info.get("slot_relief_ok", 0) + 1
+                        consider(cnd, ev2, {"truck": cnd.visits[fs.rec_vid].truck, "kind": "visit", "ref": fs.rec_vid,
+                                            "support": False, "served": list(fs.air)}, "JOINT_SLOT")
+                        return True
+                    if first_rel is None:
+                        first_rel = cnd
+                if first_rel is not None and tgt is None:
+                    plan_j = first_rel
+                    continue
             if tgt is None:
                 break
             done.add(tgt)
             cat = RecoveryCatalog(plan_j, plan_j.sorties[tgt], inst, strategy, state, ground_required,
-                                  phys=phys, guard_n=guard_n)
+                                  phys=phys, guard_n=guard_n, slot_aware=slot_aware)
             first_inf = None
             for ent in cat.next_entries(3):
                 for cnd in build_residual_candidate(plan_j, tgt, ent, inst, phys, state, ground_required,
@@ -619,7 +694,8 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                      catalog: RecoveryCatalog | None = None,
                      init_catalog_entries: int | None = None,
                      rescue_evals: int = 0, info: dict | None = None,
-                     use_milp: bool = False, milp_top_k: int = 6, joint: bool = False
+                     use_milp: bool = False, milp_top_k: int = 6, joint: bool = False,
+                     slot_aware: bool = False
                      ) -> tuple[RecoveryOption | None, list[str], RecoveryCatalog | None]:
     """恢复初始解（修复1）：RESIDUAL → CATALOG（残段最小改动）→ REBUILD（旧清空重建，对照）.
 
@@ -638,7 +714,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
     res = prepare_residual(plan, inst)
     if catalog is None:
         catalog = RecoveryCatalog(res, frag, inst, strategy, state, ground_required, phys=phys,
-                                  guard_n=max(1, ((budget.eval_limit or 100) - 4) // 2))
+                                  guard_n=max(1, ((budget.eval_limit or 100) - 4) // 2), slot_aware=slot_aware)
     catalog.mode = "residual"
     catalog.res_plan = res
     # 重建路径（对照）所需的底板与待插入票
@@ -790,7 +866,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
     # ②-J 第五轮：联合重选所有在飞无人机的接机（S/X 同一路径）；仅当仍无任何可行解时启用
     if joint and best is None and budget is not None:
         _joint_retarget(res, frag, inst, phys, state, H, ground_required, strategy, stats, budget,
-                        tried_entries, info, _consider, catalog.guard_n)
+                        tried_entries, info, _consider, catalog.guard_n, slot_aware)
 
     # ③ REBUILD：对照候选——用当前最优接机安排，但清空未来重建（旧做法）
     if best is not None and best_entry is not None and (budget is None or budget.evals_left() > 0):
