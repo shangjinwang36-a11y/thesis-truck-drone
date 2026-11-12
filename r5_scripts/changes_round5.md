@@ -217,3 +217,17 @@ p=0.2 seeds1-10 全体（v3 运行中，`r5/v3_l2_p02_b1.json`，C100 排序在�
 3. 测试: test_slot_relief_candidates_advance_queued_launch_only, test_slot_aware_catalog_is_symmetric_and_only_reorders; test_round5.py 16 passed。
 4. C100 seed2 p=0.2: v3 S/X 均 STOPPED(replan 17); v4 S → COMPLETED_VERIFIED, X → 仍 STOPPED，但停止点已不同(replan 的 t0=3185.4, H=4927.8): 两架在飞机 d7/d8 同时回 t4，X 仅 t4、t2 两车可达；t4 候选全部 H_EXCEEDED 或 d7 能量 SWAP_CANNOT_FIX(e≈-0.1)，t2 候选 SLOT_OVER(=4)+H_EXCEEDED ⇒ 此状态近乎真不可行(尾段 H 过紧)，非接机位选择问题。
 5. v4 队列 queue6.sh 已启动(v4_l2_p02_b1 → p01_b1 → p03_b1 → p01/p02 seeds 11-40)，v3 的 p03 与后续批次被终止(记 partial)。
+
+## v5 (round5e) — 评价器机位账修复 + 软H加班变体 — 2026-11-13
+### (1) INVALID_EXECUTION(RC100 s4 X p=0.2, t4@4090.1) 根因与修复
+- 复现(dbg10.py)：第9段(最后一次重规划后)，t4 上 d6(原停车上)、d7(3753.8 回收)、d8(3783.8 回收)均在车，d12 于 4090.1 跨车回收到 t4 → 在车3 + 预留1 = 4 > 机位3。独立重放器报 SLOT_OVER，评价器却通过。
+- 根因：evaluate.truck_slot_check 的机位账在“非起飞航次”回收后没有续记在车占位——只在下一次放飞窗口或“从未放飞”时才计，故航次链末尾回收后停车的机体(d7/d8)被漏计，评价器偏宽松。
+- 修复：沿每架机的航次链连续记账(cur_truck/cur_start：回收结束起占本车机位，直到下次放飞结束或入库)。测试：test_slot_ledger_counts_drone_after_recovery_until_final / test_slot_ledger_matches_replay_on_episode。修复后同一最终状态评价器也报 SLOT_OVER:t4@4090.1=4(与重放一致)。
+- 影响：这是对评价器的真实更严格修正，v1–v4 的结果里评价器漏掉的机位超限在 v5 中会成为可行性约束(STOPPED 可能增多)。
+- 未解：修复后 dbg10 同一 seed 仍以 INVALID_EXECUTION 结束(此时评价器与重放一致)，说明搜索/恢复阶段仍有一路把 SLOT_OVER 状态放进了最终计划(sim 循环内 ev_now 与 FINAL 的评价结果不一致，待查，见报告)。
+### (2b) 软H加班(phys.soft_h, overtime_mult=1.5, 默认关)
+- 依据：《中华人民共和国劳动法》第四十四条(一)“安排劳动者延长工作时间的，支付不低于工资的百分之一百五十的工资报酬”。URL: http://www.npc.gov.cn/npc/c2/c30834/201905/t20190521_296651.html (中国人大网；条文由 WebSearch 摘录该页面核对，未用 WebFetch 再取)。
+- 实现：soft_h 时 evaluate/verify 不再因 H_EXCEEDED 判不可行；每车 max(0, finish_k − H) 秒按 (mult−1)×时薪附加(基础 1× 已含在 sum(finish) 工资内)，重放器同口径(verify_replay 新增 H 参数)。测试 test_soft_h_overtime_cost_and_default_hard。
+### (2a) 降落等待(land_and_wait)：本轮未实现(原因见报告)。
+### 队列
+queue7.sh (v5)：v5_l2_p02_base → v5_l2_p02_softH → v5_l2_p01_base → v5_l2_p01_softH。v4 队列已终止(保留 partial_killed_v4_l2_p02_b1.json)。
