@@ -329,6 +329,18 @@ class SolveResult:
     algorithm_id: str = "tdr_alns_v61"
 
 
+def prefix_fixed_cost(state, phys) -> float:
+    """快照之前已发生、对所有候选相同的成本常量 C_prefix_fixed（里程费、已完成司机工时、净车充与补电）."""
+    if state is None or state.t0 <= 0:
+        return 0.0
+    driver_s = 0.0
+    for k in state.truck_start_pos:
+        driver_s += state.truck_done[k] if k in state.truck_done else state.t0
+    return (phys.c_km * state.prefix_distance_m / 1000.0 + phys.wage_per_s * driver_s
+            + phys.cost_vehicle_kwh * phys.slot_efficiency * state.prefix_ac_kwh
+            + phys.cost_depot_kwh * state.prefix_refill_kwh)
+
+
 def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full",
              stats: SearchStats | None = None, init_ev: Evaluation | None = None) -> SolveResult:
     """ALNS 主循环.
@@ -363,7 +375,9 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
     best_ev = cur_ev
     stats.best_trace.append((0, best_ev.cost or 0.0, best_ev.z or 0.0))
     cur_plan = plan.clone()
-    C_scale = max((cur_ev.cost or 1.0) - ctx.state.prefix_distance_m * 0, 1.0)
+    # 第四轮 M3：退火温度尺度只用“后缀成本”(全班成本扣除快照前已发生的常量 C_prefix_fixed)，
+    # 规范 7.x：不得用随故障时刻增长的历史常数放大退火温度。
+    C_scale = max((cur_ev.cost or 1.0) - prefix_fixed_cost(ctx.state, phys), 1.0)
     T0 = -alg.sa_initial_worse_fraction * C_scale / math.log(0.5)
     destroy_ops = list(alg.destroy_operators)
     repair_ops = list(alg.repair_operators)

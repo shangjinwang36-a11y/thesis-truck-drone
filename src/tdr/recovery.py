@@ -468,9 +468,10 @@ def build_residual_candidate(res: Plan, frag_sid: int, entry: dict | None, inst:
     # 别的车（通常是原放飞车）上的旧地送安排必须先清除，否则货物保管冲突(G_CUSTODY)，
     # 所有跨车候选都不可行。
     hand_set = set(hand)
+    # 第四轮 M4：同车残段里已预置的旧地送(接机点之前的访问)也要清除，否则“先送后接”被判 G_CUSTODY
+    # (候选构造错误，不是真实约束)；统一清除后交接票全部重新排到接机点之后。
     for v in cand.visits.values():
-        if v.truck != truck:
-            v.ground = [p for p in v.ground if p not in hand_set]
+        v.ground = [p for p in v.ground if p not in hand_set]
     if _place_handover_guarded(cand, inst, truck, rv, hand):
         return []
     protect = _fixed_first_vids(cand, state) | {rv}
