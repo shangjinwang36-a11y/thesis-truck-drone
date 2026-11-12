@@ -194,7 +194,7 @@ def test_h4_cross_truck_candidates_include_release_credit():
         try:
             simulate.run_episode(inst, plan, nom, H, phys, HiddenWorld(inst, case, 3), strat, alg,
                                  simulate.derive_rngs(alg.base_algorithm_seed, case, "recovery", 0),
-                                 recovery_eval_budget=1000)
+                                 recovery_eval_budget=1000, cut_mode="cascade")
         except _Stop:
             pass
         finally:
@@ -216,3 +216,42 @@ def test_h4_continue_subsets_prefixes():
     for k in range(2, 6):
         assert rem[:k] in subs
     assert len({tuple(s) for s in subs}) == len(subs)
+
+
+def test_h1_snapshot_at_failure_time_no_cascade():
+    """H1：快照取失败时刻；回放核验通过(以前级联顺延 243.9 s)；在途动作按各自剩余时长承诺."""
+    ep = _gh_episode("C200", 2, "S")
+    assert ep.status == "COMPLETED_VERIFIED", (ep.status, ep.notes)
+    assert ep.replans[1:], "应发生重规划"
+    for rp in ep.replans[1:]:
+        assert rp.t_cut == pytest.approx(rp.time_s)
+    old = _gh_episode_cut("C200", 2, "S", "cascade")
+    assert old.replans[1].t_cut - old.replans[1].time_s > 100.0     # 旧口径的级联顺延确实很大(243.9 s)
+
+
+def _gh_episode_cut(case, seed, strat, cut_mode, budget=1000):
+    pkg, phys, alg, inst, plan, H = _gh(case, budget)
+    nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
+    world = HiddenWorld(inst, case, seed)
+    rngs = simulate.derive_rngs(alg.base_algorithm_seed, case, "recovery", 0)
+    return simulate.run_episode(inst, plan, nom, H, phys, world, strat, alg, rngs,
+                                recovery_eval_budget=budget, cut_mode=cut_mode)
+
+
+def test_h1_commit_times_only_straddling_entities():
+    from tdr.simulate import compute_commit_times
+    pkg, phys, alg, inst, plan, H = _gh("C200")
+    ev = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "N")
+    tl = ev.timeline
+    # 选一个正落在某卡车 G/P/R/U 内部的时刻
+    acts = [a for a in tl.actions if a.kind in ("G", "P", "R", "U") and a.end - a.start > 5]
+    a = acts[len(acts) // 2]
+    t = 0.5 * (a.start + a.end)
+    t_cut, Tt, Td = compute_commit_times(tl, t, "d_none")
+    assert t_cut == t
+    assert Tt.get(a.actor, 0) >= a.end - 1e-9
+    # 非级联：任何实体的顺延都 ≤ 该实体自己某个动作的结束，且卡车顺延不会被别的卡车拖长
+    for k, v in Tt.items():
+        own = [x.end for x in tl.actions if x.actor == k and x.kind in ("G", "P", "R", "U", "W") and x.start < t < x.end]
+        assert own and v <= max(own) + 60.0     # 只允许 R→U 并入
+    assert all(v >= t for v in list(Tt.values()) + list(Td.values()))
