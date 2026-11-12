@@ -45,6 +45,10 @@ class SearchStats:
     cover_subsets: set[int] = field(default_factory=set)
     lp_calls: int = 0
     last_improvement_eval: int = 0
+    audit: dict = field(default_factory=dict)   # 第五轮审计：算子调用/接受/改进计数（不影响搜索行为）
+
+    def aud(self, key: str, n: int = 1) -> None:
+        self.audit[key] = self.audit.get(key, 0) + n
 
     def add_eval(self, reason: str) -> None:
         self.eval_requests += 1
@@ -432,6 +436,7 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             op, rep, sact = sel.choose(skey, rng_op)
         n_d[op] += 1
         n_r[rep] += 1
+        stats.aud(f'D:{op}:calls'); stats.aud(f'R:{rep}:calls')
         stats.destroy_used[op] = stats.destroy_used.get(op, 0) + 1
         stats.repair_used[rep] = stats.repair_used.get(rep, 0) + 1
         adj = adjustable_parcels(cur_plan, inst)
@@ -444,6 +449,7 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         if used_op != op:
             stats.destroy_fallback[op] = stats.destroy_fallback.get(op, 0) + 1
         if not freed:
+            stats.aud(f'D:{op}:empty')
             _reward(s_d, op, 0.0)
             _reward(s_r, rep, 0.0)
             if sel is not None:
@@ -459,6 +465,7 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                                forbid_air=ctx.ground_required,
                                min_pos=ctx.state.truck_min_insert or None, state=ctx.state)
         if leftover:
+            stats.aud(f'D:{op}:leftover'); stats.aud(f'R:{rep}:leftover')
             _reward(s_d, op, 0.0)
             _reward(s_r, rep, 0.0)
             if sel is not None:
@@ -472,6 +479,7 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             trial, ctx, stats, "ALNS_BASE", budget,
             multistart=(new_sortie or not alg.geometry_new_sortie_only))
         if cand_ev is None:
+            stats.aud(f'D:{op}:geom_none'); stats.aud(f'R:{rep}:geom_none')
             _reward(s_d, op, 0.0)
             _reward(s_r, rep, 0.0)
             if sel is not None:
@@ -481,7 +489,10 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             continue
         reward = 0.0
         accepted = False
+        if not cand_ev.feasible:
+            stats.aud(f'D:{op}:infeasible'); stats.aud(f'R:{rep}:infeasible')
         if _better(cand_ev, best_ev, alg):
+            stats.aud(f'D:{op}:new_best'); stats.aud(f'R:{rep}:new_best')
             best_ev, best_plan = cand_ev, cand_plan.clone()
             reward = alg.score_global_best
             accepted = True
@@ -489,6 +500,7 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             stats.last_improvement_eval = stats.eval_requests
             stats.best_trace.append((stats.eval_requests, best_ev.cost or 0.0, best_ev.z or 0.0))
         elif _better(cand_ev, cur_ev, alg):
+            stats.aud(f'D:{op}:cur_improve'); stats.aud(f'R:{rep}:cur_improve')
             reward = alg.score_current_improvement
             accepted = True
             stagnation = 0
@@ -509,9 +521,11 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                         except OverflowError:
                             p = 0.0
                     if rng_acc.random() < p:
+                        stats.aud(f'D:{op}:sa_accept'); stats.aud(f'R:{rep}:sa_accept')
                         accepted = True
                         reward = alg.score_other_accepted
             if not accepted:
+                stats.aud(f'D:{op}:rejected'); stats.aud(f'R:{rep}:rejected')
                 reward = 0.0
                 stagnation += 1
         if accepted:
@@ -529,7 +543,9 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                                            cap=alg.coordinate_light_cap)
             else:
                 p2, e2 = coordinate_polish(cur_plan, ctx, stats, budget)
+            stats.aud('polish:calls')
             if e2 is not None and _better(e2, cur_ev, alg):
+                stats.aud('polish:improve')
                 cur_plan, cur_ev = p2, e2
                 if _better(e2, best_ev, alg):
                     best_ev, best_plan = e2, p2.clone()
@@ -537,7 +553,9 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         # 恢复邻域：继续展开受影响残段的接机车/接机点/部分继续（预算允许时）
         if ctx.catalog is not None and stats.iterations % 10 == 0 and budget.evals_left() > 0:
             p_r, e_r = try_recovery_reassign(cur_plan, ctx, budget, stats)
+            stats.aud('reassign:calls')
             if p_r is not None and e_r is not None and _better(e_r, cur_ev, alg):
+                stats.aud('reassign:improve')
                 cur_plan, cur_ev = p_r, e_r
                 if _better(e_r, best_ev, alg):
                     best_ev, best_plan = e_r, p_r.clone()
@@ -570,10 +588,13 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 from .local_reorder import try_local_reorder
                 p3, e3 = try_local_reorder(best_plan, best_ev, ctx, stats, budget, window_cursor)
                 window_cursor += 1
+                stats.aud('local_reorder:calls')
                 if p3 is not None and e3 is not None and _better(e3, best_ev, alg):
+                    stats.aud('local_reorder:improve')
                     best_ev, best_plan = e3, p3.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg, variant)
+    stats.audit['stagnation_final'] = stagnation
     if sel is not None and pend is not None:
         sel.update(pend[0], pend[1], pend[2], None)
     if ctx.catalog is not None:
