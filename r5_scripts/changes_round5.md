@@ -198,3 +198,22 @@ p=0.2 seeds1-10 全体（v3 运行中，`r5/v3_l2_p02_b1.json`，C100 排序在�
 1. SLOT_OVER（多次跨车回收使某辆车机体数>机位）：需要“机位感知”的接机选择（把某架无人机的接机改到机位未满的车/时刻，或延迟放飞），目前联合重选只处理在飞航次、不处理“已在车上排队等放飞”的机位冲突；
 2. 真 H 不可行：全地面也超 H（R100 s2），这类应当 STOPPED（或允许记为“超时完成+罚金”的敏感性口径）。
 队列 `r5/queue5.sh`（v3）：p=0.2 b1 运行中 → p=0.1 b1 → p=0.3 b1 → p=0.1 的 seeds 11–40 → p=0.2 的 seeds 11–40；v2 队列已终止（v2 p=0.1 b1 部分结果在 `partial_killed_v2_l2_p01_b1.json`，不作结论）。汇总命令：`python r5/report5.py results/v3_l2_p02_b1.json "v3 p=0.2" 0.2`，审计 `python r5/audit_r5.py results/<f>.json <p>`。
+
+## v3 结果(p=0.2/0.1 seeds 1-10, light2, 同预算1000, MILP) 与 v4(机位感知) — 2026-11-13 04:30(东京)
+### v3 p=0.2 (60 对 env 条目; 完成配对 32/60)
+- 端到端: ALL Δ=9.08±23.24 (CI±8.05), Δ/C_S=2.15%, X好/同/差=16/7/9 (符号检验 p≈0.23); STOPPED S/X=19/25; air% S/X=59.5/61.5; 跨车占失败回收 24.6%(264); 失败 9.33/env, 观察失败率 0.198 (目标0.2, S/X 配置失败一致)。
+- 逐事件配对(同状态同事件): n=227, Δ_event=0.82±4.80 (CI±0.62), Δ/C_S=0.165%, X好/同/差=29/184/14。
+- STOPPED 原因(S/X): SWAP_CANNOT_FIX 14/14 为主；H_EXCEEDED 含 5/8；SLOT_OVER 0/2(X)；R100 全部 8/8 停(无配对)。
+- 异常: RC100 seed4 X → INVALID_EXECUTION (replay: SLOT_OVER:t4@4090.1=4)：评价器通过但独立重放报机位超限 ⇒ 评价器 truck_slot_check 与 replay 机位记账存在不一致(待查, 未修)。
+### v3 p=0.1 (配对 45/60)
+- ALL Δ=-0.24±21.58 (CI±6.31), Δ/C_S=-0.05%, X好/同/差=14/20/11; STOPPED S/X=11/10; air% 67.8/67.4; 跨车 19.8%(227); 失败4.78/env, 率0.093。
+- 逐事件: n=168, Δ_event=1.20±5.75 (CI±0.87), Δ/C_S=0.236%, X好/同/差=26/134/8。
+- 审计表见 r5/audit_v3_p02.txt, audit_v3_p01.txt (各算子 calls/empty/leftover/geom_none/infeasible/new_best/cur_improve/sa_accept/rejected; 无改进重规划 S 154/541, X 130/513 @p0.2; 72/276 vs 72/282 @p0.1)。
+- 结论: v3 下 X 与 S 的端到端差异在噪声内(符号检验不显著)，逐事件 X 仅小幅占优(0.17–0.24%)；主要瓶颈是 STOPPED 导致配对样本损失一半。
+
+### v4 = round5d: 机位感知恢复(S/X 对称, 默认关, 开关 slot_aware_recovery)
+1. RecoveryCatalog 估计成本：若接机车上(除失败机外)承载机数+1>车机位数, 估计成本+5e3(只改排序不删条目；S 只有放飞车故条目集合/顺序不变，X 重排)。
+2. joint 重选阶段：评价报 SLOT_OVER:<车>@t 时，先尝试"机位缓解修复"：把该车上仍占机位的排队航次的放飞访问提前 1–2 位(不早于 truck_min_insert、同机体上一航次回收访问)，≤4 次评价，计入 joint 额度；可行即采用，否则继续原联合重选。
+3. 测试: test_slot_relief_candidates_advance_queued_launch_only, test_slot_aware_catalog_is_symmetric_and_only_reorders; test_round5.py 16 passed。
+4. C100 seed2 p=0.2: v3 S/X 均 STOPPED(replan 17); v4 S → COMPLETED_VERIFIED, X → 仍 STOPPED，但停止点已不同(replan 的 t0=3185.4, H=4927.8): 两架在飞机 d7/d8 同时回 t4，X 仅 t4、t2 两车可达；t4 候选全部 H_EXCEEDED 或 d7 能量 SWAP_CANNOT_FIX(e≈-0.1)，t2 候选 SLOT_OVER(=4)+H_EXCEEDED ⇒ 此状态近乎真不可行(尾段 H 过紧)，非接机位选择问题。
+5. v4 队列 queue6.sh 已启动(v4_l2_p02_b1 → p01_b1 → p03_b1 → p01/p02 seeds 11-40)，v3 的 p03 与后续批次被终止(记 partial)。
