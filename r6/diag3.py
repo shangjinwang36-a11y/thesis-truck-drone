@@ -17,6 +17,7 @@ def spy(plan, inst, phys, state=None, H=None, reason='', **kw):
         tot=collections.defaultdict(float)
         for st in stages:
             if st.sid==sid: tot[st.kind]+=stage_energy(st,phys)
+        x=evaluate.is_cross_sortie(plan,plan.sorties[sid]) if sid in plan.sorties else None; kinds['cross' if x else 'same']+=1
         samples.append((reason,msg,dict(tot),len(plan.sorties[sid].air) if sid in plan.sorties else None, 0))
     return ev
 evaluate.evaluate_plan = spy

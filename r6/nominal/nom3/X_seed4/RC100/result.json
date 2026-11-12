@@ -1,0 +1,240 @@
+{
+ "case_id": "RC100",
+ "status": "FEASIBLE",
+ "plan_id": "RC100-nominal-1.0.0",
+ "H_s": 6150.656564925252,
+ "cost": 680.6263348993742,
+ "z_s": 4350.656564925252,
+ "n_sorties": 30,
+ "n_air_parcels": 62,
+ "n_visits": 50,
+ "eval_requests": 1000,
+ "wall_s": 40.47369677400275,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 680.6263348993742
+ },
+ "distance_km": 175.4171727110866,
+ "cost_breakdown": {
+  "truck_km": 175.4171727110866,
+  "c_km": 294.16231943440243,
+  "driver_s": 27028.52001952478,
+  "c_driver": 381.0630105349561,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 6.649554914302531,
+  "c_depot": 5.401004930015691,
+  "swaps": 4.0
+ },
+ "n_cross_sorties": 4,
+ "cross_launch": true,
+ "audit": {
+  "RANDOM_DEPENDENCY": {
+   "calls": 12,
+   "infeasible": 8,
+   "feasible": 4,
+   "best": 1,
+   "accepted": 1
+  },
+  "R:AIR_FIRST": {
+   "calls": 26,
+   "infeasible": 17,
+   "feasible": 9
+  },
+  "CROSS_REPAIR_TRIALS": {
+   "gen": 53,
+   "feasible": 25,
+   "best": 4,
+   "accepted": 4
+  },
+  "ENERGY_CHAIN": {
+   "calls": 11,
+   "feasible": 7,
+   "best": 2,
+   "accepted": 2,
+   "infeasible": 4
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 23,
+   "feasible": 15,
+   "best": 7,
+   "accepted": 7,
+   "infeasible": 8
+  },
+  "CROSS_CONVERT": {
+   "calls": 14,
+   "infeasible": 8,
+   "feasible": 6,
+   "cur_improve": 2,
+   "best": 2
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 15,
+   "feasible": 7,
+   "best": 2,
+   "accepted": 2,
+   "infeasible": 8
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 5,
+   "feasible": 3,
+   "infeasible": 2
+  },
+  "SUPPORT_VISIT": {
+   "calls": 8,
+   "feasible": 5,
+   "best": 1,
+   "accepted": 1,
+   "infeasible": 3
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 18,
+   "feasible": 10,
+   "best": 1,
+   "accepted": 1,
+   "infeasible": 8
+  },
+  "GROUND_TO_AIR": {
+   "calls": 11,
+   "infeasible": 6,
+   "feasible": 5,
+   "best": 2,
+   "accepted": 2
+  },
+  "SORTIE_REGROUP": {
+   "calls": 5,
+   "feasible": 3,
+   "infeasible": 2
+  }
+ },
+ "reject": {
+  "NOMINAL_AIR_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 9,
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 244,
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 3,
+  "COORDINATE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 11,
+  "CROSS_CONVERT|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 5,
+  "ALNS_BASE|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 5
+ },
+ "last_improvement_iter": 52,
+ "n_iterations": 67,
+ "best_trace": [
+  [
+   0,
+   745.2413062822277,
+   4207.640838812633
+  ],
+  [
+   375,
+   736.5889216143285,
+   4201.070257920692
+  ],
+  [
+   387,
+   735.8171032429415,
+   4199.086600007856
+  ],
+  [
+   394,
+   735.301235819558,
+   4598.437042036813
+  ],
+  [
+   406,
+   735.1099273593853,
+   4598.437042036813
+  ],
+  [
+   411,
+   730.213330202523,
+   4738.293399380664
+  ],
+  [
+   423,
+   730.1751051952675,
+   4738.293399380664
+  ],
+  [
+   438,
+   709.8668988218606,
+   5023.157397004898
+  ],
+  [
+   450,
+   709.6935048121264,
+   5023.157397004898
+  ],
+  [
+   457,
+   692.0466589108325,
+   4350.656564925252
+  ],
+  [
+   469,
+   691.8568524162137,
+   4350.656564925252
+  ],
+  [
+   0,
+   762.0989836178554,
+   4315.966560031118
+  ],
+  [
+   545,
+   760.3991723968546,
+   4451.870405908317
+  ],
+  [
+   557,
+   760.1861053339304,
+   4451.870405908317
+  ],
+  [
+   574,
+   731.9012445002317,
+   4025.850947800714
+  ],
+  [
+   586,
+   731.6798000108614,
+   4025.850947800714
+  ],
+  [
+   587,
+   730.3300701549969,
+   4053.0261760835274
+  ],
+  [
+   599,
+   730.3262485931858,
+   4053.0261760835274
+  ],
+  [
+   613,
+   702.2488902635766,
+   4053.0261760835274
+  ],
+  [
+   0,
+   691.8568524162137,
+   4350.656564925252
+  ],
+  [
+   766,
+   689.5828205621405,
+   4350.656564925252
+  ],
+  [
+   814,
+   689.4282372156547,
+   4350.656564925252
+  ],
+  [
+   843,
+   689.3075048397131,
+   4350.656564925252
+  ]
+ ]
+}
