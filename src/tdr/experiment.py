@@ -187,6 +187,8 @@ def run_episode_dir(inst: Instance, nominal_plan: Plan, nominal_cost: dict, H: f
         "algorithm_id": ALGORITHM_ID, "algorithm_base_seed": alg.base_algorithm_seed,
         "generator_version": GENERATOR_VERSION, "H_s": H, "variant": variant,
         "recovery_eval_budget": recovery_eval_budget, "recovery_wall_s": recovery_wall_s,
+        "recovery_decision": alg.recovery_decision, "operator_selector": alg.operator_selector,
+        "recovery_init_eval_budget": alg.recovery_init_eval_budget,
     })
     with open(out / "public_events.jsonl", "w", encoding="utf-8") as f:
         for o in obs:
@@ -410,6 +412,8 @@ def run_batch(pkg: dict, cases: list[str], seeds: list[int], strategies: list[st
     summ["variant"] = variant
     summ["recovery_eval_budget"] = recovery_eval_budget
     summ["recovery_wall_s"] = recovery_wall_s
+    summ["recovery_decision"] = alg.recovery_decision
+    summ["operator_selector"] = alg.operator_selector
     _write_json(out / "summary.json", summ)
     _write_csv(out / "paired_results.csv", rows,
                ["case_id", "environment_seed", "cost_S", "cost_X", "delta"])

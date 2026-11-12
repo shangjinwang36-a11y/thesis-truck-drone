@@ -17,11 +17,20 @@ ap.add_argument("--nominal-dir", default="outputs_summary/nominal2")
 ap.add_argument("--budget", type=int, required=True)
 ap.add_argument("--seed", type=int, required=True)
 ap.add_argument("--out", required=True)
+ap.add_argument("--recovery-decision", default=None)
+ap.add_argument("--selector", default=None)
+ap.add_argument("--qtable", default=None)
 a = ap.parse_args()
 pkg = json.load(open(a.package, encoding="utf-8"))
 phys = PhysicalConfig.from_dict(pkg["config"])
 alg = AlgorithmConfig.from_dict(pkg["algorithm_protocol"]["default_parameters"])
 alg.base_algorithm_seed = a.seed
+if a.recovery_decision:
+    alg.recovery_decision = a.recovery_decision
+if a.selector:
+    alg.operator_selector = a.selector
+if a.qtable:
+    alg.qtable_path = a.qtable
 cases = ["C50", "R50", "RC50", "C100", "R100", "RC100"]
 run_batch(pkg, cases, list(range(1, 11)), ["S", "X"], a.nominal_dir, a.out, phys, alg,
           a.budget, None, make_figures=False)

@@ -680,7 +680,8 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                                                  extra_pool=info_.get("freed", []),
                                                  frag_sid=a.sid, stats=init_stats,
                                                  budget=init_budget, rescue_evals=main_limit,
-                                                 info=init_info)
+                                                 info=init_info,
+                                                 use_milp=(alg.recovery_decision == "milp"))
         if opt is None:
             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
             res.notes.append("INITIAL_RECOVERY_FAILED:" + ",".join(reasons[:5]))
@@ -721,6 +722,12 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             "rebuild_cost": init_info.get("rebuild_cost"),
             "n_init_catalog_entries": init_info.get("n_catalog_entries"),
             "stop_reason": stats.stop_reason,
+            "recovery_decision": alg.recovery_decision,
+            "milp_status": init_info.get("milp_status"),
+            "milp_n_options": init_info.get("milp_n_options"),
+            "milp_wall_s": init_info.get("milp_wall_s"),
+            "milp_surrogate_obj": init_info.get("milp_surrogate_obj"),
+            "milp_true_costs": init_info.get("milp_true_costs"),
             "final_cost": sol.evaluation.cost if sol.evaluation is not None else None,
         }
         if init_counts["init_cost"] is not None and init_counts["final_cost"] is not None:

@@ -430,7 +430,8 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                      stats=None, budget: Budget | None = None,
                      catalog: RecoveryCatalog | None = None,
                      init_catalog_entries: int | None = None,
-                     rescue_evals: int = 0, info: dict | None = None
+                     rescue_evals: int = 0, info: dict | None = None,
+                     use_milp: bool = False, milp_top_k: int = 6
                      ) -> tuple[RecoveryOption | None, list[str], RecoveryCatalog | None]:
     """恢复初始解（修复1）：RESIDUAL → CATALOG（残段最小改动）→ REBUILD（旧清空重建，对照）.
 
@@ -506,6 +507,36 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
             info["_residual"] = (cp, ev)
     else:
         reasons.append("RESIDUAL_NOT_AVAILABLE")
+
+    # ②-B 变体 B：接机决策用小型 MILP（HiGHS）求前 K 个最优，再交给完整评价器核验
+    if use_milp:
+        from .recovery_milp import solve_recovery_milp
+        mres = solve_recovery_milp(res, frag.sid, inst, phys, state, strategy, ground_required,
+                                   top_k=milp_top_k)
+        info["milp_status"] = mres.status
+        info["milp_n_stops"] = mres.n_stops
+        info["milp_n_options"] = len(mres.entries)
+        info["milp_wall_s"] = mres.wall_s
+        info["milp_surrogate_obj"] = list(mres.objective)
+        info["milp_true_costs"] = []
+        for ent in mres.entries:
+            if budget is not None and budget.evals_left() <= 3:
+                break
+            key = (ent["truck"], ent["ref"], tuple(ent["served"]))
+            if key in catalog.skip_keys:
+                info["milp_true_costs"].append(None)
+                continue
+            catalog.skip_keys.add(key)
+            cands = build_residual_candidate(res, frag.sid, ent, inst, phys, state,
+                                             ground_required, strategy)
+            if not cands:
+                info["milp_true_costs"].append(None)
+                continue
+            cp, ev, _, rs = _first_feasible(cands, inst, phys, state, H, stats, budget)
+            reasons += rs
+            info["milp_true_costs"].append(ev.cost if cp is not None else None)
+            if cp is not None:
+                _consider(cp, ev, ent, "MILP")
 
     # ② CATALOG：残段底板上换接机车/点/继续子集（初始化预算内，S/X 同上限）
     cap = init_catalog_entries if init_catalog_entries is not None else \

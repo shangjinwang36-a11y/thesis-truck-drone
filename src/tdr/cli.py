@@ -41,6 +41,13 @@ def _phys_alg(pkg, args):
     if getattr(args, "recovery_eval_budget", None) is not None:
         alg.recovery_eval_budget_override = args.recovery_eval_budget
         alg.recovery_time_limit_override_s = None
+    # 变体开关（基线 = catalog + roulette）
+    if getattr(args, "recovery_decision", None):
+        alg.recovery_decision = args.recovery_decision
+    if getattr(args, "selector", None):
+        alg.operator_selector = args.selector
+    if getattr(args, "qtable", None):
+        alg.qtable_path = args.qtable
     return phys, alg
 
 
@@ -156,6 +163,9 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_nominal)
 
     p = sub.add_parser("simulate")
+    p.add_argument("--recovery-decision", choices=["catalog", "milp"], default=None)
+    p.add_argument("--selector", choices=["roulette", "qlearn"], default=None)
+    p.add_argument("--qtable", default=None)
     p.add_argument("--package", required=True)
     p.add_argument("--case", required=True)
     p.add_argument("--environment-seed", type=int, required=True)
@@ -167,6 +177,9 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_simulate)
 
     p = sub.add_parser("experiment")
+    p.add_argument("--recovery-decision", choices=["catalog", "milp"], default=None)
+    p.add_argument("--selector", choices=["roulette", "qlearn"], default=None)
+    p.add_argument("--qtable", default=None)
     p.add_argument("--package", required=True)
     p.add_argument("--nominal-dir", required=True)
     p.add_argument("--out", default="outputs/formal")

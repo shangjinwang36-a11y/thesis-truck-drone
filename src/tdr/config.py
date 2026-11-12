@@ -128,6 +128,11 @@ class AlgorithmConfig:
     # 第一轮修改（修复2）：恢复初始化（残段候选 + 接机目录枚举）单独记账，S/X 相同上限；
     # recovery 预算（250/1000...）只管 ALNS 主循环。
     recovery_init_eval_budget: int = 100
+    # 变体开关（第二/三轮）：基线 = round1（"catalog" + "roulette"）
+    recovery_decision: str = "catalog"      # "catalog"（基线） | "milp"（变体 B）
+    operator_selector: str = "roulette"     # "roulette"（基线） | "qlearn"（变体 A）
+    qtable_path: str | None = None          # 变体 A：已训练的 Q 表（JSON）
+    qlearn_eval_epsilon: float = 0.05       # 变体 A 评价时的随机探索概率（Q 表冻结）
     max_search_rounds: int = 2000
     geometry_base_starts: int = 5
     coordinate_polish_every_alns_iterations: int = 10
