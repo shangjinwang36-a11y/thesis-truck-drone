@@ -165,20 +165,30 @@ def validate_package(pkg: dict[str, Any]) -> dict[str, Any]:
             errors.append(f"config.{key} 应为 {expected}，实际 {got!r}")
 
     if light:
-        for key, expected in [("battery_kwh", 0.5), ("reserve_fraction", 0.1), ("truck_drone_slots", 3),
-                              ("drones_per_truck_initial", 2), ("drone_payload_limit_kg", 4.0),
-                              ("swap_s", 60.0), ("spare_batteries", 4), ("slot_ac_kw", 0.0),
-                              ("ground_service_s", 50), ("air_service_s", 60), ("shift_slack_s", 1800),
-                              ("electricity_cny_kwh", 0.731012), ("drone_speed_m_s", 60.0 / 3.6)]:
+        # 资源梯度变体（round3d）：每车开局 1 或 2 架；换电（默认）或沿用原规范的车载充电
+        swap = bool(cfg.get("swap_mode"))
+        if cfg.get("drones_per_truck_initial") not in (1, 2):
+            errors.append(f"light config.drones_per_truck_initial 应为 1 或 2，实际 {cfg.get('drones_per_truck_initial')!r}")
+        exp_list = [("battery_kwh", 0.5), ("reserve_fraction", 0.1), ("truck_drone_slots", 3),
+                    ("drone_payload_limit_kg", 4.0),
+                    ("ground_service_s", 50), ("air_service_s", 60), ("shift_slack_s", 1800),
+                    ("electricity_cny_kwh", 0.731012), ("drone_speed_m_s", 60.0 / 3.6)]
+        if swap:
+            exp_list += [("swap_s", 60.0), ("spare_batteries", 4), ("slot_ac_kw", 0.0)]
+        else:  # 轻型机 + 车载充电：充电参数与原规范相同
+            exp_list += [("slot_ac_kw", 2.0), ("truck_ac_kw", 4.0), ("truck_initial_ac_kwh", 4.0),
+                         ("slot_efficiency", 0.9), ("aux_efficiency", 0.85)]
+        for key, expected in exp_list:
             got = cfg.get(key)
             if got is None or abs(float(got) - float(expected)) > 1e-9:
                 errors.append(f"light config.{key} 应为 {expected}，实际 {got!r}")
-        if not cfg.get("swap_mode"):
-            errors.append("light config.swap_mode 应为 true")
     mass_cap = 4.0 if light else 30.0
     cases = pkg.get("cases", [])
     names = [c["case_id"] for c in cases]
     expected_names = ["C50", "R50", "RC50", "C100", "R100", "RC100"]
+    gh200 = names == ["C200", "R200", "RC200"]  # round3d：200 客户试验包（Gehring&Homberger），不属于 450 客户标准包
+    if gh200:
+        expected_names = names
     if names != expected_names:
         errors.append(f"cases 名称顺序应为 {expected_names}，实际 {names}")
     total = 0
@@ -219,9 +229,9 @@ def validate_package(pkg: dict[str, Any]) -> dict[str, Any]:
             got = canonical_json_sha256(base_obj)
             if got != mani["base_data_sha256"]:
                 warnings.append(f"{case['case_id']}: base_data_sha256 与按本实现重建的规范化对象不一致")
-    if total != 450:
-        errors.append(f"总客户数应为450，实际 {total}")
-    exp_mass = 454.5 * (0.8 if light else 1.0)
+    if total != (600 if gh200 else 450):
+        errors.append(f"总客户数应为{600 if gh200 else 450}，实际 {total}")
+    exp_mass = (606.0 if gh200 else 454.5) * (0.8 if light else 1.0)
     if abs(total_mass - exp_mass) > 1e-6:
         errors.append(f"总质量应为{exp_mass}，实际 {total_mass}")
 
