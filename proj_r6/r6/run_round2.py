@@ -139,15 +139,83 @@ def configs(pkg, preset: str):
     return phys, alg, ad, ps
 
 
+CASE_TRUCKS = {"C50": 5, "R50": 5, "RC50": 5, "C100": 8, "R100": 8, "RC100": 8}
+BASE_BATTERY_KWH = 0.5
+BASE_RESERVE_KWH = 0.05
+BASE_DPT = 2
+BASE_SLOTS = 3
+
+
+def _apply_overrides(phys, alg, ad, overrides):
+    """第 12 轮只改已经存在的参数。不传 overrides 时对象和预算切分都不变。"""
+    if not overrides:
+        return phys, alg, ad
+    import dataclasses
+    ad = dict(ad)
+    b = overrides.get("nominal_two_phase_b")
+    if b is not None:
+        ad["nominal_two_phase_b"] = int(b)
+        alg.nominal_two_phase_b = int(b)
+    pk = dict(overrides.get("phys") or {})
+    if pk:
+        unknown = [k for k in pk if k not in phys.__dataclass_fields__]
+        if unknown:
+            raise AttributeError("unknown phys fields: " + ",".join(unknown))
+        phys = dataclasses.replace(phys, **pk)
+    for k, v in (overrides.get("alg") or {}).items():
+        if not hasattr(alg, k):
+            raise AttributeError(k)
+        setattr(alg, k, v)
+    return phys, alg, ad
+
+
+def overrides_for(case: str, budget: int, battery_scale=None, reserve_kwh=None,
+                  drones_per_truck=None, slots=None, truck_delta=0,
+                  slack_s=None, scenario_p=None, phase2_frac=None):
+    """按案例把车数换算成覆盖项。机数多于机位时没有合法的开局，直接拒绝。"""
+    phys: dict = {}
+    alg: dict = {}
+    out: dict = {}
+    dpt = BASE_DPT if drones_per_truck is None else int(drones_per_truck)
+    slot_n = BASE_SLOTS if slots is None else int(slots)
+    delta = int(truck_delta or 0)
+    if drones_per_truck is not None or slots is not None or delta:
+        if dpt > slot_n:
+            raise ValueError(f"{dpt} drones do not fit in {slot_n} slots")
+        trucks = CASE_TRUCKS[case] + delta
+        if trucks < 1:
+            raise ValueError(f"truck count {trucks} for {case}")
+        phys.update(truck_count=trucks, drone_count=dpt * trucks,
+                    drones_per_truck_initial=dpt, truck_drone_slots=slot_n)
+    battery = BASE_BATTERY_KWH * (1.0 if battery_scale is None else float(battery_scale))
+    if battery_scale is not None or reserve_kwh is not None:
+        phys["battery_kwh"] = battery
+        if reserve_kwh is None:
+            phys["reserve_fraction"] = BASE_RESERVE_KWH / BASE_BATTERY_KWH
+        else:
+            phys["reserve_fraction"] = float(reserve_kwh) / battery
+    if slack_s is not None:
+        alg["x_rendezvous_slack_s"] = float(slack_s)
+    if scenario_p is not None:
+        alg["scenario_p"] = float(scenario_p)
+    if phase2_frac is not None:
+        out["nominal_two_phase_b"] = max(1, int(round(float(phase2_frac) * int(budget))))
+    if not phys and not alg and "nominal_two_phase_b" not in out:
+        return None
+    out["phys"] = phys
+    out["alg"] = alg
+    return out
+
+
 def build_one(args):
-    pkg_path, preset, case, budget, out_root = args
-    from tdr.config import PhysicalConfig
+    pkg_path, preset, case, budget, out_root = args[:5]
     from tdr.data import load_instance
     from tdr.experiment import build_case_nominal
     pkg = json.load(open(pkg_path))
     phys, alg, ad, ps = configs(pkg, preset)
     inst = load_instance(pkg, case)
     phys = phys.for_case(pkg.get("case_fleet"), case)
+    phys, alg, ad = _apply_overrides(phys, alg, ad, args[5] if len(args) > 5 else None)
     base = Path(out_root) / preset / "nominal"
     t0 = time.perf_counter()
     ms = build_case_nominal(inst, phys, alg, base / "S" / case, eval_budget=budget,
@@ -179,6 +247,7 @@ def ep_one(args):
     phys, alg, ad, ps = configs(pkg, preset)
     inst = load_instance(pkg, case)
     phys = phys.for_case(pkg.get("case_fleet"), case)
+    phys, alg, ad = _apply_overrides(phys, alg, ad, args[10] if len(args) > 10 else None)
     # 风险价用的就是这一次世界的失败概率，不另设一个在种子上调出来的数。
     if alg.x_risk_price_air:
         alg.failure_prob = float(p)
@@ -490,6 +559,15 @@ def main():
                     help="reuse prebuilt nominals from this directory (e.g. r6/results/round2) instead of out/")
     ap.add_argument("--strategies", default="S,R,X",
                     help="episode strategies, comma-separated. X0 is optional and currently equals R.")
+    # 第 12 轮单因素。默认全是 None，正式路径和 round11-frozen 用的预设相同。
+    ap.add_argument("--battery-scale", type=float, default=None)
+    ap.add_argument("--reserve-kwh", type=float, default=None)
+    ap.add_argument("--drones-per-truck", type=int, default=None)
+    ap.add_argument("--slots", type=int, default=None)
+    ap.add_argument("--truck-delta", type=int, default=0)
+    ap.add_argument("--slack-s", type=float, default=None)
+    ap.add_argument("--scenario-p", type=float, default=None)
+    ap.add_argument("--phase2-frac", type=float, default=None)
     args = ap.parse_args()
     pkg = args.package
     presets = (args.presets or args.preset).split(",")
@@ -502,9 +580,26 @@ def main():
                "R3": "R3", "R4": "R3", "R5": "R3", "R6": "R6", "R7": "R7", "R8": "R8",
                "R9": "R9", "R9H": "R9H", "R10": "R10", "R11": "R11"}
 
+    def _job_overrides(case):
+        return overrides_for(
+            case, args.budget,
+            battery_scale=args.battery_scale, reserve_kwh=args.reserve_kwh,
+            drones_per_truck=args.drones_per_truck, slots=args.slots,
+            truck_delta=args.truck_delta, slack_s=args.slack_s,
+            scenario_p=args.scenario_p, phase2_frac=args.phase2_frac)
+
+    manifest = {c: _job_overrides(c) for c in cases}
+    if any(manifest.values()):
+        (out / "overrides.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+
     if args.phase in ("nominal", "all"):
         need = sorted({nom_src[p] for p in presets if p in nom_src})
-        jobs = [(pkg, pr, c, args.budget, str(out)) for pr in need for c in cases]
+        jobs = []
+        for pr in need:
+            for c in cases:
+                ov = _job_overrides(c)
+                job = (pkg, pr, c, args.budget, str(out))
+                jobs.append(job if ov is None else job + (ov,))
         t0 = time.perf_counter()
         print(f"NOMINAL jobs={len(jobs)} workers={args.workers}", flush=True)
         if args.workers <= 1:
@@ -530,8 +625,10 @@ def main():
             nom_root = nom_base / src / "nominal"
             for c in cases:
                 for s in range(args.seed0, args.seed0 + args.seeds):
-                    jobs.append((pkg, pr, c, s, args.budget, str(nom_root), args.world, args.p,
-                                 args.max_replans, args.strategies))
+                    job = (pkg, pr, c, s, args.budget, str(nom_root), args.world, args.p,
+                           args.max_replans, args.strategies)
+                    ov = _job_overrides(c)
+                    jobs.append(job if ov is None else job + (ov,))
         t0 = time.perf_counter()
         print(f"EPISODES jobs={len(jobs)} workers={args.workers} max_replans={args.max_replans} budget={args.budget}", flush=True)
         jsonl = out / "episodes.jsonl"
