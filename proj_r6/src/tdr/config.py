@@ -308,7 +308,11 @@ class AlgorithmConfig:
     # 第 11 轮，只在发布 X 时用：有跨车航次，且 J 不严格低于同车基线，就发布同车基线。
     x_cross_j_gate: bool = False
     # 第 11 轮，只在 X 的恢复目录里用：S 的前若干个候选保持原顺序，其后的能量不可行条目不再占用评价。
-    x_recovery_wider: bool = False
+    x_recovery_wider: bool = False   # T08a 起不再读取：恢复的 MILP 候选数与能量预筛改由下面两项统一设置
+    # T03/T08a：恢复初始化里 MILP 求前 K 个接机方案（S/R/X 相同；X 每辆其他合格车各加一解的 H4 保留）。
+    recovery_milp_top_k: int = 10
+    # T03/T08a：目录能量尾巴预筛，对三种策略都关闭（实测对 X 无益、对 S 有害，且不计评价次数）。
+    recovery_energy_screen: bool = False
     # X 专属：新出现/改回收点的跨车航次，回收后余电须 ≥ E_min + 该比例×E_cap，避免贴着换电下限
     x_cross_energy_margin_frac: float = 0.0
     # X 专属：恢复时不把残差里尚未空送的票新开成空中服务（已有空送可以改回收车）

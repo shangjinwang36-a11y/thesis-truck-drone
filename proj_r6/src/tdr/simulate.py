@@ -952,8 +952,9 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                                                  keep_s_recovery=(strategy == "X" and alg.x_keep_s_recovery),
                                                  limit_new_air=(strategy == "X" and alg.x_limit_new_air),
                                                  new_air_penalty=(alg.x_new_air_penalty if strategy == "X" else 0.0),
-                                                 energy_screen=(strategy == "X" and bool(getattr(alg, "x_recovery_wider", False))),
-                                                 milp_top_k=(10 if strategy == "X" and bool(getattr(alg, "x_recovery_wider", False)) else 6))
+                                                 # T03/T08a：S/R/X 同一设置（MILP 候选数与能量预筛不再按策略区分）。
+                                                 energy_screen=bool(getattr(alg, "recovery_energy_screen", False)),
+                                                 milp_top_k=int(getattr(alg, "recovery_milp_top_k", 10)))
         res.time_init += time.perf_counter() - t_budget0
         res.time_milp += float(init_info.get("milp_wall_s") or 0.0)
         if opt is None:
