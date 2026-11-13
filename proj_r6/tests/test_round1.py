@@ -122,17 +122,24 @@ def test_s_rule_blocks_cross_truck_residual(env):
 
 
 def test_init_and_main_budget_are_separate_and_comparable(env):
-    """修复2：初始化评价与主循环评价分开记账；S/X 的主循环评价、迭代数可比."""
+    """初始化与主循环分开记账，但 S/R/X 每轮共同受 150 次硬上限约束."""
     inst, phys, alg, res, H, target = env
     out = {}
-    for strategy in ("S", "X"):
+    for strategy in ("S", "R", "X"):
         ep = _episode(env, strategy, 150)
         assert ep.status == "COMPLETED_VERIFIED", ep.notes
         out[strategy] = _first_replan_stats(ep)
     for st in out.values():
-        assert st["n_main_evals"] <= 150
-        assert st["n_main_evals"] >= 140                      # 主循环基本用满自己的预算
-        assert st["n_init_evals"] <= alg.recovery_init_eval_budget + 150
+        assert st["n_eval_requests"] <= 150
+        assert st["n_main_evals"] <= 150 - st["n_init_evals"]
+        assert st["n_main_evals"] >= 150 - st["n_init_evals"] - 10
+        assert st["n_init_evals"] <= min(alg.recovery_init_eval_budget, 150)
+        assert st["main_budget_limit"] == 150 - st["init_budget_used"]
+        assert st["init_budget_used"] == st["n_init_evals"]
+        assert st["recovery_hard_cap"] == 150
+        assert st["wall_cap_armed"] is False
+        assert st["wall_cap_hit"] is False
+        assert st["replan_wall_s"] >= 0
         assert st["n_eval_requests"] == st["n_init_evals"] + st["n_main_evals"]
         assert "RECOVERY_INITIAL_BASE" in st["init_by_reason"]
     assert out["S"]["n_init_evals"] <= alg.recovery_init_eval_budget

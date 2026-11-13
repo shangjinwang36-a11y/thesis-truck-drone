@@ -924,9 +924,11 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             break
         main_limit = (recovery_eval_budget if recovery_eval_budget is not None
                       else alg.deterministic_recovery_eval_budget)
-        # 修复2：初始化预算与 ALNS 主循环预算分开记账，S/X 使用相同的两份额度
+        # S/R/X 每轮共用一个硬上限；初始化是子调用，用量记回父预算。
         t_budget0 = time.perf_counter()
-        init_budget = Budget(alg.recovery_init_eval_budget, recovery_wall_s, start=t_budget0)
+        recovery_budget = Budget(main_limit, recovery_wall_s, start=t_budget0)
+        init_budget = Budget(min(alg.recovery_init_eval_budget, main_limit),
+                             recovery_wall_s, start=t_budget0)
         init_stats = SearchStats()
         init_info: dict[str, Any] = {}
         ceiling = set()
@@ -957,11 +959,35 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                                                  milp_top_k=int(getattr(alg, "recovery_milp_top_k", 10)))
         res.time_init += time.perf_counter() - t_budget0
         res.time_milp += float(init_info.get("milp_wall_s") or 0.0)
+        recovery_budget.used = init_budget.used
+        main_budget_limit = max(0, main_limit - recovery_budget.used)
+        budget = Budget(main_budget_limit, recovery_wall_s, start=t_budget0)
+        init_counts = {
+            "n_init_evals": init_stats.eval_requests,
+            "init_by_reason": dict(init_stats.eval_by_reason),
+            "n_main_evals": 0,
+            "n_main_iterations": 0,
+            "main_by_reason": {},
+            "n_eval_requests": init_stats.eval_requests,
+            "init_budget_limit": init_budget.eval_limit,
+            "main_budget_limit": main_budget_limit,
+            "recovery_hard_cap": main_limit,
+            "init_budget_used": init_budget.used,
+            "init_joint_used": init_info.get("joint_used", False),
+            "init_fallback_used": init_info.get("fallback_used", False),
+            "init_rescue_used": init_info.get("rescue_used", False),
+            "wall_cap_armed": recovery_wall_s is not None,
+            "wall_cap_hit": (recovery_wall_s is not None and
+                             (init_budget.time_left() <= 0 or budget.time_left() <= 0)),
+            "replan_wall_s": time.perf_counter() - t_budget0,
+        }
         if opt is None:
             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
             res.notes.append(f"STOP_CONTEXT:replan={replan_index + 1},t_fail={a.time:.1f},t_cut={t_cut:.1f},"
                              f"drone={a.drone},parcel={a.parcel},n_candidate_reasons={len(reasons)}")
             res.notes.append("INITIAL_RECOVERY_FAILED:" + ",".join(reasons[:5]))
+            res.replans.append(ReplanRecord(replan_index + 1, a.time, [a.parcel], res.status,
+                                            None, None, init_counts, t_cut))
             res.plan, res.evaluation = new_plan, None
             _finish_stopped(new_plan, state2)
             break
@@ -979,10 +1005,10 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                            rngs=rr, catalog=catalog, frag_sid=a.sid, strategy=strategy,
                            air_ceiling=air_ceiling)
         t_r = time.perf_counter()
-        budget = Budget(main_limit, recovery_wall_s, start=t_budget0)   # 主循环预算
         stats = SearchStats()
         sol = optimize(opt.plan, ctx, budget, variant=variant, stats=stats, init_ev=opt.ev)
         dt = time.perf_counter() - t_r
+        recovery_budget.used += budget.used
         res.replan_times.append(dt)
         res.time_alns += dt
         # 永不劣于残段候选：理论上 optimize 的最好解从起始解出发、只会更好；这里再做显式兜底
@@ -992,16 +1018,15 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             res.notes.append("RESIDUAL_GUARD_TRIGGERED")
             rp, rev = init_info["_residual"]
             sol = SolveResult(rp, rev, "FEASIBLE_LIMIT", sol.stats)
-        init_counts = {
-            "n_init_evals": init_stats.eval_requests,
-            "init_by_reason": dict(init_stats.eval_by_reason),
+        init_counts.update({
             "n_main_evals": stats.eval_requests,
             "n_main_iterations": stats.iterations,
             "main_by_reason": dict(stats.eval_by_reason),
             "n_eval_requests": init_stats.eval_requests + stats.eval_requests,
-            "init_budget_limit": alg.recovery_init_eval_budget,
-            "main_budget_limit": main_limit,
-            "init_rescue_used": init_info.get("rescue_used", False),
+            "wall_cap_hit": (init_counts["wall_cap_hit"] or
+                             (recovery_wall_s is not None and
+                              (init_budget.time_left() <= 0 or budget.time_left() <= 0))),
+            "replan_wall_s": time.perf_counter() - t_budget0,
             "init_source": init_info.get("best_source"),
             "init_cost": init_info.get("init_cost"),
             "residual_feasible": init_info.get("residual_feasible"),
@@ -1020,7 +1045,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             "milp_surrogate_obj": init_info.get("milp_surrogate_obj"),
             "milp_true_costs": init_info.get("milp_true_costs"),
             "final_cost": sol.evaluation.cost if sol.evaluation is not None else None,
-        }
+        })
         if init_counts["init_cost"] is not None and init_counts["final_cost"] is not None:
             init_counts["patch_back"] = init_counts["init_cost"] - init_counts["final_cost"]
         sol.stats.counts.update(init_counts)

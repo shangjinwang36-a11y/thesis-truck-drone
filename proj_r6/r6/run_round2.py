@@ -166,6 +166,21 @@ def _max_replans_value(spec, n_cust: int) -> int:
     return int(spec)
 
 
+def _budget_audit(replans):
+    stats = [rec.stats or {} for rec in replans]
+    return dict(
+        wall_cap_armed=any(s.get("wall_cap_armed", False) for s in stats),
+        n_wall_cap_hits=sum(bool(s.get("wall_cap_hit", False)) for s in stats),
+        n_replans_over_60s=sum((s.get("replan_wall_s") or 0.0) > 60 for s in stats),
+        max_replan_wall_s=max((s.get("replan_wall_s") or 0.0 for s in stats), default=0.0),
+        init_evals_used=sum(s.get("init_budget_used") or 0 for s in stats),
+        n_init_joint=sum(bool(s.get("init_joint_used", False)) for s in stats),
+        n_init_rescue_would_trigger=sum(bool(s.get("init_rescue_used", False)) for s in stats),
+        n_init_fallback=sum(bool(s.get("init_fallback_used", False)) for s in stats),
+        max_recovery_evals=max((s.get("n_eval_requests") or 0 for s in stats), default=0),
+    )
+
+
 def ep_one(args):
     pkg_path, preset, case, seed, budget, nom_root, failure_mode, p = args[:8]
     max_replans_spec = args[8] if len(args) > 8 else "n_cust"
@@ -213,7 +228,8 @@ def ep_one(args):
             n_cross=sum(1 for s in plan.sorties.values() if is_cross_sortie(plan, s)),
             n_sorties=len(plan.sorties))
         if not nom_ev.feasible:
-            out[strat] = dict(status="NOMINAL_INFEASIBLE_UNDER_H", cost=None, notes=nom_ev.violations[:2])
+            out[strat] = dict(status="NOMINAL_INFEASIBLE_UNDER_H", cost=None,
+                              notes=nom_ev.violations[:2], budget_audit=_budget_audit([]))
             continue
         served_hidden = sorted(set(air) & set(hidden or []))
         out[strat + "_nominal"]["air_hidden"] = served_hidden
@@ -227,7 +243,8 @@ def ep_one(args):
                                       recovery_eval_budget=budget, cut_mode="snapshot",
                                       max_replans=max_replans, ground_finish=True)
         except Exception as e:
-            out[strat] = dict(status="ERROR", cost=None, error=repr(e)[:400], wall=time.perf_counter() - t0)
+            out[strat] = dict(status="ERROR", cost=None, error=repr(e)[:400],
+                              wall=time.perf_counter() - t0, budget_audit=_budget_audit([]))
             continue
         ok = ep.status == "COMPLETED_VERIFIED"
         m = episode_metrics(ep)
@@ -259,6 +276,7 @@ def ep_one(args):
                           inc=inc, verified=ok, notes=notes[:8],
                           wall=time.perf_counter() - t0,
                           n_replans=n_replans, n_evals=n_evals,
+                          budget_audit=_budget_audit(ep.replans[1:]),
                           n_fail_events=m.get("n_fail_events"), n_fail_cross=m.get("n_fail_cross"),
                           n_fail_rec=m.get("n_fail_rec"),
                           n_cross_final=n_cross_final,

@@ -680,10 +680,6 @@ def _retarget_followon(plan: Plan, so, new_truck: str, rec_vid: int, state: Star
     return True
 
 
-JOINT_EXTRA_EVALS = 60
-LAND_EXTRA_EVALS = 120   # v6：降落等待候选额外额度(S/X 相同，仅 land_and_wait 开启时)      # 联合重选阶段额外评价额度（S/X 同一常数，记入初始化预算）
-
-
 def _joint_target(plan: Plan, ev: Evaluation, frag_sid: int, done: set[int]) -> int | None:
     """从评价违规里找出需要“重选接机”的在飞航次：SWAP_CANNOT_FIX:<机体> 或 SLOT_OVER:<车>."""
     import re
@@ -854,7 +850,9 @@ def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfi
                     preserve_cross: bool = False) -> bool:
     """第五轮·联合重选：失败机的回收方案找不到可行解、且违规来自“别的在飞无人机”(SWAP_CANNOT_FIX/SLOT_OVER)时，
     对这些在飞航次也重选接机车/接机点/继续子集（S 只能回原放飞车，X 任意车；同一目录/同一候选构造/同一预算规则）。
-    贪心深度≤3，每层最多 3 个条目×2 种补位，评价计入初始化预算（额外额度 JOINT_EXTRA_EVALS，S/X 相同）。"""
+    贪心深度≤3，每层最多 3 个条目×2 种补位，只使用传入预算的剩余额度。"""
+    if budget is None or budget.evals_left() <= 0:
+        return False
     seeds: list[Plan] = []
     for ent in [None] + list(tried_entries[:2]):
         for c in build_residual_candidate(res, frag.sid, ent, inst, phys, state, ground_required, strategy,
@@ -865,9 +863,8 @@ def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfi
         for c in _landing_candidates(res, frag.sid, inst, phys, state, ground_required, strategy, guard_n)[:2]:
             seeds.append(c)
             info['landing_seeds'] = info.get('landing_seeds', 0) + 1
-    if not seeds or budget is None:
+    if not seeds:
         return False
-    budget.eval_limit = (budget.eval_limit or 0) + JOINT_EXTRA_EVALS + (LAND_EXTRA_EVALS if (phys.land_and_wait or unlaunched) else 0)
     info["joint_used"] = True
     info["joint_retargets"] = 0
     for seed in seeds:
@@ -1047,8 +1044,8 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                      ) -> tuple[RecoveryOption | None, list[str], RecoveryCatalog | None]:
     """恢复初始解（修复1）：RESIDUAL → CATALOG（残段最小改动）→ REBUILD（旧清空重建，对照）.
 
-    budget 是**初始化预算**（S/X 相同上限），与 ALNS 主循环预算分开记账；
-    若初始化预算内一个可行解都没有，再追加 rescue_evals 次评价继续找（两种策略同规则）。
+    budget 是每轮恢复硬上限内的初始化子预算（S/R/X 同规则），用量从主循环额度扣除。
+    rescue_evals 仅用于记录旧口径会触发 rescue 的情形，不增加预算。
     info（可选）被填入：residual_cost / residual_feasible / best_source / rebuild_cost / rescue_used。
     """
     info = info if info is not None else {}
@@ -1109,10 +1106,9 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
             best, best_src, best_entry = opt, src, entry
 
     def _rescue_check():
-        # 初始化预算耗尽且还没有可行解：追加一次 rescue 额度（两种策略同规则）
+        # 只读标记：旧口径此时会触发 rescue；硬上限下不追加额度。
         if (budget is not None and best is None and rescue_evals > 0
                 and not info["rescue_used"] and budget.evals_left() <= 0):
-            budget.eval_limit = (budget.eval_limit or 0) + rescue_evals
             info["rescue_used"] = True
 
     # ① RESIDUAL：保持原回收访问
@@ -1201,13 +1197,12 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
             continue
 
     # ②-F 第二轮兜底：残段/目录/MILP 都没有可行解（常见于多次失败后剩余航次的充电/能量不可行），
-    # 退回"清空未来重建"路径，对前若干个条目各试一次；S/X 规则相同、额外评价额度相同。
+    # 退回"清空未来重建"路径，对前若干个条目各试一次；只使用同一预算的剩余额度。
     # 第三轮修复(X⊇S 覆盖)：兜底的触发条件由“没有任何可行解”改为“没有 S 资格的可行解”。
     # S 只能用原放飞车，所以对 S 二者等价；但 X 若靠 X 专有的接机车找到可行解就会跳过兜底，
     # 而 S 在同样条件下会走兜底并得到更便宜的解，造成 X 的起始最优反而比 S 差。
     if not best_s_eligible and tried_entries and budget is not None:
         info["fallback_used"] = True
-        budget.eval_limit = (budget.eval_limit or 0) + 24
         for ent in tried_entries:
             if budget.evals_left() <= 0:
                 break
@@ -1233,7 +1228,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
             if cp is not None:
                 info["rebuild_cost"] = ev.cost
                 _consider(cp, ev, best_entry, "REBUILD")
-    # v7：初始化无可行解且启用联合重选/降落等待/未起飞修复时，对称地再试一层（额外额度 S/X 相同）
+    # v7：初始化无可行解且启用联合重选/降落等待/未起飞修复时，用剩余预算对称地再试一层
     if (joint or phys.land_and_wait or unlaunched) and best is None and budget is not None:
         _joint_retarget(res, frag, inst, phys, state, H, ground_required, strategy, stats, budget,
                         tried_entries, info, _consider, catalog.guard_n, slot_aware, unlaunched,
