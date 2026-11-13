@@ -352,6 +352,37 @@ def allowed_truck(state, parcel: str) -> str | None:
     return "__FIXED__"
 
 
+def new_air_risk_charge(plan: Plan, inst: Instance, phys: PhysicalConfig, parcels,
+                        p: float, state=None, min_pos: dict[str, int] | None = None) -> float:
+    """把一票新开空送的期望失败代价加总。
+
+    失败以已知概率 p 发生时，这票仍要地面送达，并至少再付一次回收工资。
+    地面代价用当前计划上最便宜的插入代理，不使用在评价种子上拟合的常数。
+    """
+    if p <= 0 or not parcels:
+        return 0.0
+    overhead = phys.wage_per_s * phys.recovery_s
+    total = 0.0
+    for parcel in parcels:
+        gc = ground_candidates(plan, inst, phys, parcel, min_pos, state)
+        g = gc[0].proxy if gc else 0.0
+        total += p * (max(0.0, g) + overhead)
+    return total
+
+
+def _risk_adjusted_air_proxy(proxy: float, parcel: str, ground_proxy: float | None,
+                             state, phys: PhysicalConfig) -> float:
+    """X 恢复：不在残差空送集合里的票，空送代理加上期望失败代价。S 的状态上 p=0，原样返回。"""
+    if state is None:
+        return proxy
+    p = float(getattr(state, "x_failure_p", 0.0) or 0.0)
+    ceiling = getattr(state, "air_ceiling", None)
+    if p <= 0 or ceiling is None or parcel in ceiling:
+        return proxy
+    g = proxy if ground_proxy is None else ground_proxy
+    return proxy + p * (max(0.0, g) + phys.wage_per_s * phys.recovery_s)
+
+
 def ground_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str,
                       min_pos: dict[str, int] | None = None,
                       state=None) -> list[GroundCandidate]:
@@ -464,7 +495,8 @@ def sync_cost(phys: PhysicalConfig, t_air: float, t_truck: float, mass_kg: float
 def air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str,
                    max_new: int = 10, near_visits: int = 6,
                    forbid_air: set[str] | None = None,
-                   state=None, min_pos: dict[str, int] | None = None) -> list[AirCandidate]:
+                   state=None, min_pos: dict[str, int] | None = None,
+                   allow_cross: bool = False) -> list[AirCandidate]:
     if forbid_air and parcel in forbid_air:
         return []
     allow = allowed_truck(state, parcel)
@@ -580,8 +612,9 @@ def air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str
         picked.append(cand_)
         if len(picked) >= max_new:
             break
-    if getattr(state, "nominal_cross", False):
-        # 第六轮（仅 X 名义）：在 S 同样的候选之外追加跨车候选（X ⊇ S）；按代理分合并排序
+    if getattr(state, "nominal_cross", False) or allow_cross:
+        # 第六轮（仅 X 名义）以及第四轮 X 恢复的再飞算子：在同车候选之外追加跨车候选。
+        # allow_cross 只由该算子显式打开；S 的修复不传这个参数。
         picked = picked + cross_air_candidates(plan, inst, phys, parcel)
         picked.sort(key=lambda x: x.proxy)
     return picked
@@ -711,7 +744,8 @@ def _best_offer(plan: Plan, inst: Instance, phys: PhysicalConfig, p: str,
         cands.append((gc[0].proxy, "G", gc[0]))
     ac = air_candidates(plan, inst, phys, p, forbid_air=forbid_air, state=state, min_pos=min_pos)
     if ac:
-        cands.append((ac[0].proxy, "A", ac[0]))
+        gproxy = gc[0].proxy if gc else None
+        cands.append((_risk_adjusted_air_proxy(ac[0].proxy, p, gproxy, state, phys), "A", ac[0]))
     if not cands:
         return None
     cands.sort(key=lambda x: (x[0], x[1]))
@@ -728,11 +762,13 @@ def repair_regret2(plan: Plan, inst: Instance, phys: PhysicalConfig, pool: list[
     offers: dict[str, list[tuple[float, str, object]]] = {}
     for p in remaining:
         lst: list[tuple[float, str, object]] = []
-        for c in ground_candidates(plan, inst, phys, p, min_pos, state):
+        gc = ground_candidates(plan, inst, phys, p, min_pos, state)
+        gproxy = gc[0].proxy if gc else None
+        for c in gc:
             lst.append((c.proxy, "G", c))
         for c in air_candidates(plan, inst, phys, p, forbid_air=forbid_air, state=state,
                                 min_pos=min_pos):
-            lst.append((c.proxy, "A", c))
+            lst.append((_risk_adjusted_air_proxy(c.proxy, p, gproxy, state, phys), "A", c))
         offers[p] = sorted(lst, key=lambda x: x[0])
     applied = 0
     while offers and applied < max_ops:

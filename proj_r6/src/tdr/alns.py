@@ -116,13 +116,30 @@ def _better(a: Evaluation, b: Evaluation | None, alg: AlgorithmConfig) -> bool:
 
 
 def _air_penalty(plan: Plan | None, ctx: "SolveContext") -> float:
-    """X 恢复接受准则里的新开空送惩罚。不影响写入结果的真实成本。"""
-    pen = float(getattr(ctx.alg, "x_new_air_penalty", 0.0) or 0.0)
+    """X 恢复接受准则里的新开空送惩罚。不影响写入结果的真实成本。
+
+    x_risk_price_air 时按每票的期望失败代价计价（已知 p × 地面插入代理 + 回收工资）；
+    否则沿用固定的 x_new_air_penalty（元/票）。两者都只在 X 的恢复阶段生效。
+    """
     ceiling = getattr(ctx, "air_ceiling", None)
-    if pen <= 0 or ceiling is None or plan is None or ctx.mode != "recovery" or ctx.strategy != "X":
+    if ceiling is None or plan is None or ctx.mode != "recovery" or ctx.strategy != "X":
         return 0.0
     from .recovery import _air_parcel_set
-    return pen * len(_air_parcel_set(plan) - set(ceiling))
+    extra = _air_parcel_set(plan) - set(ceiling)
+    if not extra:
+        return 0.0
+    if getattr(ctx.alg, "x_risk_price_air", False):
+        from .moves import new_air_risk_charge
+        mp = None
+        if ctx.state is not None:
+            mp = ctx.state.truck_min_insert or None
+        return new_air_risk_charge(plan, ctx.inst, ctx.phys, extra,
+                                   float(getattr(ctx.alg, "failure_prob", 0.0) or 0.0),
+                                   ctx.state, mp)
+    pen = float(getattr(ctx.alg, "x_new_air_penalty", 0.0) or 0.0)
+    if pen <= 0:
+        return 0.0
+    return pen * len(extra)
 
 
 class _PenalizedEval:
@@ -620,8 +637,10 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             stagnation += 1
             stats.aud("CROSS_REPAIR_TRIALS", "rejected_improve_only")
         elif (ctx.mode == "recovery" and ctx.strategy == "X"
-              and float(getattr(alg, "x_new_air_penalty", 0.0) or 0.0) > 0):
-            # 惩罚后不优于当前解就不用 SA 把新空送接回来
+              and (float(getattr(alg, "x_new_air_penalty", 0.0) or 0.0) > 0
+                   or getattr(alg, "x_risk_price_air", False))
+              and _air_penalty(cand_plan, ctx) > _air_penalty(cur_plan, ctx) + 1e-9):
+            # 只有“比当前解多开空送”的移动才禁止 SA。其它移动与第三轮一样可以退火。
             accepted = False
             reward = 0.0
             stagnation += 1
@@ -705,6 +724,19 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 cur_plan, cur_ev = p_x, e_x
                 if _better_air(e_x, p_x, best_ev, best_plan, alg, ctx):
                     best_ev, best_plan = e_x, p_x.clone()
+                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+        # 第四轮：X 专属。把最贵的纯地面绕路和从任一合格卡车再飞一趟做一次真实评价，
+        # 接受准则含风险价。S 的 propose 恒为空，不消耗评价。
+        if (getattr(alg, "x_risk_price_air", False) and ctx.strategy == "X" and ctx.mode == "recovery"
+                and stats.iterations % alg.cross_period == 1
+                and budget.evals_left() > 0):
+            p_f, e_f = try_refly(cur_plan, ctx, budget, stats)
+            if p_f is not None and e_f is not None and _better_air(e_f, p_f, cur_ev, cur_plan, alg, ctx):
+                stats.aud("REFLY", "cur_improve")
+                cur_plan, cur_ev = p_f, e_f
+                if _better_air(e_f, p_f, best_ev, best_plan, alg, ctx):
+                    stats.aud("REFLY", "best")
+                    best_ev, best_plan = e_f, p_f.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 第六轮：X 名义专用“同车航次改跨车回收”算子（S 的 state.nominal_cross=False，永不触发；同一份名义预算）
         if (getattr(ctx.state, "nominal_cross", False) and ctx.mode == "nominal"
@@ -994,6 +1026,22 @@ def try_recovery_retarget(plan: Plan, ctx: SolveContext, budget: Budget, stats: 
             if ev.feasible and (best_ev is None or _better_air(ev, cand, best_ev, best_p, ctx.alg, ctx)):
                 best_p, best_ev = cand, ev
             break
+    return best_p, best_ev
+
+
+def try_refly(plan: Plan, ctx: SolveContext, budget: Budget, stats: SearchStats):
+    """X 专属：地面绕路 vs 跨车再飞，至多评价 1 个候选（计入同一份恢复预算）。"""
+    from .refly import propose
+    best_p, best_ev = None, None
+    for tag, cand in propose(plan, ctx, 1):
+        if budget.evals_left() <= 0:
+            break
+        ev = eval_counted(cand, ctx.inst, ctx.phys, ctx.state, ctx.H, "REFLY", stats, budget)
+        if ev is None:
+            break
+        stats.destroy_used[tag] = stats.destroy_used.get(tag, 0) + 1
+        if ev.feasible and (best_ev is None or _better_air(ev, cand, best_ev, best_p, ctx.alg, ctx)):
+            best_p, best_ev = cand, ev
     return best_p, best_ev
 
 

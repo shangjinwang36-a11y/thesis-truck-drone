@@ -245,6 +245,11 @@ class AlgorithmConfig:
     # 与 x_limit_new_air 同时 >0 时用惩罚而不是一票否决，避免为了躲失败把很贵的地面绕路锁死。
     # 报告成本仍是真实 C_res，惩罚只进入 X 的接受准则。
     x_new_air_penalty: float = 0.0
+    # X 专属：新开空送按已知失败概率计价，而不是一票否决，也不是按算例规模调出来的固定元/票。
+    # 期望失败代价 = failure_prob × (该票最便宜地面插入代理 + 一次回收的工资)。
+    # 只进入 X 的修复代理和接受准则；写入结果的仍是真实 C_res。S 不读这两个字段。
+    x_risk_price_air: bool = False
+    failure_prob: float = 0.0
     # 两阶段名义：阶段2 预算 b（None=不启用；与 build 参数 two_phase_b 二选一，参数优先）
     nominal_two_phase_b: int | None = None
     crn_per_iteration: bool = False          # 共同随机数：按(种子,算例,重规划,轮次)重置随机流（S/X 对称）

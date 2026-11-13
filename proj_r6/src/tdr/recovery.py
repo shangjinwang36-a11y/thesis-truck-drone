@@ -355,7 +355,8 @@ class RecoveryCatalog:
 
 def build_candidates(base: Plan, pool: list[str], frag_sid: int, entry: dict,
                      inst: Instance, phys: PhysicalConfig, state: StartState,
-                     H: float | None, ground_required: set[str]) -> list[Plan]:
+                     H: float | None, ground_required: set[str],
+                     strategy: str = "S") -> list[Plan]:
     cand = base.clone()
     f = cand.sorties.get(frag_sid)
     if f is None:
@@ -384,9 +385,78 @@ def build_candidates(base: Plan, pool: list[str], frag_sid: int, entry: dict,
         attempts.append(repair_ground_only(cand.clone(), inst, phys, pool2, mp, state)[0])
     else:
         attempts.append(cand)
+    return _finish_attempts(attempts, inst, phys, state, strategy)
+
+
+def drop_broken_chain_tails(plan: Plan, state: StartState) -> list[str]:
+    """删掉机体链上第一处“放飞车 ≠ 上一回收/起始承运车”及其后的未起飞航次，返回被释放的票。
+
+    只在 X 的候选收尾时调用。跨车恢复后修复器可能按链尾承运车插入新航次，
+    插到链中间就会整份候选因结构错误被丢掉，恢复直接 STOP。
+    """
+    from .config import home_truck
+    from .evaluate import _structure_initial_carrier
+    initial = _structure_initial_carrier(state, plan)
+    freed: list[str] = []
+    for d, sids0 in list(plan.drone_sorties.items()):
+        sids = list(sids0)
+        if initial is not None:
+            carrier = initial.get(d)
+        elif not any(plan.sorties[x].started for x in sids if x in plan.sorties):
+            carrier = home_truck(d)
+        else:
+            carrier = None
+        for i, sid in enumerate(sids):
+            so = plan.sorties.get(sid)
+            if so is None:
+                continue
+            if so.started:
+                carrier = plan.visits[so.rec_vid].truck if so.rec_vid in plan.visits else carrier
+                continue
+            if carrier is not None and so.truck != carrier:
+                for sid2 in sids[i:]:
+                    so2 = plan.sorties.get(sid2)
+                    if so2 is not None and not so2.started:
+                        freed.extend(list(so2.air) + list(so2.handover))
+                        plan.remove_sortie(sid2)
+                break
+            carrier = plan.visits[so.rec_vid].truck if so.rec_vid in plan.visits else None
+    return freed
+
+
+def _finish_attempts(attempts: list[Plan], inst: Instance, phys: PhysicalConfig, state: StartState,
+                     strategy: str, protect: set[int] | None = None) -> list[Plan]:
+    """收尾。原来的候选只做空访问清理，顺序不变。
+
+    X 若这些候选的机体链是断的，在末尾追加一份拆掉断链并把票改地面的计划。
+    前面已经可行的候选仍会被先返回，已经跑通的恢复不会改选。
+    """
+    from .moves import repair_ground_append, repair_ground_only
+    out: list[Plan] = []
     for at in attempts:
-        _cleanup(at)
-    return attempts
+        if protect is not None:
+            _cleanup(at, protect)
+        else:
+            _cleanup(at)
+        out.append(at)
+    if strategy != "X" or not out:
+        return out
+    base = out[0].clone()
+    freed = drop_broken_chain_tails(base, state)
+    if not freed:
+        return out
+    mp = state.truck_min_insert or None
+    base, left = repair_ground_only(base, inst, phys, freed, mp, state)
+    if left:
+        base, left = repair_ground_append(base, inst, phys, left, mp, state)
+    if left:
+        return out
+    if protect is not None:
+        _cleanup(base, protect)
+    else:
+        _cleanup(base)
+    out.append(base)
+    return out
 
 
 def _assigned(plan: Plan) -> set[str]:
@@ -473,16 +543,55 @@ def build_residual_candidate(res: Plan, frag_sid: int, entry: dict | None, inst:
     if changed:
         # 回收点变化：默认释放该机之后的未起飞航次并由修复器重排。
         # X 专属 preserve_cross：尽量把后续航次改派到新回收车上放飞，保留跨车链。
-        for sid in list(cand.drone_sorties.get(f.drone, [])):
-            if sid == frag_sid:
-                continue
-            so = cand.sorties.get(sid)
-            if so is None or so.started:
-                continue
-            if preserve_cross and _retarget_followon(cand, so, truck, rv, state):
-                continue
-            freed_later.extend(so.air + so.handover)
-            cand.remove_sortie(sid)
+        # 整链都改到同一辆车时，再下一趟会和上一趟的回收车对不上；收尾时若因此断链，
+        # 会在原有候选之后追加一份“拆掉断链、票改地面”的候选，不改变前面已经可行的候选。
+        sids = list(cand.drone_sorties.get(f.drone, []))
+        try:
+            start_i = sids.index(frag_sid) + 1
+        except ValueError:
+            start_i = len(sids)
+        if not preserve_cross:
+            for sid in sids:
+                if sid == frag_sid:
+                    continue
+                so = cand.sorties.get(sid)
+                if so is None or so.started:
+                    continue
+                freed_later.extend(so.air + so.handover)
+                cand.remove_sortie(sid)
+        else:
+            prev_truck, prev_vid = truck, rv
+            for sid in sids[start_i:]:
+                so = cand.sorties.get(sid)
+                if so is None:
+                    continue
+                if so.started:
+                    if so.rec_vid in cand.visits:
+                        prev_truck = cand.visits[so.rec_vid].truck
+                        prev_vid = so.rec_vid
+                    continue
+                # 已经从正确的车上、且不早于上一回收点放飞：留在原处。
+                aligned = so.truck == prev_truck
+                if aligned and so.launch_vid is not None and prev_vid in cand.routes.get(prev_truck, []):
+                    route = cand.routes[prev_truck]
+                    if so.launch_vid in route and route.index(so.launch_vid) < route.index(prev_vid):
+                        aligned = False
+                if not aligned:
+                    if not _retarget_followon(cand, so, prev_truck, prev_vid, state):
+                        for sid2 in sids[sids.index(sid):]:
+                            so2 = cand.sorties.get(sid2)
+                            if so2 is not None and not so2.started:
+                                freed_later.extend(so2.air + so2.handover)
+                                cand.remove_sortie(sid2)
+                        break
+                if sid not in cand.sorties:
+                    break
+                so = cand.sorties[sid]
+                if so.rec_vid in cand.visits:
+                    prev_truck = cand.visits[so.rec_vid].truck
+                    prev_vid = so.rec_vid
+                else:
+                    break
     hand = _set_recovery(cand, f, truck, rv, served)
     # 第二轮修复（跨车 bug）：失败票/未续飞票由机上交接给接机车。残段底板里这些票遗留在
     # 别的车（通常是原放飞车）上的旧地送安排必须先清除，否则货物保管冲突(G_CUSTODY)，
@@ -508,9 +617,7 @@ def build_residual_candidate(res: Plan, frag_sid: int, entry: dict | None, inst:
             attempts.append(c1)
         attempts.append(repair_ground_append(cand.clone(), inst, phys, pool, mp, state)[0])
         attempts.append(repair_ground_only(cand.clone(), inst, phys, pool, mp, state)[0])
-    for at in attempts:
-        _cleanup(at, protect)
-    return attempts
+    return _finish_attempts(attempts, inst, phys, state, strategy, protect)
 
 
 def build_catalog_candidates(cat: "RecoveryCatalog", entry: dict, inst: Instance,
@@ -518,10 +625,12 @@ def build_catalog_candidates(cat: "RecoveryCatalog", entry: dict, inst: Instance
                              ground_required: set[str], frag_sid: int) -> list[Plan]:
     """ALNS 恢复邻域/初始化共用：按目录模式分派到"残段最小改动"或"清空重建"."""
     if cat.mode == "residual" and cat.res_plan is not None:
+        # 重规划主循环的目录重选与第三轮一样不保留后续链（preserve_cross 只在初始化里用）。
+        # 否则每个成功回合的搜索路径都会变，100 客户上已经有的优势对不上。
         return build_residual_candidate(cat.res_plan, frag_sid, entry, inst, phys, state,
                                         ground_required, cat.strategy)
     return build_candidates(cat.base_plan, cat.pool, frag_sid, entry, inst, phys, state, H,
-                            ground_required)
+                            ground_required, strategy=getattr(cat, "strategy", "S"))
 
 
 def _first_feasible(cands: list[Plan], inst, phys, state, H, stats, budget):
@@ -737,13 +846,15 @@ def _unlaunched_candidates(plan: Plan, sid: int, inst: Instance, phys: PhysicalC
 def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfig, state: StartState,
                     H: float | None, ground_required: set[str], strategy: str, stats, budget,
                     tried_entries: list[dict], info: dict, consider, guard_n: int,
-                    slot_aware: bool = False, unlaunched: bool = False) -> bool:
+                    slot_aware: bool = False, unlaunched: bool = False,
+                    preserve_cross: bool = False) -> bool:
     """第五轮·联合重选：失败机的回收方案找不到可行解、且违规来自“别的在飞无人机”(SWAP_CANNOT_FIX/SLOT_OVER)时，
     对这些在飞航次也重选接机车/接机点/继续子集（S 只能回原放飞车，X 任意车；同一目录/同一候选构造/同一预算规则）。
     贪心深度≤3，每层最多 3 个条目×2 种补位，评价计入初始化预算（额外额度 JOINT_EXTRA_EVALS，S/X 相同）。"""
     seeds: list[Plan] = []
     for ent in [None] + list(tried_entries[:2]):
-        for c in build_residual_candidate(res, frag.sid, ent, inst, phys, state, ground_required, strategy)[:2]:
+        for c in build_residual_candidate(res, frag.sid, ent, inst, phys, state, ground_required, strategy,
+                                          preserve_cross=preserve_cross)[:2]:
             seeds.append(c)
     seeds = seeds[:4]
     if phys.land_and_wait:
@@ -823,7 +934,7 @@ def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfi
             first_inf = None
             for ent in cat.next_entries(3):
                 for cnd in build_residual_candidate(plan_j, tgt, ent, inst, phys, state, ground_required,
-                                                    strategy)[:2]:
+                                                    strategy, preserve_cross=preserve_cross)[:2]:
                     if budget.evals_left() <= 0:
                         return False
                     ev2 = eval_counted(cnd, inst, phys, state, H, "RECOVERY_INITIAL_BASE", stats, budget)
@@ -872,17 +983,31 @@ def _air_parcel_set(plan: Plan) -> set[str]:
 
 
 def _recovery_prefers(ev, plan: Plan, best_ev, best_plan: Plan, air_ceiling: set[str] | None,
-                      penalty: float = 0.0) -> bool:
+                      penalty: float = 0.0, risk_p: float = 0.0, inst=None, phys=None,
+                      state=None) -> bool:
     """是否用 (plan, ev) 替换当前最优恢复。
 
     air_ceiling 为 None 时只比成本（与旧行为一致）。
-    penalty>0：比较 cost + penalty×新开空送票数（真实成本不变，只用于取舍）。
+    risk_p>0：比较 cost + 每票期望失败代价（真实成本不变，只用于取舍）。
+    penalty>0：比较 cost + penalty×新开空送票数。
     penalty==0 且给了 ceiling：先比新开票数，再比成本。
     """
     if air_ceiling is None:
         return (ev.cost or 0) < (best_ev.cost or 0) - 1e-9
-    extra = len(_air_parcel_set(plan) - air_ceiling)
-    best_extra = len(_air_parcel_set(best_plan) - air_ceiling)
+    extra_set = _air_parcel_set(plan) - air_ceiling
+    best_extra_set = _air_parcel_set(best_plan) - air_ceiling
+    if risk_p > 0 and phys is not None and inst is not None:
+        from .moves import new_air_risk_charge
+        mp = (state.truck_min_insert or None) if state is not None else None
+        ca = (ev.cost or 0) + new_air_risk_charge(plan, inst, phys, extra_set, risk_p, state, mp)
+        cb = (best_ev.cost or 0) + new_air_risk_charge(best_plan, inst, phys, best_extra_set, risk_p, state, mp)
+        if ca < cb - 1e-9:
+            return True
+        if abs(ca - cb) <= 1e-9:
+            return (ev.z or 0) < (best_ev.z or 0) - 1e-3
+        return False
+    extra = len(extra_set)
+    best_extra = len(best_extra_set)
     if penalty > 0:
         ca = (ev.cost or 0) + penalty * extra
         cb = (best_ev.cost or 0) + penalty * best_extra
@@ -913,6 +1038,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                      preserve_cross: bool = False, keep_s_recovery: bool = False,
                      limit_new_air: bool = False,
                      new_air_penalty: float = 0.0,
+                     risk_price_p: float = 0.0,
                      ) -> tuple[RecoveryOption | None, list[str], RecoveryCatalog | None]:
     """恢复初始解（修复1）：RESIDUAL → CATALOG（残段最小改动）→ REBUILD（旧清空重建，对照）.
 
@@ -957,10 +1083,11 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
     best_entry: dict | None = None
     best_s_eligible = False          # 第三轮：是否已有“S 资格”（接机车=原放飞车）的可行候选
     # X 专属：残差里已经会飞的票。新开的空送（差集）在比较时优先于成本，避免为眼前省钱把新客户送上天。
-    use_air = strategy == "X" and (limit_new_air or new_air_penalty > 0)
+    use_air = strategy == "X" and (limit_new_air or new_air_penalty > 0 or risk_price_p > 0)
     air_ceiling = _air_parcel_set(res) if use_air else None
-    # 有正惩罚时不再一票否决；惩罚为 0 且 limit_new_air 时仍是词典序
-    air_penalty = new_air_penalty if (use_air and new_air_penalty > 0) else 0.0
+    # 风险价优先于固定元/票；都没有时，limit_new_air 仍是“先少开空送”的词典序
+    air_penalty = new_air_penalty if (use_air and new_air_penalty > 0 and risk_price_p <= 0) else 0.0
+    risk_p = risk_price_p if (use_air and risk_price_p > 0) else 0.0
 
     def _consider(cand_plan, ev, entry, src):
         nonlocal best, best_src, best_entry, best_s_eligible
@@ -971,7 +1098,8 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                              f"served={len(cand_plan.sorties[frag.sid].air)}",
                              cand_plan.visits[rv].truck, rv, len(cand_plan.sorties[frag.sid].air),
                              list(cand_plan.sorties[frag.sid].handover))
-        if best is None or _recovery_prefers(ev, cand_plan, best.ev, best.plan, air_ceiling, air_penalty):
+        if best is None or _recovery_prefers(ev, cand_plan, best.ev, best.plan, air_ceiling, air_penalty,
+                                             risk_p=risk_p, inst=inst, phys=phys, state=state):
             best, best_src, best_entry = opt, src, entry
 
     def _rescue_check():
@@ -1077,7 +1205,8 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
         for ent in tried_entries:
             if budget.evals_left() <= 0:
                 break
-            rb = build_candidates(base, pool, frag.sid, ent, inst, phys, state, H, ground_required)
+            rb = build_candidates(base, pool, frag.sid, ent, inst, phys, state, H, ground_required,
+                                  strategy=strategy)
             if not rb:
                 continue
             cp, ev, _, rs = _first_feasible(rb, inst, phys, state, H, stats, budget)
@@ -1092,7 +1221,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
         if best_entry["support"]:
             pass  # 重建路径用 build_candidates 的支援访问插入，同样支持
         rb = build_candidates(base, pool, frag.sid, best_entry, inst, phys, state, H,
-                              ground_required)
+                              ground_required, strategy=strategy)
         if rb:
             cp, ev, _, rs = _first_feasible(rb, inst, phys, state, H, stats, budget)
             if cp is not None:
@@ -1101,7 +1230,8 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
     # v7：初始化无可行解且启用联合重选/降落等待/未起飞修复时，对称地再试一层（额外额度 S/X 相同）
     if (joint or phys.land_and_wait or unlaunched) and best is None and budget is not None:
         _joint_retarget(res, frag, inst, phys, state, H, ground_required, strategy, stats, budget,
-                        tried_entries, info, _consider, catalog.guard_n, slot_aware, unlaunched)
+                        tried_entries, info, _consider, catalog.guard_n, slot_aware, unlaunched,
+                        preserve_cross=preserve_cross)
     # X 专属：若尚无 S 资格可行解，用同一残差再跑一轮 S 资格目录（计入同一预算），保证不差于该残差上的 S 恢复
     if keep_s_recovery and strategy == "X" and budget is not None and not best_s_eligible:
         info["s_seed_used"] = True

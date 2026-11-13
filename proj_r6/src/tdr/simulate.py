@@ -908,6 +908,15 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
         init_budget = Budget(alg.recovery_init_eval_budget, recovery_wall_s, start=t_budget0)
         init_stats = SearchStats()
         init_info: dict[str, Any] = {}
+        ceiling = set()
+        for s in new_plan.sorties.values():
+            ceiling.update(s.air)
+        risk_on = (strategy == "X" and alg.x_risk_price_air
+                   and float(alg.failure_prob or 0.0) > 0)
+        # 风险价不进通用修复代理，也不改初始恢复的“少开空送”词典序。
+        # 新开空送只由再飞算子提出，避免把第三轮硬禁止在邻域里整个关掉。
+        state2.x_failure_p = 0.0
+        state2.air_ceiling = None
         opt, reasons, catalog = initial_recovery(new_plan, state2, inst, phys, strategy,
                                                  ground_required, H=H,
                                                  extra_pool=info_.get("freed", []),
@@ -931,13 +940,12 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             break
         rr = derive_rngs(alg.base_algorithm_seed, inst.case_id, "recovery", replan_index + 1)
         greq = set(ground_required)
-        ceiling = set()
-        for s in new_plan.sorties.values():
-            ceiling.update(s.air)
-        # 惩罚为 0 时，x_limit_new_air 仍是硬禁止新开空送；有惩罚时交给接受准则，允许很贵的地面绕路改回空送
+        # 惩罚为 0 时，x_limit_new_air 仍是硬禁止：通用修复不能新开空送。
+        # 风险价只约束再飞算子提出的那一票，不在这里把硬禁止关掉。
         if strategy == "X" and alg.x_limit_new_air and not (alg.x_new_air_penalty > 0):
             greq.update(p for p in inst.parcel_mass if p not in ceiling and p not in state2.delivered)
-        air_ceiling = ceiling if (strategy == "X" and (alg.x_limit_new_air or alg.x_new_air_penalty > 0)) else None
+        air_ceiling = ceiling if (strategy == "X" and (
+            alg.x_limit_new_air or alg.x_new_air_penalty > 0 or risk_on)) else None
         ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state2, H=H, mode="recovery",
                            affected_drones={a.drone}, affected_sorties={a.sid},
                            ground_required=greq, replan_index=replan_index + 1,

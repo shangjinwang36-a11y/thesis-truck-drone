@@ -33,6 +33,10 @@ PRESETS = {
            "v7": True, "x_nom": True, "x_rec": True, "tuned": True},
     "R3": {"label": "A4 + X 工时上限/电量裕度/不新开空送 + 跨车地面算子",
            "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True},
+    # 第四轮：名义与 R3 相同（复用 R3 名义解）。恢复把“一票否决”换成按已知 p 计价的新开空送，
+    # 并加上地面绕路 vs 跨车再飞的算子。不在评价种子上调任何常数。
+    "R4": {"label": "R3 名义 + X 风险价新开空送 + 绕路再飞",
+           "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True},
 }
 
 
@@ -55,8 +59,12 @@ def configs(pkg, preset: str):
         ad.update(nominal_two_phase_b=200)
     if ps.get("r3"):
         # X 专属。cross_ops 对 S 恒不触发（接机车=放飞车），不占用 S 的评价。
+        # x_new_air_penalty=0：第三轮正式实验是硬禁止新开空送，不是 12 元/票。
         ad.update(x_cross_hs_cap=True, x_cross_energy_margin_frac=0.05,
-                  x_limit_new_air=True, x_new_air_penalty=12.0, cross_ops=True)
+                  x_limit_new_air=True, x_new_air_penalty=0.0, cross_ops=True)
+    if ps.get("r4"):
+        # 已知伯努利概率，不是在种子 1–10 上拟合的。硬禁止关掉，改由风险价决定每票开不开。
+        ad.update(x_risk_price_air=True, failure_prob=0.2, x_new_air_penalty=0.0)
     alg = AlgorithmConfig.from_dict(ad)
     alg.recovery_eval_budget_override = None
     alg.recovery_time_limit_override_s = None
@@ -105,6 +113,9 @@ def ep_one(args):
     phys, alg, ad, ps = configs(pkg, preset)
     inst = load_instance(pkg, case)
     phys = phys.for_case(pkg.get("case_fleet"), case)
+    # 风险价用的就是这一次世界的失败概率，不另设一个在种子上调出来的数。
+    if alg.x_risk_price_air:
+        alg.failure_prob = float(p)
     alg.recovery_eval_budget_override = budget
     noms = {}
     for st_ in ("S", "X"):
@@ -290,7 +301,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
 
     # 名义共享：A0 与 A1 共用 A0 名义；A2 与 A3 共用 A2 名义；A4 独立
-    nom_src = {"A0": "A0", "A1": "A0", "A2": "A2", "A3": "A2", "A4": "A4", "R3": "R3"}
+    nom_src = {"A0": "A0", "A1": "A0", "A2": "A2", "A3": "A2", "A4": "A4", "R3": "R3", "R4": "R3"}
 
     if args.phase in ("nominal", "all"):
         need = sorted({nom_src[p] for p in presets if p in nom_src})
