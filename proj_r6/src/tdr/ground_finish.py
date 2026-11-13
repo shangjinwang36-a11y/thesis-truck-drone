@@ -122,7 +122,7 @@ def _build(plan, state, inst, phys, mode: str, land: bool = False):
 
 
 def _evaluate(plan, state, inst, phys, H):
-    # T02-A：E_min 是硬约束，应急收尾同样遵守（不再把 reserve_fraction 置 0）。班次之外按加班计价。
+    # 保留真实 reserve_fraction：非降落回收须 ≥ E_min，降落须 ≥ 0，由完整评价检查。班次之外按加班计价。
     priced = dataclasses.replace(phys, soft_h=True)
     return evaluate_plan(plan, inst, priced, state, H, "GROUND_FINISH")
 
@@ -143,9 +143,9 @@ def _attempt(plan, state, inst, phys, H, mode: str, land: bool) -> tuple[float |
 
 
 def _reachable_customers(plan, state, inst, phys, sortie, k: int) -> list[str]:
-    """在飞残段按当前电量、带当前机载质量能飞到（到达时电量不低于 E_min）的客户点，按距离取前 k 个。
+    """在飞残段按当前电量、带当前机载质量能飞到（到达时电量非负）的客户点，按距离取前 k 个。
 
-    含无人机此刻所在的客户点（距离 0）。只看巡航电量；悬停、等待、回收由 _evaluate 复核。
+    含无人机此刻所在的客户点（距离 0）。只看巡航电量；悬停、等待、回收及各自电量下限由 _evaluate 复核。
     """
     ds = state.drone_start.get(sortie.drone)
     pos = sortie.start_pos or (ds.pos if ds is not None else None)
@@ -157,7 +157,7 @@ def _reachable_customers(plan, state, inst, phys, sortie, k: int) -> list[str]:
     out = []
     for c in inst.customers:
         d = math.hypot(c.x - pos[0], c.y - pos[1])
-        if d * per_m <= e0 - phys.e_min + phys.energy_tol:
+        if d * per_m <= e0 + phys.energy_tol:
             out.append((d, c.customer_id))
     out.sort()
     return [c for _, c in out[:k]]
