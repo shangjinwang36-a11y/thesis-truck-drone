@@ -324,13 +324,19 @@ def _apply_short_return(plan, inst, phys, sid: int, launch_vid: int, prefix: lis
     return cand
 
 
-def _short_return_plans(plan, ctx, n: int, tried: set):
-    """X 专用。回程更短、放飞点更近，或把飞不动的后段拆回地面。"""
+def _short_return_plans(plan, ctx, n: int, tried: set, skip_sids: set | None = None):
+    """X 专用。回程更短、放飞点更近，或把飞不动的后段拆回地面。
+
+    skip_sids 里的航次已经有一条能量可行的整段会合，这里不再改它。
+    """
     inst, phys = ctx.inst, ctx.phys
     stats = getattr(ctx, "live_stats", None)
     specs = []
     limit = phys.e_cap - phys.e_min + phys.energy_tol
+    skip = skip_sids or set()
     for sortie in _tails(plan):
+        if sortie.sid in skip:
+            continue
         launch_truck = plan.visits[sortie.launch_vid].truck
         launches = _launch_choices(plan, inst, sortie)
         found_k = None
@@ -397,12 +403,12 @@ def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool)
     inst, phys = ctx.inst, ctx.phys
     stats = getattr(ctx, "live_stats", None)
     out = []
-    if allow_cross and bool(getattr(getattr(ctx, "alg", None), "x_short_return", False)):
-        out.extend(_short_return_plans(plan, ctx, n, tried))
-    if len(out) >= n:
-        return out[:n]
+    placed: set[int] = set()
+    seen: set[int] = set()
+    passed: set[int] = set()
     ranked = []
     for s in _tails(plan):
+        seen.add(s.sid)
         launch = plan.visits[s.launch_vid].truck
         air_customers = {inst.parcel_to_customer[p] for p in s.air if p in inst.parcel_to_customer}
         end = inst.customer(inst.parcel_to_customer[s.air[-1]])
@@ -434,6 +440,7 @@ def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool)
                 if energy > phys.e_cap - phys.e_min + phys.energy_tol:
                     _funnel(stats, "energy", allow_cross)
                     continue
+                passed.add(s.sid)
                 existing = None
                 if c.customer_id in owned:
                     existing = next((vid for vid in route[min_pos:]
@@ -482,6 +489,18 @@ def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool)
             _funnel(stats, "schedule", allow_cross)
             continue
         out.append(("SUPPORT_RENDEZVOUS", cand))
+        placed.add(sid)
+    # 整段飞不到任何一辆接机车的航次，用最后一格试更短的回程或拆段。
+    # 前几格仍是原来的会合，评价次数也不增加。城市案例没有这种航次时，候选列表不变。
+    blocked = seen - passed
+    if (allow_cross and blocked and n > 0
+            and bool(getattr(getattr(ctx, "alg", None), "x_short_return", False))):
+        geo = _short_return_plans(plan, ctx, 1, tried, seen - blocked)
+        if geo:
+            if len(out) < n:
+                out.extend(geo)
+            elif len(out) == n:
+                out[-1] = geo[0]
     return out
 
 

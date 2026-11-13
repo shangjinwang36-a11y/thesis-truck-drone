@@ -297,9 +297,8 @@ def test_same_truck_j_gate_drops_extra_air_and_keeps_a_cross():
     extra.air.append("p003")
     assert expected_j(100.0, other, inst, phys, 0.2) > expected_j(100.0, base, inst, phys, 0.2)
     assert same_truck_j_adopts_baseline(other, 100.0, base, 100.0, inst, phys, 0.2, 1e-4, None, None)
-    # 情景分已经更低时留下这份计划。打平则仍看 J。
-    assert not same_truck_j_adopts_baseline(other, 100.0, base, 100.0, inst, phys, 0.2, 1e-4, 90.0, 100.0)
-    assert same_truck_j_adopts_baseline(other, 100.0, base, 100.0, inst, phys, 0.2, 1e-4, 100.0, 100.0)
+    # 没有跨车时，两次情景样本更低也不推翻 J。
+    assert same_truck_j_adopts_baseline(other, 100.0, base, 100.0, inst, phys, 0.2, 1e-4, 90.0, 100.0)
     # J 本身更好时不退回。
     assert not same_truck_j_adopts_baseline(other, 0.0, base, 100.0, inst, phys, 0.2, 1e-4, None, None)
     crossed = other.clone()

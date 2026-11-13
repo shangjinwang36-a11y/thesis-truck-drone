@@ -100,18 +100,17 @@ def cost_gap_discards_nominal(expected_accept: bool, nominal_is_worse: bool) -> 
 def same_truck_j_adopts_baseline(plan, cost, baseline, baseline_cost, inst, phys, p: float,
                                  tol: float, scenario_plan: float | None = None,
                                  scenario_base: float | None = None) -> bool:
-    """没有跨车航次时，J 比基线差、情景分也没有更低，就发布基线。
+    """没有跨车航次、且共用的 J 比基线差时，发布基线。
 
-    只给 X 的发布用。有跨车航次时不介入：那部分收益不靠这条门。
-    情景分严格更低的方案留下来，即使 J 稍差。情景分缺失或打平时，用两边共用的 J。
+    只给 X 的发布用。有跨车航次时不介入。
+    同车方案没有跨车结构。两次情景样本可以碰巧喜欢多飞的票，但 J 已经把每条航次的失败代价算进去了。
+    这种情况下不再让情景样本推翻 J。scenario_* 保留是为了调用处兼容，不参与判断。
     """
+    del scenario_plan, scenario_base
     from .evaluate import is_cross_sortie
     if plan is None or baseline is None or cost is None or baseline_cost is None:
         return False
     if any(is_cross_sortie(plan, sortie) for sortie in plan.sorties.values()):
-        return False
-    if (scenario_plan is not None and scenario_base is not None
-            and scenario_plan < scenario_base - tol):
         return False
     j_plan = expected_j(cost, plan, inst, phys, p)
     j_base = expected_j(baseline_cost, baseline, inst, phys, p)
