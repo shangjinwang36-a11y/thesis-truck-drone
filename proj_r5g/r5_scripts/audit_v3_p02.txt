@@ -1,0 +1,43 @@
+## results/v3_l2_p02_b1.json  (runs=60)
+env  n pair  Δmean±sd  ±CI95  Δ/C_S%  better/same/worse  stopS/stopX  air%S/X  crossX%(nfail)  fails/env  failrate(obs/attempt) 
+C100  10   8  19.35±26.11 18.10   3.77 6/0/2 0/2 59.4/61.5  35.6(90) 15.80 158/754=0.210
+C50   10  10   1.52±12.78  7.92   0.63 4/2/4 0/0 63.8/65.4  20.8(53)  7.00 70/389=0.180
+R100  10   0    nan±  nan   nan    nan 0/0/0 8/8 nan/nan  25.0(24) 11.70 117/538=0.217
+R50   10   5   1.87± 4.08  3.57   0.39 2/3/0 3/5 62.0/64.4   4.2(24)  5.40 54/303=0.178
+RC100  10   2  26.98±75.88 105.16   3.28 1/0/1 6/8 64.0/67.5  34.5(29) 10.10 101/550=0.184
+RC50  10   7   8.20±19.83 14.69   1.91 3/2/2 2/2 49.4/50.3  11.4(44)  6.00 60/290=0.207
+ALL   60  32   9.08±23.24  8.05   2.15 16/7/9 19/25 59.5/61.5  24.6(264)  9.33 560/2824=0.198
+configured_fail S!=X: []
+标记失败(全部客户) 893/4500=0.198 目标 p=0.2
+X 更差 9/32: [('C100', 6, -7.78), ('C100', 1, -24.05), ('C50', 1, -8.01), ('C50', 3, -0.91), ('C50', 10, -23.88), ('C50', 9, -1.51), ('RC100', 7, -26.67), ('RC50', 1, -7.82), ('RC50', 6, -9.28)]
+符号检验(忽略平局): better=16 worse=9 双侧p≈0.2295
+-- 审计[S] 重规划数=541 主搜索评价=531987 ALNS迭代=149409 停止原因={'EVAL_LIMIT': 530, 'MAX_ROUNDS': 11} 搜索无任何改进(init=final)的重规划=154/541  平均patch_back=7.832
+   评价按用途: {'ALNS_BASE': 405550, 'COORDINATE': 102964, 'RECOVERY_INITIAL_BASE': 12268, 'MIP_RETURN': 11205}
+   D-算子: calls / empty / leftover / geom_none / infeasible / new_best / cur_improve / sa_accept / rejected
+     AFFECTED_SORTIE               23292  1147   3642   2641      0   397  1227  1536  12702
+     ENERGY_CHAIN                  22353  1180   3660   2862      0   275  1018  1172  12186
+     GROUND_TO_AIR                 19634  1150   4606   2503      0   267   728   876   9504
+     RANDOM_DEPENDENCY             17870  1123   3535   2797      0   102   271   404   9638
+     RENDEZVOUS_RESOURCE           23961  1161   3847   2504      0   363  1154  1518  13414
+     SORTIE_REGROUP                22345  1145   3491   3007      0   436   956  1212  12098
+     SUPPORT_VISIT                 19954  1094   3545   1876      0   243   635   949  11612
+   R-算子: calls / empty / leftover / geom_none / infeasible / new_best / cur_improve / sa_accept / rejected
+     AIR_FIRST                     50494     0   8977   6009      0   608  2070  2989  27164
+     GREEDY_PROXY                  48838     0   8724   6148      0   596  1742  2240  26723
+     REGRET2_PROXY                 50077     0   8625   6033      0   879  2177  2438  27267
+   次级算子: {'polish:calls': 11390, 'polish:improve': 5847, 'reassign:calls': 9423, 'local_reorder:calls': 13163, 'local_reorder:improve': 613}
+-- 审计[X] 重规划数=513 主搜索评价=508759 ALNS迭代=135176 停止原因={'EVAL_LIMIT': 508, 'MAX_ROUNDS': 5} 搜索无任何改进(init=final)的重规划=130/513  平均patch_back=7.265
+   评价按用途: {'ALNS_BASE': 385268, 'COORDINATE': 94810, 'RECOVERY_INITIAL_BASE': 15749, 'MIP_RETURN': 12932}
+   D-算子: calls / empty / leftover / geom_none / infeasible / new_best / cur_improve / sa_accept / rejected
+     AFFECTED_SORTIE               21213   544   2558   3590      0   364  1053  1282  11822
+     ENERGY_CHAIN                  19620   573   2391   3760      0   268   831  1039  10758
+     GROUND_TO_AIR                 17880   615   3399   3171      0   250   580   648   9217
+     RANDOM_DEPENDENCY             16095   581   2670   3649      0    80   220   327   8568
+     RENDEZVOUS_RESOURCE           21630   574   2516   3619      0   374  1102  1330  12115
+     SORTIE_REGROUP                21239   548   2212   4403      0   414   865  1067  11730
+     SUPPORT_VISIT                 17499   565   2421   2873      0   186   460   717  10277
+   R-算子: calls / empty / leftover / geom_none / infeasible / new_best / cur_improve / sa_accept / rejected
+     AIR_FIRST                     47336     0   3928   9257      0   655  1890  2541  27762
+     GREEDY_PROXY                  43070     0   7178   8017      0   544  1390  1840  22777
+     REGRET2_PROXY                 44770     0   7061   7791      0   737  1831  2029  23948
+   次级算子: {'polish:calls': 10423, 'polish:improve': 5297, 'reassign:calls': 8590, 'local_reorder:calls': 12771, 'local_reorder:improve': 622, 'reassign:improve': 5, 'reassign:adopt_gap_max': -13.555726703355077}

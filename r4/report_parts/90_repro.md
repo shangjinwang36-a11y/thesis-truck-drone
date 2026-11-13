@@ -1,0 +1,5 @@
+- 代码：`/workspace/thesis/proj`，分支 round4（最新提交见 `git log`）；冻结副本：`proj_r4a`(a94b333，主实验)、`proj_r4b`、`proj_r4c`（含 cross_ops、CRN、少车包，敏感性与事件分析）。
+- 驱动：`r4/run_r4.py`、`r4/run_r5.py`（--pool/--mrange/--H-delta）、`r4/run_r6.py`（事件级：同状态 S 对照）；汇总：`r4/agg_r4.py`、`r4/agg_sens.py`、`r4/event_analysis.py`、`r4/tune_pick.py`；本报告由 `r4/make_report.py` 生成。
+- 结果：`r4/results/*.json`（每次运行一行，不剔除任何运行）；日志 `r4/*.log`；变更日志 `/workspace/thesis/changes_round4.md`。
+- 测试：`proj/tests`（含 tests/test_round4.py 的 H1/H2/H4/M3/M4/L1/cross_ops 回归）。
+- 名义解沿用第三轮：`proj/outputs/nominal_r3fd1000`（spec）、`nominal_lightR1000`（light2）、`nominal_L1_1000`（light1）、`nominal_Lfew_1000`（少车，第四轮新生成）。

@@ -1,0 +1,401 @@
+diff --git a/scripts/train_selector.py b/scripts/train_selector.py
+new file mode 100644
+index 0000000..0940ee1
+--- /dev/null
++++ b/scripts/train_selector.py
+@@ -0,0 +1,66 @@
++"""变体 A 的训练脚本：在**训练环境种子**（默认 101–130，与评价用的 1–10 不重叠）上训练 Q 表.
++
++单案例训练：  python scripts/train_selector.py --case C50 --out outputs/qtables/C50.json
++合并多个案例： python scripts/train_selector.py --merge outputs/qtables/*.json --out outputs/qtables/merged.json
++"""
++import argparse
++import json
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
++from tdr import selector                                         # noqa: E402
++from tdr.config import AlgorithmConfig, PhysicalConfig          # noqa: E402
++from tdr.data import load_instance                               # noqa: E402
++from tdr.evaluate import evaluate_plan                           # noqa: E402
++from tdr.experiment import load_case_nominal                     # noqa: E402
++from tdr.hidden_world import HiddenWorld                         # noqa: E402
++from tdr.schedule import initial_state                           # noqa: E402
++from tdr.simulate import derive_rngs, run_episode                # noqa: E402
++
++ap = argparse.ArgumentParser()
++ap.add_argument("--package", default="data/package.json")
++ap.add_argument("--nominal-dir", default="outputs_summary/nominal2")
++ap.add_argument("--case")
++ap.add_argument("--seed-from", type=int, default=101)
++ap.add_argument("--seed-to", type=int, default=130)
++ap.add_argument("--budget", type=int, default=1000)
++ap.add_argument("--eps-start", type=float, default=0.30)
++ap.add_argument("--eps-end", type=float, default=0.10)
++ap.add_argument("--out", required=True)
++ap.add_argument("--merge", nargs="*")
++a = ap.parse_args()
++
++if a.merge:
++    tabs = [json.load(open(p, encoding="utf-8")) for p in a.merge]
++    merged = selector.QSelector.merge(tabs)
++    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
++    json.dump(merged, open(a.out, "w", encoding="utf-8"), ensure_ascii=False)
++    print("merged", len(tabs), "tables; states:", len(merged["q"]), "updates:", merged["n_updates"])
++    sys.exit(0)
++
++pkg = json.load(open(a.package, encoding="utf-8"))
++phys = PhysicalConfig.from_dict(pkg["config"])
++alg = AlgorithmConfig.from_dict(pkg["algorithm_protocol"]["default_parameters"])
++alg.operator_selector = "qlearn"
++sel = selector.QSelector(list(alg.destroy_operators), list(alg.repair_operators),
++                         eps=a.eps_start, learn=True)
++selector.TRAINING_SELECTOR = sel
++inst = load_instance(pkg, a.case)
++plan, cost, H = load_case_nominal(inst, Path(a.nominal_dir) / a.case)
++nom_ev = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
++seeds = list(range(a.seed_from, a.seed_to + 1))
++total = len(seeds) * 2
++k = 0
++for seed in seeds:
++    for strategy in ("S", "X"):
++        sel.eps = a.eps_start + (a.eps_end - a.eps_start) * k / max(1, total - 1)
++        k += 1
++        world = HiddenWorld(inst, inst.case_id, seed)
++        rngs = derive_rngs(alg.base_algorithm_seed + seed, inst.case_id, "recovery", 0)
++        ep = run_episode(inst, plan, nom_ev, H, phys, world, strategy, alg, rngs,
++                         recovery_eval_budget=a.budget)
++        print(a.case, seed, strategy, ep.status, "updates", sel.n_updates, flush=True)
++Path(a.out).parent.mkdir(parents=True, exist_ok=True)
++json.dump(sel.to_json(), open(a.out, "w", encoding="utf-8"), ensure_ascii=False)
++print("saved", a.out, "states", len(sel.q), "updates", sel.n_updates)
+diff --git a/src/tdr/alns.py b/src/tdr/alns.py
+index 5d37d85..a50fa3a 100644
+--- a/src/tdr/alns.py
++++ b/src/tdr/alns.py
+@@ -349,6 +349,12 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
+     s_d = {k: 0.0 for k in destroy_ops}
+     s_r = {k: 0.0 for k in repair_ops}
+     stagnation = 0
++    # 变体 A：学习式选择器（None = 基线轮盘赌，行为完全不变）
++    from .selector import QSelector, failure_type, get_selector
++    sel = get_selector(alg, destroy_ops, repair_ops) if ctx.mode == "recovery" else None
++    pend: tuple[str, int, float] | None = None       # 上一轮 (状态, 动作, 奖励)，下一轮开头再更新 Q
++    frag0 = plan.sorties.get(ctx.frag_sid) if ctx.frag_sid is not None else None
++    ftype = failure_type(len(ctx.ground_required), bool(frag0 is not None and frag0.air))
+     last_mip_round = -10**9
+     window_cursor = 0
+     stats.stop_reason = "BUDGET"
+@@ -365,8 +371,15 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
+         stats.iterations += 1
+         stats.rounds += 1
+         # 选算子
+-        op = _roulette(w_d, rng_op)
+-        rep = _roulette(w_r, rng_op)
++        if sel is None:
++            op = _roulette(w_d, rng_op)
++            rep = _roulette(w_r, rng_op)
++        else:
++            skey = QSelector.key(stagnation, _progress(stats, budget), ftype)
++            if pend is not None:
++                sel.update(pend[0], pend[1], pend[2], skey)
++                pend = None
++            op, rep, sact = sel.choose(skey, rng_op)
+         n_d[op] += 1
+         n_r[rep] += 1
+         stats.destroy_used[op] = stats.destroy_used.get(op, 0) + 1
+@@ -383,6 +396,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
+         if not freed:
+             _reward(s_d, op, 0.0)
+             _reward(s_r, rep, 0.0)
++            if sel is not None:
++                pend = (skey, sact, 0.0)
+             continue
+         if rep == "GREEDY_PROXY":
+             from .moves import repair_greedy as _rep
+@@ -394,6 +409,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
+         if leftover:
+             _reward(s_d, op, 0.0)
+             _reward(s_r, rep, 0.0)
++            if sel is not None:
++                pend = (skey, sact, 0.0)
+             stagnation += 1
+             _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg)
+             continue
+@@ -402,6 +419,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
+         if cand_ev is None:
+             _reward(s_d, op, 0.0)
+             _reward(s_r, rep, 0.0)
++            if sel is not None:
++                pend = (skey, sact, 0.0)
+             stagnation += 1
+             _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg)
+             continue
+@@ -444,6 +463,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
+             cur_plan, cur_ev = cand_plan.clone(), cand_ev
+         _reward(s_d, op, reward)
+         _reward(s_r, rep, reward)
++        if sel is not None:
++            pend = (skey, sact, reward / alg.score_global_best)
+         # 连续位置细化：新最好解，或每 10 轮
+         do_polish = variant != "no_coordinate_polish" and (
+             (best_ev is cand_ev) or stats.iterations % alg.coordinate_polish_every_alns_iterations == 0)
+@@ -474,6 +495,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
+                     best_ev, best_plan = e3, p3.clone()
+                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+         _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg, variant)
++    if sel is not None and pend is not None:
++        sel.update(pend[0], pend[1], pend[2], None)
+     if ctx.catalog is not None:
+         stats.cover_trucks = set(getattr(ctx.catalog, "covered_trucks", set()))
+         stats.cover_customers = set(getattr(ctx.catalog, "covered_customers", set()))
+@@ -483,6 +506,9 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
+                     "n_alns_iterations": stats.iterations,
+                     "n_lp_calls": stats.lp_calls,
+                     "n_destroy_fallback": sum(stats.destroy_fallback.values()),
++                    "operator_selector": "qlearn" if sel is not None else "roulette",
++                    "destroy_used": dict(stats.destroy_used),
++                    "repair_used": dict(stats.repair_used),
+                     "n_cover_trucks": len(stats.cover_trucks),
+                     "n_cover_customers": len(stats.cover_customers),
+                     "n_cover_subsets": len(stats.cover_subsets),
+diff --git a/src/tdr/selector.py b/src/tdr/selector.py
+new file mode 100644
+index 0000000..7d77fde
+--- /dev/null
++++ b/src/tdr/selector.py
+@@ -0,0 +1,150 @@
++"""变体 A：用“学习得到的选择器”代替自适应轮盘赌来挑选（移除算子, 修复算子）.
++
++做法（表格型 Q-learning，状态很小，便于讲清楚）：
++  状态 s = (停滞档, 温度档, 失败类型)
++    停滞档：连续多少轮没有改进（0 / 1–9 / 10–24 / ≥25）
++    温度档：模拟退火进度（前 1/3 = 高温、中间 = 中温、后 1/3 = 低温）；只由 ALNS 主循环进度决定
++    失败类型：已观察失败票数是否 ≥2、失败航次是否还有可继续空送的余票（共 4 类）
++  动作 a = (移除算子, 修复算子) 的组合，6×2 = 12 个
++  奖励 r = 原来 ALNS 的得分（全局最好 33 / 改进当前解 9 / 被接受 3 / 否则 0），再除以 33 归一化
++  更新  Q(s,a) ← Q(s,a) + α·( r + γ·max_a' Q(s',a') − Q(s,a) )
++
++训练与评价严格分开（避免“在测试环境上训练”）：
++  * 训练：scripts/train_selector.py 在环境种子 101–115（与评价用的 1–10 不重叠）上跑若干回合，
++    ε-greedy 探索 + 在线更新，保存 Q 表（JSON）。
++  * 评价：加载 Q 表后**冻结**（不再更新），只保留小概率 ε 随机探索；
++    某状态在训练中从未见过时退化为均匀随机选择（等价于不加偏好）。
++基线（operator_selector="roulette"）仍是原来的普通自适应权重轮盘赌，代码路径完全不变。
++"""
++from __future__ import annotations
++
++import json
++import random
++from pathlib import Path
++
++N_STAG = 4
++N_TEMP = 3
++N_FTYPE = 4
++
++
++def stag_bucket(stagnation: int) -> int:
++    if stagnation <= 0:
++        return 0
++    if stagnation < 10:
++        return 1
++    if stagnation < 25:
++        return 2
++    return 3
++
++
++def temp_bucket(progress: float) -> int:
++    return 0 if progress < 1.0 / 3 else (1 if progress < 2.0 / 3 else 2)
++
++
++def failure_type(n_failed: int, has_remaining_air: bool) -> int:
++    return (1 if n_failed >= 2 else 0) * 2 + (1 if has_remaining_air else 0)
++
++
++class QSelector:
++    def __init__(self, destroy_ops: list[str], repair_ops: list[str], eps: float = 0.05,
++                 alpha: float = 0.2, gamma: float = 0.9, learn: bool = False):
++        self.actions = [(d, r) for d in destroy_ops for r in repair_ops]
++        self.eps = eps
++        self.alpha = alpha
++        self.gamma = gamma
++        self.learn = learn
++        self.q: dict[str, list[float]] = {}
++        self.n: dict[str, list[int]] = {}
++        self.n_updates = 0
++
++    # ---- 状态编码 ----
++    @staticmethod
++    def key(stagnation: int, progress: float, ftype: int) -> str:
++        return f"{stag_bucket(stagnation)}|{temp_bucket(progress)}|{ftype}"
++
++    def _row(self, key: str, create: bool = False):
++        if key not in self.q and create:
++            self.q[key] = [0.0] * len(self.actions)
++            self.n[key] = [0] * len(self.actions)
++        return self.q.get(key)
++
++    # ---- 选择 ----
++    def choose(self, key: str, rng: random.Random) -> tuple[str, str, int]:
++        row = self._row(key, create=self.learn)
++        if row is None or rng.random() < self.eps:
++            a = rng.randrange(len(self.actions))
++        else:
++            counts = self.n[key]
++            if self.learn and min(counts) == 0:
++                a = rng.choice([i for i, c in enumerate(counts) if c == 0])   # 先把每个动作试一遍
++            else:
++                best = max(row)
++                a = rng.choice([i for i, v in enumerate(row) if v >= best - 1e-12])
++        d, r = self.actions[a]
++        return d, r, a
++
++    # ---- 学习 ----
++    def update(self, key: str, a: int, reward: float, next_key: str | None) -> None:
++        if not self.learn:
++            return
++        row = self._row(key, create=True)
++        nxt = 0.0
++        if next_key is not None:
++            nrow = self._row(next_key, create=True)
++            nxt = max(nrow)
++        row[a] += self.alpha * (reward + self.gamma * nxt - row[a])
++        self.n[key][a] += 1
++        self.n_updates += 1
++
++    # ---- 保存/加载/合并 ----
++    def to_json(self) -> dict:
++        return {"actions": self.actions, "q": self.q, "n": self.n, "n_updates": self.n_updates,
++                "alpha": self.alpha, "gamma": self.gamma}
++
++    def load_json(self, d: dict) -> None:
++        acts = [tuple(a) for a in d["actions"]]
++        if acts != [tuple(a) for a in self.actions]:
++            raise ValueError("Q 表的动作集合与当前算子配置不一致")
++        self.q = {k: list(v) for k, v in d["q"].items()}
++        self.n = {k: list(v) for k, v in d["n"].items()}
++        self.n_updates = int(d.get("n_updates", 0))
++
++    @staticmethod
++    def merge(tables: list[dict]) -> dict:
++        """按访问次数加权平均合并若干 Q 表（并行训练后使用）."""
++        out = {"actions": tables[0]["actions"], "q": {}, "n": {}, "n_updates": 0,
++               "alpha": tables[0].get("alpha"), "gamma": tables[0].get("gamma")}
++        for t in tables:
++            out["n_updates"] += t.get("n_updates", 0)
++            for k, row in t["q"].items():
++                nrow = t["n"][k]
++                if k not in out["q"]:
++                    out["q"][k] = [0.0] * len(row)
++                    out["n"][k] = [0] * len(row)
++                for i, (qv, nv) in enumerate(zip(row, nrow)):
++                    tot = out["n"][k][i] + nv
++                    if tot > 0:
++                        out["q"][k][i] = (out["q"][k][i] * out["n"][k][i] + qv * nv) / tot
++                    out["n"][k][i] = tot
++        return out
++
++
++# ---- 运行时选择器获取（训练脚本可注入全局学习器）----
++TRAINING_SELECTOR: QSelector | None = None
++_FROZEN_CACHE: dict[str, dict] = {}
++
++
++def get_selector(alg, destroy_ops: list[str], repair_ops: list[str]) -> QSelector | None:
++    """operator_selector == "qlearn" 时返回选择器；否则返回 None（走原轮盘赌）."""
++    if getattr(alg, "operator_selector", "roulette") != "qlearn":
++        return None
++    if TRAINING_SELECTOR is not None:
++        return TRAINING_SELECTOR
++    sel = QSelector(destroy_ops, repair_ops, eps=getattr(alg, "qlearn_eval_epsilon", 0.05),
++                    learn=False)
++    path = getattr(alg, "qtable_path", None)
++    if path:
++        if path not in _FROZEN_CACHE:
++            _FROZEN_CACHE[path] = json.loads(Path(path).read_text(encoding="utf-8"))
++        sel.load_json(_FROZEN_CACHE[path])
++    return sel
+diff --git a/tests/test_variant_a.py b/tests/test_variant_a.py
+new file mode 100644
+index 0000000..b94cbf2
+--- /dev/null
++++ b/tests/test_variant_a.py
+@@ -0,0 +1,77 @@
++"""变体 A（学习式算子选择）的测试."""
++import copy
++import json
++import random
++
++import pytest
++
++from tdr import selector
++from tdr.hidden_world import TestWorld
++from tdr.selector import QSelector, stag_bucket, temp_bucket, failure_type
++from tdr.simulate import derive_rngs, run_episode
++from test_round1 import env, _first_replan_stats  # noqa: F401
++
++D = ["d1", "d2", "d3"]
++R = ["r1", "r2"]
++
++
++def test_buckets():
++    assert [stag_bucket(x) for x in (0, 1, 9, 10, 24, 25, 99)] == [0, 1, 1, 2, 2, 3, 3]
++    assert [temp_bucket(p) for p in (0.0, 0.3, 0.5, 0.7, 1.0)] == [0, 0, 1, 2, 2]
++    assert {failure_type(a, b) for a in (0, 2) for b in (False, True)} == {0, 1, 2, 3}
++
++
++def test_q_update_learns_better_action():
++    sel = QSelector(D, R, eps=0.0, learn=True, alpha=0.5, gamma=0.0)
++    rng = random.Random(1)
++    best = 3
++    for _ in range(400):
++        key = "0|0|0"
++        d, r, a = sel.choose(key, rng)
++        sel.update(key, a, 1.0 if a == best else 0.0, None)
++    sel.learn = False
++    picks = {sel.choose("0|0|0", rng)[2] for _ in range(20)}
++    assert picks == {best}
++
++
++def test_frozen_does_not_update_and_unseen_state_is_random():
++    sel = QSelector(D, R, eps=0.0, learn=False)
++    sel.update("x", 0, 5.0, None)
++    assert sel.q == {} and sel.n_updates == 0
++    rng = random.Random(2)
++    seen = {sel.choose("unseen", rng)[2] for _ in range(200)}
++    assert len(seen) > 3
++
++
++def test_json_roundtrip_and_merge():
++    s1 = QSelector(D, R, learn=True)
++    s1.update("k", 0, 1.0, None)
++    s2 = QSelector(D, R, learn=True)
++    s2.update("k", 0, 0.0, None)
++    s2.update("k2", 1, 1.0, None)
++    m = QSelector.merge([s1.to_json(), s2.to_json()])
++    assert set(m["q"]) == {"k", "k2"} and m["n"]["k"][0] == 2
++    s3 = QSelector(D, R)
++    s3.load_json(json.loads(json.dumps(m)))
++    assert s3.q["k"][0] == pytest.approx(0.5 * 0.2 * 1.0 * 0 + (0.2 + 0.0) / 2)
++    with pytest.raises(ValueError):
++        QSelector(D, ["r1"]).load_json(m)
++
++
++def test_default_is_roulette(env):
++    inst, phys, alg, res, H, target = env
++    assert alg.operator_selector == "roulette"
++    assert selector.get_selector(alg, D, R) is None
++
++
++@pytest.mark.parametrize("strategy", ["S", "X"])
++def test_qlearn_episode_verified(env, strategy):
++    inst, phys, alg, res, H, target = env
++    a2 = copy.copy(alg)
++    a2.operator_selector = "qlearn"                  # 无 Q 表 → 全部未见状态 → 随机选择，也必须可行
++    world = TestWorld(inst, "C50", (target,))
++    ep = run_episode(inst, res.plan, res.evaluation, H, phys, world, strategy, a2,
++                     derive_rngs(a2.base_algorithm_seed, "C50", "recovery", 0),
++                     recovery_eval_budget=100)
++    assert ep.status == "COMPLETED_VERIFIED", ep.notes
++    assert _first_replan_stats(ep)["operator_selector"] == "qlearn"

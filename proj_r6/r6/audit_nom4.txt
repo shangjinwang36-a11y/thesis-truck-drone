@@ -1,0 +1,24 @@
+## 算子审计（nom4，S/X 各 18/18 个名义解求和）
+算子 | S: calls/infeas/feas/best/acc | X: calls/infeas/feas/best/acc
+AFFECTED_SORTIE        |  176/  37/ 139/ 39/ 42 |  159/  73/  86/ 21/ 21
+CROSS_CONVERT          |    0/   0/   0/  0/  0 |  309/ 135/ 174/ 65/  0
+CROSS_REPAIR_TRIALS    |    0/   0/   0/  0/  0 |  808/   0/ 448/ 94/ 95
+ENERGY_CHAIN           |  173/  30/ 143/ 43/ 47 |  202/  71/ 131/ 28/ 28
+GROUND_TO_AIR          |  162/  32/ 130/ 32/ 33 |  224/ 108/ 116/ 34/ 34
+R:AIR_FIRST            |  445/  89/ 356/ 98/105 |  442/ 215/ 227/ 48/ 48
+R:GREEDY_PROXY         |  383/  65/ 318/ 88/ 90 |  437/ 167/ 270/ 64/ 64
+R:REGRET2_PROXY        |  348/  61/ 287/ 76/ 79 |  452/ 177/ 275/ 71/ 73
+RANDOM_DEPENDENCY      |  153/  42/ 111/ 31/ 31 |  181/  87/  94/ 21/ 21
+RENDEZVOUS_RESOURCE    |  168/  29/ 139/ 38/ 39 |  183/  72/ 111/ 23/ 23
+SORTIE_REGROUP         |  150/  26/ 124/ 29/ 30 |  179/  86/  93/ 25/ 27
+SUPPORT_VISIT          |  194/  19/ 175/ 50/ 52 |  203/  62/ 141/ 31/ 31
+
+不可行原因（评价次数，按 reason|状态 合并）
+S 总评价 16564，不可行合计 3066 (18.5%)
+    3066 ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#
+X 总评价 16933，不可行合计 5069 (29.9%)
+    4936 ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#
+    132 INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#
+    1 ENERGY_INFEASIBLE|SWAP_SPARES:t#:#>#
+
+最后一次改进所处迭代占比(均值)  S: 0.91  X: 0.83 ；平均迭代数 S 65.3 X 73.9

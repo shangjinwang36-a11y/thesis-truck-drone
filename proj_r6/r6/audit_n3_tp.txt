@@ -1,0 +1,27 @@
+## 算子审计（n3_tp，S/X 各 18/18 个名义解求和）
+算子 | S: calls/infeas/feas/best/acc | X: calls/infeas/feas/best/acc
+AFFECTED_SORTIE        |  415/  88/ 327/ 17/ 83 |  352/ 237/ 115/ 10/ 37
+CROSS_CONVERT          |    0/   0/   0/  0/  0 |  487/ 316/ 171/ 24/  0
+CROSS_REPAIR_TRIALS    |    0/   0/   0/  0/  0 | 1447/   0/ 569/ 27/ 94
+ENERGY_CHAIN           |  431/  99/ 332/ 18/ 90 |  365/ 195/ 170/  6/ 39
+GROUND_TO_AIR          |  358/  94/ 264/ 23/ 67 |  436/ 252/ 184/ 16/ 33
+PLAN_HAS_CROSS         |    0/   0/   0/  0/  0 |    0/   0/   0/  0/  0
+PLAN_NO_CROSS          |    0/   0/   0/  0/  0 |    0/   0/   0/  0/  0
+R:AIR_FIRST            |  824/ 238/ 586/ 47/152 |  840/ 489/ 351/ 32/ 78
+R:GREEDY_PROXY         |  846/ 226/ 620/ 20/158 |  984/ 527/ 457/ 35/109
+R:REGRET2_PROXY        |  998/ 221/ 777/ 53/207 |  963/ 549/ 414/ 23/ 94
+RANDOM_DEPENDENCY      |  262/ 123/ 139/  6/ 26 |  237/ 168/  69/  1/  3
+RENDEZVOUS_RESOURCE    |  436/  82/ 354/ 21/ 98 |  403/ 183/ 220/ 13/ 49
+SORTIE_REGROUP         |  426/  95/ 331/ 24/ 90 |  583/ 292/ 291/ 33/ 84
+SUPPORT_VISIT          |  340/ 104/ 236/ 11/ 63 |  411/ 238/ 173/ 11/ 36
+
+不可行原因（评价次数，按 reason|状态 合并）
+S 总评价 54000，不可行合计 7109 (13.2%)
+    7065 ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#
+    44 ENERGY_INFEASIBLE|SWAP_SPARES:t#:#>#
+X 总评价 54000，不可行合计 10550 (19.5%)
+    10236 ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#
+    281 INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#
+    33 ENERGY_INFEASIBLE|SWAP_SPARES:t#:#>#
+
+最后一次改进所处迭代占比(均值)  S: 0.64  X: 0.67 ；平均迭代数 S 148.2 X 154.8

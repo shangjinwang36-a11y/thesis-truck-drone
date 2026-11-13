@@ -1,0 +1,432 @@
+"""批量实验：名义计划复用、S/X 共享环境、配对统计与输出."""
+from __future__ import annotations
+
+import csv
+import json
+import math
+import random
+import statistics
+import time
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+
+from . import ALGORITHM_ID, GENERATOR_VERSION, SCHEMA_VERSION, __version__
+from .alns import Budget, SolveContext
+from .config import AlgorithmConfig, PhysicalConfig
+from .data import Instance, load_instance
+from .evaluate import evaluate_plan
+from .hidden_world import HiddenWorld
+from .nominal import build_nominal
+from .plan import Plan
+from .schedule import initial_state
+from .simulate import derive_rngs, run_episode
+from .verify import verify_plan
+
+
+def plan_to_dict(plan: Plan, inst: Instance) -> dict:
+    return {
+        "case_id": plan.case_id,
+        "routes": {k: list(v) for k, v in plan.routes.items()},
+        "visits": {str(v.vid): {"vid": v.vid, "truck": v.truck, "customer": v.customer,
+                                "ground": list(v.ground)} for v in plan.visits.values()},
+        "sorties": {str(s.sid): {"sid": s.sid, "drone": s.drone, "truck": s.truck,
+                                 "launch_vid": s.launch_vid, "mode": s.mode, "lam": s.lam,
+                                 "air": list(s.air), "rec_vid": s.rec_vid,
+                                 "handover": list(s.handover), "started": s.started,
+                                 "start_time": s.start_time, "start_pos": s.start_pos,
+                                 "rec_priority": s.rec_priority,
+                                 "launch_priority": s.launch_priority}
+                          for s in plan.sorties.values()},
+        "drone_sorties": {k: list(v) for k, v in plan.drone_sorties.items()},
+        "next_vid": plan.next_vid,
+        "next_sid": plan.next_sid,
+    }
+
+
+def plan_from_dict(d: dict) -> Plan:
+    p = Plan(d["case_id"])
+    p.next_vid = d["next_vid"]
+    p.next_sid = d["next_sid"]
+    p.routes = {k: list(v) for k, v in d["routes"].items()}
+    from .plan import Sortie, Visit
+    for k, v in d["visits"].items():
+        p.visits[v["vid"]] = Visit(v["vid"], v["truck"], v["customer"], list(v["ground"]))
+    for k, v in d["sorties"].items():
+        p.sorties[v["sid"]] = Sortie(v["sid"], v["drone"], v["truck"], v["launch_vid"], v["mode"],
+                                     v["lam"], list(v["air"]), v["rec_vid"], list(v["handover"]),
+                                     v["started"], v["start_time"],
+                                     tuple(v["start_pos"]) if v["start_pos"] else None,
+                                     v.get("rec_priority", 0), v.get("launch_priority", 0))
+    p.drone_sorties = {k: list(v) for k, v in d["drone_sorties"].items()}
+    return p
+
+
+def _write_json(path: Path, obj: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, indent=1, allow_nan=False)
+
+
+def _write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+        w.writeheader()
+        for r in rows:
+            w.writerow({k: ("" if r.get(k) is None else r.get(k)) for k in fields})
+
+
+# ---------------------------------------------------------------------------
+# 名义计划
+# ---------------------------------------------------------------------------
+def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
+                       out_dir: str | Path, eval_budget: int | None = None,
+                       variant: str = "full") -> dict:
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    rngs = derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0)
+    t = time.perf_counter()
+    res = build_nominal(inst, phys, alg, rngs, eval_budget=eval_budget, variant=variant)
+    wall = time.perf_counter() - t
+    if res.plan is None or res.evaluation is None or not res.evaluation.feasible:
+        meta = {"case_id": inst.case_id, "status": "NO_FEASIBLE_NOMINAL",
+                "solver_status": res.status, "wall_s": wall}
+        _write_json(out / "result.json", meta)
+        return meta
+    ev = res.evaluation
+    H = max(ev.timeline.truck_finish.values()) + phys.shift_slack_s
+    from .replay import verify_replay
+    from .simulate import collect_segment, initial_run_state
+    st0 = initial_run_state(res.plan, inst, phys)
+    tl = ev.timeline
+    t_end = max(list(tl.truck_finish.values()) +
+                [s.end for lst in tl.drone_stages.values() for s in lst] + [0.0])
+    seg = collect_segment(res.plan, tl, inst, phys, 0.0, t_end, st0)
+    replay = verify_replay(inst, phys, [seg])
+    rep = verify_plan(inst, initial_state(inst, phys), res.plan, "NOMINAL", phys, None)
+    plan_id = f"{inst.case_id}-nominal-{SCHEMA_VERSION}"
+    _write_json(out / "nominal_plan.json",
+                {"plan_id": plan_id, "H_s": H, "algorithm_id": ALGORITHM_ID,
+                 "plan": plan_to_dict(res.plan, inst)})
+    _write_json(out / "cost.json",
+                {"cost": ev.cost, "z_s": ev.z, "breakdown": ev.cost_breakdown,
+                 "H_s": H, "nominal_eval_requests": res.stats.eval_requests})
+    _write_json(out / "verification.json", replay.to_dict())
+    _write_json(out / "verification_scheduler.json", rep.to_dict())
+    _write_json(out / "config_snapshot.json",
+                {"schema_version": SCHEMA_VERSION, "version": __version__,
+                 "algorithm_id": ALGORITHM_ID, "generator_version": GENERATOR_VERSION,
+                 "physical": asdict(phys), "algorithm": asdict(alg)})
+    # 初始指派
+    assign = []
+    for v in res.plan.visits.values():
+        for p in v.ground:
+            assign.append({"parcel_id": p, "customer_id": v.customer, "mode": "GROUND",
+                           "truck": v.truck, "visit_id": v.vid})
+    for s in res.plan.sorties.values():
+        for p in s.air:
+            assign.append({"parcel_id": p, "customer_id": inst.parcel_to_customer[p],
+                           "mode": "AIR", "drone": s.drone, "sortie_id": s.sid,
+                           "launch_vid": s.launch_vid, "rec_vid": s.rec_vid})
+    _write_csv(out / "initial_assignment.csv", assign,
+               ["parcel_id", "customer_id", "mode", "truck", "drone", "visit_id", "sortie_id",
+                "launch_vid", "rec_vid"])
+    try:
+        from .report import plot_nominal_route, plot_nominal_gantt
+        plot_nominal_route(inst, res.plan, ev, out / "nominal_route.png")
+        plot_nominal_gantt(inst, res.plan, ev, out / "nominal_gantt.png", H)
+    except Exception as exc:  # noqa: BLE001
+        (out / "figure_error.txt").write_text(str(exc), encoding="utf-8")
+    meta = {
+        "case_id": inst.case_id, "status": "FEASIBLE", "plan_id": plan_id, "H_s": H,
+        "cost": ev.cost, "z_s": ev.z, "n_sorties": len(res.plan.sorties),
+        "n_air_parcels": sum(len(s.air) for s in res.plan.sorties.values()),
+        "n_visits": len(res.plan.visits), "eval_requests": res.stats.eval_requests,
+        "wall_s": wall, "verified": bool(replay.ok),
+        "distance_km": ev.cost_breakdown.get("truck_km"),
+        "cost_breakdown": ev.cost_breakdown,
+    }
+    _write_json(out / "result.json", meta)
+    return meta
+
+
+def load_case_nominal(inst: Instance, nominal_dir: str | Path) -> tuple[Plan, dict, float]:
+    d = json.load(open(Path(nominal_dir) / "nominal_plan.json", encoding="utf-8"))
+    plan = plan_from_dict(d["plan"])
+    cost = json.load(open(Path(nominal_dir) / "cost.json", encoding="utf-8"))
+    return plan, cost, float(d["H_s"])
+
+
+# ---------------------------------------------------------------------------
+# 单回合
+# ---------------------------------------------------------------------------
+def run_episode_dir(inst: Instance, nominal_plan: Plan, nominal_cost: dict, H: float,
+                    phys: PhysicalConfig, alg: AlgorithmConfig, seed: int, strategy: str,
+                    out_dir: str | Path, recovery_eval_budget: int | None = None,
+                    recovery_wall_s: float | None = None, variant: str = "full",
+                    make_figures: bool = True) -> dict:
+    import shutil
+    out = Path(out_dir)
+    if out.exists():
+        shutil.rmtree(out)          # 原子重写：不保留旧运行的核验/结果文件
+    out.mkdir(parents=True, exist_ok=True)
+    world = HiddenWorld(inst, inst.case_id, seed)
+    rngs = derive_rngs(alg.base_algorithm_seed, inst.case_id, "recovery", 0)
+    nom_ev = evaluate_plan(nominal_plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
+    ep = run_episode(inst, nominal_plan, nom_ev, H, phys, world, strategy, alg, rngs,
+                     recovery_eval_budget=recovery_eval_budget, recovery_wall_s=recovery_wall_s,
+                     variant=variant)
+    run_id = f"{inst.case_id}-s{seed:02d}-{strategy}-{alg.base_algorithm_seed}"
+    obs = [{"time_s": o.time_s, "parcel_id": o.parcel_id, "customer_id": o.customer_id,
+            "air_delivery_available": o.air_delivery_available, "drone_id": o.drone_id}
+           for o in ep.observations]
+    _write_json(out / "run_metadata.json", {
+        "schema_version": SCHEMA_VERSION, "project_version": __version__, "run_id": run_id,
+        "case_id": inst.case_id, "strategy": strategy, "environment_seed": seed,
+        "algorithm_id": ALGORITHM_ID, "algorithm_base_seed": alg.base_algorithm_seed,
+        "generator_version": GENERATOR_VERSION, "H_s": H, "variant": variant,
+        "recovery_eval_budget": recovery_eval_budget, "recovery_wall_s": recovery_wall_s,
+        "recovery_decision": alg.recovery_decision, "operator_selector": alg.operator_selector,
+        "recovery_init_eval_budget": alg.recovery_init_eval_budget,
+    })
+    with open(out / "public_events.jsonl", "w", encoding="utf-8") as f:
+        for o in obs:
+            f.write(json.dumps(o, ensure_ascii=False) + "\n")
+    if ep.audit is not None:
+        _write_json(out / "private_world_audit.json", asdict(ep.audit))
+    with open(out / "replans.jsonl", "w", encoding="utf-8") as f:
+        for r in ep.replans:
+            f.write(json.dumps(asdict(r), ensure_ascii=False, default=str) + "\n")
+    # ---- 全程执行账本（所有段） ----
+    action_rows: list[dict] = []
+    charge_rows: list[dict] = []
+    rec_rows: list[dict] = []
+    deliver: dict[str, dict] = {}
+    for si, seg in enumerate(ep.segments):
+        for a in seg["actions"]:
+            action_rows.append({
+                "segment": si, "kind": a["kind"], "actor": a["actor"],
+                "start_s": a["start"], "end_s": a["end"], "ref": a.get("ref", ""),
+                "drone": a.get("drone", ""), "customer": a.get("customer", ""),
+                "dist_m": a.get("dist", 0.0), "parcels": ",".join(a.get("parcels", [])),
+                "from_xy": (f"{a['from'][0]:.1f},{a['from'][1]:.1f}" if "from" in a else ""),
+                "to_xy": (f"{a['to'][0]:.1f},{a['to'][1]:.1f}" if "to" in a else ""),
+            })
+            if a["kind"] == "G" and a.get("ref"):
+                deliver[a["ref"]] = {"time": a["end"], "mode": "GROUND",
+                                     "truck": a["actor"], "drone": "", "customer": a.get("customer")}
+            if a["kind"] == "U":
+                for p in a.get("parcels", []):
+                    deliver.setdefault(p, {})["handover_time"] = a["start"]
+            if a["kind"] == "R":
+                rec_rows.append({
+                    "segment": si, "recovery_truck_id": a["actor"], "drone_id": a.get("drone"),
+                    "launch_truck_id": a.get("launch_truck", ""),
+                    "recovery_customer_id": a.get("customer"), "R_start_s": a["start"],
+                    "R_end_s": a["end"],
+                    "same_truck": (a.get("launch_truck") == a["actor"]),
+                    "onboard_parcels": ",".join(a.get("onboard", [])),
+                    "handover_parcels": ",".join(a.get("handover", [])),
+                    "n_undelivered_at_recovery": len(a.get("handover", [])),
+                })
+        for st in seg["stages"]:
+            if st["kind"] == "SERVICE" and st.get("parcel"):
+                deliver[st["parcel"]] = {"time": st["end"], "mode": "AIR",
+                                         "truck": "", "drone": st["drone"],
+                                         "customer": st.get("customer")}
+            if st["kind"] in ("ON_TRUCK", "READY") and float(st.get("q_ac", 0.0)) > 0:
+                charge_rows.append({"segment": si, "drone_id": st["drone"],
+                                    "carrier": st.get("truck"), "start_s": st["start"],
+                                    "end_s": st["end"], "ac_kwh": float(st["q_ac"]),
+                                    "net_kwh": phys.slot_efficiency * float(st["q_ac"])})
+    _write_csv(out / "actions.csv", action_rows,
+               ["segment", "kind", "actor", "start_s", "end_s", "ref", "drone", "customer",
+                "dist_m", "parcels", "from_xy", "to_xy"])
+    parcel_rows = []
+    for c in inst.customers:
+        d = deliver.get(c.parcel_id)
+        parcel_rows.append({"parcel_id": c.parcel_id, "customer_id": c.customer_id,
+                            "mass_kg": c.mass_kg,
+                            "final_mode": d.get("mode") if d else None,
+                            "delivered_s": d.get("time") if d else None,
+                            "truck": d.get("truck") if d else None,
+                            "drone": d.get("drone") if d else None,
+                            "air_failure_observed": any(
+                                o.parcel_id == c.parcel_id and not o.air_delivery_available
+                                for o in ep.observations)})
+    _write_csv(out / "parcel_ledger.csv", parcel_rows,
+               ["parcel_id", "customer_id", "mass_kg", "final_mode", "delivered_s",
+                "truck", "drone", "air_failure_observed"])
+    _write_csv(out / "charging_ledger.csv", charge_rows,
+               ["segment", "drone_id", "carrier", "start_s", "end_s", "ac_kwh", "net_kwh"])
+    _write_csv(out / "recovery_ledger.csv", rec_rows,
+               ["segment", "recovery_truck_id", "drone_id", "launch_truck_id",
+                "recovery_customer_id", "R_start_s", "R_end_s", "same_truck",
+                "onboard_parcels", "handover_parcels", "n_undelivered_at_recovery"])
+    term_rows = []
+    if ep.replay is not None:
+        for d, t in sorted(ep.replay.terminal.items()):
+            carrier = t.get("carrier")
+            term_rows.append({"drone_id": d, "final_carrier": carrier,
+                              "truck_depot_arrival_s": ep.replay.truck_finish.get(carrier)
+                              if hasattr(ep.replay, "truck_finish") else None,
+                              "E_return_kwh": t.get("energy"),
+                              "return_mode": "ON_TRUCK" if carrier else "AIRBORNE_AT_END"})
+    _write_csv(out / "drone_terminal.csv", term_rows,
+               ["drone_id", "final_carrier", "truck_depot_arrival_s", "E_return_kwh",
+                "return_mode"])
+    cost_obj = None
+    if ep.evaluation is not None and ep.evaluation.feasible:
+        cost_obj = {"cost": ep.evaluation.cost, "z_s": ep.evaluation.z,
+                    "breakdown": ep.evaluation.cost_breakdown,
+                    "replay_cost": ep.replay.cost if ep.replay else None,
+                    "nominal_cost": nominal_cost.get("cost"),
+                    "delta_vs_nominal": (ep.evaluation.cost - nominal_cost.get("cost")
+                                         if nominal_cost.get("cost") else None)}
+    _write_json(out / "cost.json", cost_obj or {"cost": None, "note": "no feasible suffix"})
+    n_obs_fail = sum(1 for o in ep.observations if not o.air_delivery_available)
+    verified = bool(ep.replay.ok) if ep.replay is not None else False
+    if ep.replay is not None:
+        _write_json(out / "verification.json", ep.replay.to_dict())
+    result = {
+        "run_id": run_id, "case_id": inst.case_id, "strategy": strategy,
+        "environment_seed": seed, "episode_status": ep.status,
+        "configured_failure_count": world.configured_failure_count,
+        "observed_air_failure_count": n_obs_fail,
+        "observed_parcels": [o.parcel_id for o in ep.observations if not o.air_delivery_available],
+        "hidden_failure_parcels": list(ep.audit.hidden_failure_parcels) if ep.audit else None,
+        "cost": ep.evaluation.cost if ep.evaluation is not None else None,
+        "z_s": ep.evaluation.z if ep.evaluation is not None else None,
+        "n_replans": len(ep.replans) - 1,
+        "replan_wall_s": ep.replan_times,
+        "wall_s": ep.wall_s, "verified": verified,
+        "replay_cost": ep.replay.cost if ep.replay is not None else None,
+        "replay_violations": ep.replay.violations[:20] if ep.replay else [],
+        "n_segments": len(ep.segments),
+        "notes": ep.notes,
+    }
+    _write_json(out / "result.json", result)
+    if make_figures:
+        try:
+            from .report import plot_episode_route, plot_episode_gantt, plot_energy
+            plot_episode_route(inst, nominal_plan, ep.plan, ep.observations,
+                               out / "route.png", title=f"{inst.case_id} {strategy} seed {seed}")
+            plot_episode_gantt(inst, ep.plan, ep.evaluation, out / "gantt.png", H,
+                               title=f"{inst.case_id} {strategy} seed {seed}")
+            plot_energy(inst, ep.plan, ep.evaluation, out / "energy.png",
+                        title=f"{inst.case_id} {strategy} seed {seed}")
+        except Exception as exc:  # noqa: BLE001
+            (out / "figure_error.txt").write_text(str(exc), encoding="utf-8")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 批量
+# ---------------------------------------------------------------------------
+def paired_statistics(rows: list[dict]) -> dict:
+    pairs = [r for r in rows if r.get("cost_S") is not None and r.get("cost_X") is not None]
+    deltas = [r["cost_S"] - r["cost_X"] for r in pairs]
+    out = {
+        "n_environments": len(rows),
+        "n_episodes": len(rows) * 2,
+        "n_pairs": len(pairs),
+        "mean_delta": statistics.mean(deltas) if deltas else None,
+        "std_delta": statistics.stdev(deltas) if len(deltas) > 1 else None,
+        "min_delta": min(deltas) if deltas else None,
+        "max_delta": max(deltas) if deltas else None,
+        "n_positive": sum(1 for d in deltas if d > 1e-9),
+        "n_zero": sum(1 for d in deltas if abs(d) <= 1e-9),
+        "n_negative": sum(1 for d in deltas if d < -1e-9),
+    }
+    if len(deltas) > 1:
+        from scipy.stats import t as _t
+        df = len(deltas) - 1
+        crit = float(_t.ppf(0.975, df))
+        se = out["std_delta"] / math.sqrt(len(deltas))
+        out["se"] = se
+        out["df"] = df
+        out["t_critical_975"] = crit
+        out["ci95_halfwidth"] = crit * se
+        out["ci95_lower"] = out["mean_delta"] - crit * se
+        out["ci95_upper"] = out["mean_delta"] + crit * se
+    else:
+        out["se"] = None
+        out["df"] = None
+        out["t_critical_975"] = None
+        out["ci95_halfwidth"] = None
+        out["ci95_lower"] = None
+        out["ci95_upper"] = None
+    return out
+
+
+def run_batch(pkg: dict, cases: list[str], seeds: list[int], strategies: list[str],
+              nominal_root: str | Path, out_root: str | Path, phys: PhysicalConfig,
+              alg: AlgorithmConfig, recovery_eval_budget: int | None,
+              recovery_wall_s: float | None, variant: str = "full",
+              make_figures: bool = True, progress: bool = True) -> dict:
+    out = Path(out_root)
+    out.mkdir(parents=True, exist_ok=True)
+    rows = []
+    t0 = time.perf_counter()
+    for case in cases:
+        inst = load_instance(pkg, case)
+        nominal_dir = Path(nominal_root) / case
+        nominal_plan, nominal_cost, H = load_case_nominal(inst, nominal_dir)
+        for seed in seeds:
+            res_by_strategy = {}
+            for strategy in strategies:
+                ep_dir = out / f"{case}_seed{seed:02d}_{strategy}"
+                r = run_episode_dir(inst, nominal_plan, nominal_cost, H, phys, alg, seed,
+                                    strategy, ep_dir, recovery_eval_budget=recovery_eval_budget,
+                                    recovery_wall_s=recovery_wall_s, variant=variant,
+                                    make_figures=make_figures)
+                res_by_strategy[strategy] = r
+            row = {
+                "case_id": case, "environment_seed": seed,
+                "status_S": res_by_strategy.get("S", {}).get("episode_status"),
+                "status_X": res_by_strategy.get("X", {}).get("episode_status"),
+                "cost_S": res_by_strategy.get("S", {}).get("cost"),
+                "cost_X": res_by_strategy.get("X", {}).get("cost"),
+                "obs_fail_S": res_by_strategy.get("S", {}).get("observed_air_failure_count"),
+                "obs_fail_X": res_by_strategy.get("X", {}).get("observed_air_failure_count"),
+                "configured_failures": res_by_strategy.get("S", {}).get("configured_failure_count"),
+                "delta": None,
+            }
+            if row["cost_S"] is not None and row["cost_X"] is not None:
+                row["delta"] = row["cost_S"] - row["cost_X"]
+            rows.append(row)
+            if progress:
+                print(f"{case} seed{seed}: S={row['cost_S']} X={row['cost_X']} "
+                      f"delta={row['delta']} obs={row['obs_fail_S']}/{row['obs_fail_X']}", flush=True)
+    _write_csv(out / "episodes.csv", rows,
+               ["case_id", "environment_seed", "status_S", "status_X", "cost_S", "cost_X",
+                "delta", "obs_fail_S", "obs_fail_X", "configured_failures"])
+    summ = paired_statistics(rows)
+    by_case = {}
+    for case in cases:
+        sub = [r for r in rows if r["case_id"] == case]
+        by_case[case] = paired_statistics(sub)
+    summ["by_case"] = by_case
+    summ["wall_s"] = time.perf_counter() - t0
+    summ["variant"] = variant
+    summ["recovery_eval_budget"] = recovery_eval_budget
+    summ["recovery_wall_s"] = recovery_wall_s
+    summ["recovery_decision"] = alg.recovery_decision
+    summ["operator_selector"] = alg.operator_selector
+    _write_json(out / "summary.json", summ)
+    _write_csv(out / "paired_results.csv", rows,
+               ["case_id", "environment_seed", "cost_S", "cost_X", "delta"])
+    counts: dict[str, int] = {}
+    for r in rows:
+        for key in ("status_S", "status_X"):
+            st = r.get(key)
+            counts[f"{key}:{st}"] = counts.get(f"{key}:{st}", 0) + 1
+    _write_csv(out / "status_counts.csv", [{"key": k, "count": v} for k, v in sorted(counts.items())],
+               ["key", "count"])
+    try:
+        from .report import plot_paired
+        plot_paired(rows, out / "paired_delta.png")
+    except Exception as exc:  # noqa: BLE001
+        (out / "figure_error.txt").write_text(str(exc), encoding="utf-8")
+    return summ

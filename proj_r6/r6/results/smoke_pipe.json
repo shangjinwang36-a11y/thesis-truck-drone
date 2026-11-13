@@ -1,0 +1,173 @@
+{
+ "meta": {
+  "args": {
+   "name": "smoke_pipe",
+   "package": "data/package_light.json",
+   "nominal_S": "r6/nominal/nom2/S_seed20261113",
+   "nominal_X": "r6/nominal/nom2/X_seed20261113",
+   "h": "common",
+   "cases": "C50",
+   "seeds": 2,
+   "seed0": 1,
+   "forced": 0,
+   "budget": 1000,
+   "alg_json": null,
+   "phys_json": null,
+   "cut_mode": "snapshot",
+   "workers": 2,
+   "strats": "S,X"
+  },
+  "start": "2026-11-13 02:46:56",
+  "end": "2026-11-13 02:47:04"
+ },
+ "runs": [
+  {
+   "case": "C50",
+   "seed": 2,
+   "n_cust": 50,
+   "H_S": 4302.268256660986,
+   "H_X": 4012.641069389858,
+   "S_nominal": {
+    "cost": 165.8598559214479,
+    "feasible": true,
+    "air": 31,
+    "H": 4302.268256660986,
+    "n_cross": 0,
+    "n_sorties": 15
+   },
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 167.55343379223245,
+    "verified": true,
+    "notes": [],
+    "wall": 2.2042516810033703,
+    "n_replans": 1,
+    "stop_replan": null,
+    "n_air_final": 31,
+    "n_evals": 1053,
+    "replay_viol": null,
+    "n_fail_events": 1,
+    "n_fail_rec": 1,
+    "n_fail_cross": 0,
+    "failed_delivery_delays_s": [
+     257.65407532915435
+    ],
+    "failed_delivery_delay_mean_s": 257.65407532915435,
+    "failed_delivery_delay_max_s": 257.65407532915435,
+    "makespan_s": 2502.268256660986,
+    "driver_total_s": 7224.035178904187,
+    "z_s_metric": 2502.268256660986,
+    "n_swaps": 1,
+    "stop_reason": null
+   },
+   "X_nominal": {
+    "cost": 190.06256334756748,
+    "feasible": true,
+    "air": 39,
+    "H": 4302.268256660986,
+    "n_cross": 3,
+    "n_sorties": 11
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 192.05074609137768,
+    "verified": true,
+    "notes": [],
+    "wall": 0.9168057420029072,
+    "n_replans": 1,
+    "stop_replan": null,
+    "n_air_final": 38,
+    "n_evals": 1098,
+    "replay_viol": null,
+    "n_fail_events": 1,
+    "n_fail_rec": 1,
+    "n_fail_cross": 0,
+    "failed_delivery_delays_s": [
+     362.61287095418174
+    ],
+    "failed_delivery_delay_mean_s": 362.61287095418174,
+    "failed_delivery_delay_max_s": 362.61287095418174,
+    "makespan_s": 2212.641069389858,
+    "driver_total_s": 7961.808775503416,
+    "z_s_metric": 2212.641069389858,
+    "n_swaps": 0,
+    "stop_reason": null
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 1,
+   "n_cust": 50,
+   "H_S": 4302.268256660986,
+   "H_X": 4012.641069389858,
+   "S_nominal": {
+    "cost": 165.8598559214479,
+    "feasible": true,
+    "air": 31,
+    "H": 4302.268256660986,
+    "n_cross": 0,
+    "n_sorties": 15
+   },
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 183.54041192265916,
+    "verified": true,
+    "notes": [],
+    "wall": 3.6178577140017296,
+    "n_replans": 2,
+    "stop_replan": null,
+    "n_air_final": 33,
+    "n_evals": 2198,
+    "replay_viol": null,
+    "n_fail_events": 2,
+    "n_fail_rec": 2,
+    "n_fail_cross": 0,
+    "failed_delivery_delays_s": [
+     899.4392474855894,
+     766.4616802814824
+    ],
+    "failed_delivery_delay_mean_s": 832.9504638835358,
+    "failed_delivery_delay_max_s": 899.4392474855894,
+    "makespan_s": 3018.709512974411,
+    "driver_total_s": 7864.311041563413,
+    "z_s_metric": 3018.709512974411,
+    "n_swaps": 1,
+    "stop_reason": null
+   },
+   "X_nominal": {
+    "cost": 190.06256334756748,
+    "feasible": true,
+    "air": 39,
+    "H": 4302.268256660986,
+    "n_cross": 3,
+    "n_sorties": 11
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 198.22437598446805,
+    "verified": true,
+    "notes": [],
+    "wall": 3.5087432990039815,
+    "n_replans": 2,
+    "stop_replan": null,
+    "n_air_final": 37,
+    "n_evals": 2198,
+    "replay_viol": null,
+    "n_fail_events": 2,
+    "n_fail_rec": 2,
+    "n_fail_cross": 0,
+    "failed_delivery_delays_s": [
+     775.9740243707299,
+     553.7962477507212
+    ],
+    "failed_delivery_delay_mean_s": 664.8851360607256,
+    "failed_delivery_delay_max_s": 775.9740243707299,
+    "makespan_s": 2015.2501264745952,
+    "driver_total_s": 8072.691738389655,
+    "z_s_metric": 2015.2501264745952,
+    "n_swaps": 0,
+    "stop_reason": null
+   }
+  }
+ ]
+}

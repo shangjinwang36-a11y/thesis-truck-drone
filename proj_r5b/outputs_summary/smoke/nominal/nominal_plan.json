@@ -1,0 +1,101 @@
+{
+ "plan_id": "SMOKE8-nominal-1.0.0",
+ "H_s": 2859.9035178352524,
+ "algorithm_id": "tdr_alns_v61",
+ "plan": {
+  "case_id": "SMOKE8",
+  "routes": {
+   "t1": [
+    13,
+    9
+   ],
+   "t2": [],
+   "t3": [
+    11,
+    15
+   ],
+   "t4": [
+    14,
+    7
+   ],
+   "t5": []
+  },
+  "visits": {
+   "7": {
+    "vid": 7,
+    "truck": "t4",
+    "customer": "c008",
+    "ground": [
+     "p008"
+    ]
+   },
+   "9": {
+    "vid": 9,
+    "truck": "t1",
+    "customer": "c002",
+    "ground": [
+     "p002"
+    ]
+   },
+   "11": {
+    "vid": 11,
+    "truck": "t3",
+    "customer": "c006",
+    "ground": [
+     "p006"
+    ]
+   },
+   "13": {
+    "vid": 13,
+    "truck": "t1",
+    "customer": "c004",
+    "ground": [
+     "p004"
+    ]
+   },
+   "14": {
+    "vid": 14,
+    "truck": "t4",
+    "customer": "c001",
+    "ground": [
+     "p001"
+    ]
+   },
+   "15": {
+    "vid": 15,
+    "truck": "t3",
+    "customer": "c003",
+    "ground": []
+   }
+  },
+  "sorties": {
+   "4": {
+    "sid": 4,
+    "drone": "d3",
+    "truck": "t3",
+    "launch_vid": 11,
+    "mode": "ARC",
+    "lam": 0.0,
+    "air": [
+     "p005",
+     "p007",
+     "p003"
+    ],
+    "rec_vid": 15,
+    "handover": [],
+    "started": false,
+    "start_time": 0.0,
+    "start_pos": null,
+    "rec_priority": 0,
+    "launch_priority": 0
+   }
+  },
+  "drone_sorties": {
+   "d3": [
+    4
+   ]
+  },
+  "next_vid": 16,
+  "next_sid": 5
+ }
+}

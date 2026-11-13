@@ -1,0 +1,59 @@
+{
+ "ok": true,
+ "violations": [],
+ "cost": 566.7056341907447,
+ "cost_breakdown": {
+  "c_km": 252.46222823244923,
+  "c_driver": 309.202477653136,
+  "c_vehicle": 0.0,
+  "c_depot": 5.040928305159433,
+  "distance_km": 150.5502485091502,
+  "driver_s": 21931.505095711225,
+  "ac_kwh": 0.0,
+  "refill_kwh": 6.206239397771158
+ },
+ "distance_km": 150.5502485091502,
+ "energy_kwh": {
+  "d1": 0.0,
+  "d2": 0.0,
+  "d3": 2.1658915721028373,
+  "d4": 1.930281848585273,
+  "d5": 2.110065977083047
+ },
+ "charging_kwh": 0.0,
+ "terminal": {
+  "d1": {
+   "final_carrier": "t1",
+   "t_return_s": 2436.2581508930266,
+   "E_return_kwh": 3.9688,
+   "return_mode": "NOT_DISPATCHED"
+  },
+  "d2": {
+   "final_carrier": "t2",
+   "t_return_s": 4137.789308548231,
+   "E_return_kwh": 3.9688,
+   "return_mode": "NOT_DISPATCHED"
+  },
+  "d3": {
+   "final_carrier": "t3",
+   "t_return_s": 7148.55240602622,
+   "E_return_kwh": 1.802908427897163,
+   "return_mode": "ON_TRUCK"
+  },
+  "d4": {
+   "final_carrier": "t4",
+   "t_return_s": 3378.621830574391,
+   "E_return_kwh": 2.038518151414726,
+   "return_mode": "ON_TRUCK"
+  },
+  "d5": {
+   "final_carrier": "t5",
+   "t_return_s": 4830.283399669357,
+   "E_return_kwh": 1.8587340229169524,
+   "return_mode": "ON_TRUCK"
+  }
+ },
+ "notes": [
+  "energy_consumed=6.2062"
+ ]
+}

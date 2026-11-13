@@ -1,0 +1,33 @@
+nominal 458.92031707448564 H 4927.775531202406
+== S COMPLETED_VERIFIED 489.54185514606394
+1 t=441 ['p076'] cost 448.3 CATALOG:truck=t6,rv=118,served=1 {'init_source': 'CATALOG', 'init_cost': 458.947450899275, 'final_cost': 448.26778571470174, 'patch_back': 10.679665184573253, 'milp_status': 'OPTIMAL', 'n_init_catalog_entries': 71}
+2 t=619 ['p052'] cost 437.4 RESIDUAL:truck=t3,rv=30,served=1 {'init_source': 'RESIDUAL', 'init_cost': 450.8875833909607, 'final_cost': 437.3912034698253, 'patch_back': 13.496379921135372, 'milp_status': 'OPTIMAL', 'n_init_catalog_entries': 71}
+3 t=840 ['p060'] cost 449.9 MILP:truck=t5,rv=236,served=1 {'init_source': 'MILP', 'init_cost': 461.6240324066309, 'final_cost': 449.9284191235408, 'patch_back': 11.695613283090097, 'milp_status': 'OPTIMAL', 'n_init_catalog_entries': 68}
+4 t=1128 ['p004'] cost 469.1 RESIDUAL:truck=t6,rv=117,served=0 {'init_source': 'RESIDUAL', 'init_cost': 478.45813225882523, 'final_cost': 469.0877254427456, 'patch_back': 9.370406816079651, 'milp_status': 'OPTIMAL', 'n_init_catalog_entries': 73}
+5 t=1137 ['p019'] cost 473.2 MILP:truck=t7,rv=287,served=1 {'init_source': 'MILP', 'init_cost': 473.1892548193646, 'final_cost': 473.1892548193646, 'patch_back': 0.0, 'milp_status': 'OPTIMAL', 'n_init_catalog_entries': 44}
+6 t=1311 ['p056'] cost 473.1 RESIDUAL:truck=t4,rv=159,served=1 {'init_source': 'RESIDUAL', 'init_cost': 477.33850792887347, 'final_cost': 473.14695852739453, 'patch_back': 4.191549401478937, 'milp_status': 'OPTIMAL', 'n_init_catalog_entries': 58}
+7 t=1399 ['p088'] cost 489.5 CATALOG:truck=t2,rv=137,served=0 {'init_source': 'CATALOG', 'init_cost': 489.54185514606394, 'final_cost': 489.54185514606394, 'patch_back': 0.0, 'milp_status': 'OPTIMAL', 'n_init_catalog_entries': 90}
+  FAIL p076 441 d11
+  FAIL p052 619 d6
+  FAIL p060 840 d9
+  FAIL p004 1128 d12
+  FAIL p019 1137 d13
+  FAIL p056 1311 d7
+  FAIL p088 1399 d4
+== X COMPLETED_VERIFIED 570.0641453678016
+1 t=441 ['p076'] cost 448.3 CATALOG:truck=t6,rv=118,served=1 {'init_source': 'CATALOG', 'init_cost': 458.947450899275, 'final_cost': 448.26778571470174, 'patch_back': 10.679665184573253, 'milp_status': 'OPTIMAL', 'n_init_catalog_entries': 64}
+2 t=619 ['p052'] cost 437.4 RESIDUAL:truck=t3,rv=30,served=1 {'init_source': 'RESIDUAL', 'init_cost': 450.8875833909607, 'final_cost': 437.3912034698253, 'patch_back': 13.496379921135372, 'milp_status': 'OPTIMAL', 'n_init_catalog_entries': 78}
+3 t=840 ['p060'] cost 445.4 CATALOG:truck=t6,rv=117,served=1 {'init_source': 'CATALOG', 'init_cost': 450.3314650377218, 'final_cost': 445.433679006566, 'patch_back': 4.897786031155761, 'milp_status': 'OPTIMAL', 'n_init_catalog_entries': 64}
+4 t=949 ['p004'] cost 528.2 MILP:truck=t1,rv=13,served=1 {'init_source': 'MILP', 'init_cost': 543.2168819923191, 'final_cost': 528.2077994011526, 'patch_back': 15.009082591166589, 'milp_status': 'OPTIMAL', 'n_init_catalog_entries': 34}
+5 t=1547 ['p083'] cost 526.1 RESIDUAL:truck=t2,rv=260,served=2 {'init_source': 'RESIDUAL', 'init_cost': 557.2583566254766, 'final_cost': 526.1015776103914, 'patch_back': 31.15677901508525, 'milp_status': 'OPTIMAL', 'n_init_catalog_entries': 36}
+6 t=1956 ['p019'] cost 544.3 RESIDUAL:truck=t7,rv=237,served=0 {'init_source': 'RESIDUAL', 'init_cost': 545.0067867702032, 'final_cost': 544.3166918138882, 'patch_back': 0.6900949563150789, 'milp_status': 'FEASIBLE_LIMIT', 'n_init_catalog_entries': 96}
+7 t=2419 ['p088'] cost 556.2 RESIDUAL:truck=t2,rv=156,served=0 {'init_source': 'RESIDUAL', 'init_cost': 556.2365966971408, 'final_cost': 556.2365966971408, 'patch_back': 0.0, 'milp_status': 'OPTIMAL', 'n_init_catalog_entries': 89}
+8 t=2460 ['p056'] cost 570.1 RESIDUAL:truck=t4,rv=153,served=3 {'init_source': 'RESIDUAL', 'init_cost': 570.0641453678016, 'final_cost': 570.0641453678016, 'patch_back': 0.0, 'milp_status': 'OPTIMAL', 'n_init_catalog_entries': 88}
+  FAIL p076 441 d11
+  FAIL p052 619 d6
+  FAIL p060 840 d9
+  FAIL p004 949 d12
+  FAIL p083 1547 d3
+  FAIL p019 1956 d14
+  FAIL p088 2419 d3
+  FAIL p056 2460 d7

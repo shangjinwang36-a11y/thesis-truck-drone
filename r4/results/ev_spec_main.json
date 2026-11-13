@@ -1,0 +1,1723 @@
+{
+ "meta": {
+  "args": {
+   "name": "ev_spec_main",
+   "package": "data/package.json",
+   "nominal": "outputs/nominal_r3fd1000",
+   "cases": "C50,R50,RC50,C100,R100,RC100",
+   "seeds": 10,
+   "seed0": 1,
+   "forced": 0,
+   "budget": 1000,
+   "alg_json": null,
+   "phys_json": null,
+   "cut_mode": "snapshot",
+   "workers": 4,
+   "strats": "S,X",
+   "pool": null,
+   "mrange": null,
+   "H_delta": 0.0
+  },
+  "start": "2026-11-13 02:08:55",
+  "end": "2026-11-13 02:12:04"
+ },
+ "runs": [
+  {
+   "case": "C100",
+   "seed": 1,
+   "nominal_cost": 383.2947090870322,
+   "n_cust": 100,
+   "H": 5253.2213969850945,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 383.2947090870322,
+    "wall": 0.016103678004583344
+   },
+   "events": []
+  },
+  {
+   "case": "C100",
+   "seed": 5,
+   "nominal_cost": 383.2947090870322,
+   "n_cust": 100,
+   "H": 5253.2213969850945,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 383.2947090870322,
+    "wall": 0.012970616000529844
+   },
+   "events": []
+  },
+  {
+   "case": "C100",
+   "seed": 4,
+   "nominal_cost": 383.2947090870322,
+   "n_cust": 100,
+   "H": 5253.2213969850945,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 383.2947090870322,
+    "wall": 0.03036147399689071
+   },
+   "events": []
+  },
+  {
+   "case": "C100",
+   "seed": 3,
+   "nominal_cost": 383.2947090870322,
+   "n_cust": 100,
+   "H": 5253.2213969850945,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 383.2947090870322,
+    "wall": 0.03039083199837478
+   },
+   "events": []
+  },
+  {
+   "case": "C100",
+   "seed": 7,
+   "nominal_cost": 383.2947090870322,
+   "n_cust": 100,
+   "H": 5253.2213969850945,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 383.2947090870322,
+    "wall": 0.024191704993427265
+   },
+   "events": []
+  },
+  {
+   "case": "C100",
+   "seed": 2,
+   "nominal_cost": 383.2947090870322,
+   "n_cust": 100,
+   "H": 5253.2213969850945,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 388.641789433572,
+    "wall": 6.434560927998973
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d2",
+     "costX": 388.641789433572,
+     "initX": 389.95957455830734,
+     "launch_truck": "t2",
+     "rec_truck": "t2",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 2050.5213502372494,
+     "H": 5253.2213969850945,
+     "remaining_s": 3202.700046747845,
+     "d_launch_to_fail": 1126.7939616895753,
+     "d_rec_to_fail": 1126.7939616895753,
+     "d_rec_point_from_fail": 936.6968552830081,
+     "drone_energy_frac": 0.5434841418263975,
+     "n_trucks": 5,
+     "initS": 389.95957455830734,
+     "costS": 388.641789433572
+    }
+   ]
+  },
+  {
+   "case": "C100",
+   "seed": 10,
+   "nominal_cost": 383.2947090870322,
+   "n_cust": 100,
+   "H": 5253.2213969850945,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 383.2947090870322,
+    "wall": 0.011974110995652154
+   },
+   "events": []
+  },
+  {
+   "case": "R100",
+   "seed": 1,
+   "nominal_cost": 678.7399867529127,
+   "n_cust": 100,
+   "H": 7364.128757697377,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 678.7399867529127,
+    "wall": 0.01184440199722303
+   },
+   "events": []
+  },
+  {
+   "case": "R100",
+   "seed": 2,
+   "nominal_cost": 678.7399867529127,
+   "n_cust": 100,
+   "H": 7364.128757697377,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 678.7399867529127,
+    "wall": 0.0119024689993239
+   },
+   "events": []
+  },
+  {
+   "case": "R100",
+   "seed": 3,
+   "nominal_cost": 678.7399867529127,
+   "n_cust": 100,
+   "H": 7364.128757697377,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 678.7399867529127,
+    "wall": 0.01614072499796748
+   },
+   "events": []
+  },
+  {
+   "case": "R100",
+   "seed": 4,
+   "nominal_cost": 678.7399867529127,
+   "n_cust": 100,
+   "H": 7364.128757697377,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 678.7399867529127,
+    "wall": 0.011676304995489772
+   },
+   "events": []
+  },
+  {
+   "case": "R100",
+   "seed": 5,
+   "nominal_cost": 678.7399867529127,
+   "n_cust": 100,
+   "H": 7364.128757697377,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 678.7399867529127,
+    "wall": 0.011948195002332795
+   },
+   "events": []
+  },
+  {
+   "case": "C100",
+   "seed": 6,
+   "nominal_cost": 383.2947090870322,
+   "n_cust": 100,
+   "H": 5253.2213969850945,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 383.8417409969029,
+    "wall": 7.058876291004708
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d1",
+     "costX": 383.8417409969029,
+     "initX": 384.17690406752564,
+     "launch_truck": "t1",
+     "rec_truck": "t1",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 2049.3350394496233,
+     "H": 5253.2213969850945,
+     "remaining_s": 3203.8863575354712,
+     "d_launch_to_fail": 402.063361004514,
+     "d_rec_to_fail": 402.063361004514,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.6035163235002075,
+     "n_trucks": 5,
+     "initS": 384.17690406752564,
+     "costS": 383.8394591447352
+    }
+   ]
+  },
+  {
+   "case": "C100",
+   "seed": 8,
+   "nominal_cost": 383.2947090870322,
+   "n_cust": 100,
+   "H": 5253.2213969850945,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 396.53934366563533,
+    "wall": 6.918362388001697
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d5",
+     "costX": 396.53934366563533,
+     "initX": 397.56952613456383,
+     "launch_truck": "t5",
+     "rec_truck": "t5",
+     "cross": false,
+     "n_served": 1,
+     "n_handover": 1,
+     "t_fail": 1942.1876484204386,
+     "H": 5253.2213969850945,
+     "remaining_s": 3311.033748564656,
+     "d_launch_to_fail": 1033.5087026327478,
+     "d_rec_to_fail": 1033.5087026327478,
+     "d_rec_point_from_fail": 2146.506015818357,
+     "drone_energy_frac": 0.5821394474526811,
+     "n_trucks": 5,
+     "initS": 397.56952613456383,
+     "costS": 396.53934366563533
+    }
+   ]
+  },
+  {
+   "case": "R100",
+   "seed": 7,
+   "nominal_cost": 678.7399867529127,
+   "n_cust": 100,
+   "H": 7364.128757697377,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 678.7399867529127,
+    "wall": 0.012658033003390301
+   },
+   "events": []
+  },
+  {
+   "case": "R100",
+   "seed": 8,
+   "nominal_cost": 678.7399867529127,
+   "n_cust": 100,
+   "H": 7364.128757697377,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 678.7399867529127,
+    "wall": 0.012594875996001065
+   },
+   "events": []
+  },
+  {
+   "case": "R100",
+   "seed": 10,
+   "nominal_cost": 678.7399867529127,
+   "n_cust": 100,
+   "H": 7364.128757697377,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 678.7399867529127,
+    "wall": 0.01617623699712567
+   },
+   "events": []
+  },
+  {
+   "case": "RC100",
+   "seed": 1,
+   "nominal_cost": 587.3346231464257,
+   "n_cust": 100,
+   "H": 8593.721342153038,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 602.9858919178037,
+    "wall": 22.116710547001276
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d1",
+     "costX": 602.9858919178037,
+     "initX": 602.9858919178037,
+     "launch_truck": "t1",
+     "rec_truck": "t1",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 2281.747807501057,
+     "H": 8593.721342153038,
+     "remaining_s": 6311.973534651981,
+     "d_launch_to_fail": 4666.889569341055,
+     "d_rec_to_fail": 4666.889569341055,
+     "d_rec_point_from_fail": 6348.400442175666,
+     "drone_energy_frac": 0.4498384838159608,
+     "n_trucks": 5,
+     "initS": 602.9858919178037,
+     "costS": 602.9858919178037
+    }
+   ]
+  },
+  {
+   "case": "RC100",
+   "seed": 2,
+   "nominal_cost": 587.3346231464257,
+   "n_cust": 100,
+   "H": 8593.721342153038,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 587.3346231464257,
+    "wall": 0.010964868997689337
+   },
+   "events": []
+  },
+  {
+   "case": "C100",
+   "seed": 9,
+   "nominal_cost": 383.2947090870322,
+   "n_cust": 100,
+   "H": 5253.2213969850945,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 381.28514631548705,
+    "wall": 33.027897703002964
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d4",
+     "costX": 381.28514631548705,
+     "initX": 383.32396989014023,
+     "launch_truck": "t4",
+     "rec_truck": "t4",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 642.7119628964529,
+     "H": 5253.2213969850945,
+     "remaining_s": 4610.509434088642,
+     "d_launch_to_fail": 0.0,
+     "d_rec_to_fail": 0.0,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.828775217374888,
+     "n_trucks": 5,
+     "initS": 383.32396989014023,
+     "costS": 381.28514631548705
+    }
+   ]
+  },
+  {
+   "case": "RC100",
+   "seed": 4,
+   "nominal_cost": 587.3346231464257,
+   "n_cust": 100,
+   "H": 8593.721342153038,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 587.3346231464257,
+    "wall": 0.01185585400526179
+   },
+   "events": []
+  },
+  {
+   "case": "R100",
+   "seed": 6,
+   "nominal_cost": 678.7399867529127,
+   "n_cust": 100,
+   "H": 7364.128757697377,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 686.7915860258496,
+    "wall": 34.67865707799501
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d5",
+     "costX": 686.7915860258496,
+     "initX": 686.7915860258496,
+     "launch_truck": "t5",
+     "rec_truck": "t5",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 1826.2721760815766,
+     "H": 7364.128757697377,
+     "remaining_s": 5537.856581615801,
+     "d_launch_to_fail": 2167.2331732560706,
+     "d_rec_to_fail": 2167.2331732560706,
+     "d_rec_point_from_fail": 1086.1909199470863,
+     "drone_energy_frac": 0.6435101399715679,
+     "n_trucks": 5,
+     "initS": 686.7915860258496,
+     "costS": 686.7915860258496
+    }
+   ]
+  },
+  {
+   "case": "RC100",
+   "seed": 3,
+   "nominal_cost": 587.3346231464257,
+   "n_cust": 100,
+   "H": 8593.721342153038,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 599.3661696438503,
+    "wall": 29.04211198900157
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d4",
+     "costX": 599.3661696438503,
+     "initX": 602.6061332068919,
+     "launch_truck": "t4",
+     "rec_truck": "t4",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 1800.842813009189,
+     "H": 8593.721342153038,
+     "remaining_s": 6792.878529143849,
+     "d_launch_to_fail": 711.1059169757101,
+     "d_rec_to_fail": 711.1059169757101,
+     "d_rec_point_from_fail": 2160.929270718474,
+     "drone_energy_frac": 0.6720667836804719,
+     "n_trucks": 5,
+     "initS": 602.6061332068919,
+     "costS": 599.3661696438503
+    }
+   ]
+  },
+  {
+   "case": "RC100",
+   "seed": 7,
+   "nominal_cost": 587.3346231464257,
+   "n_cust": 100,
+   "H": 8593.721342153038,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 582.0764095759304,
+    "wall": 5.057756783004152
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d5",
+     "costX": 582.0764095759304,
+     "initX": 582.0764095759304,
+     "launch_truck": "t5",
+     "rec_truck": "t5",
+     "cross": false,
+     "n_served": 1,
+     "n_handover": 1,
+     "t_fail": 4635.308203914019,
+     "H": 8593.721342153038,
+     "remaining_s": 3958.4131382390187,
+     "d_launch_to_fail": 3090.1919430809867,
+     "d_rec_to_fail": 3090.1919430809867,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.40701902926103223,
+     "n_trucks": 5,
+     "initS": 582.0764095759304,
+     "costS": 582.0764095759304
+    }
+   ]
+  },
+  {
+   "case": "RC100",
+   "seed": 6,
+   "nominal_cost": 587.3346231464257,
+   "n_cust": 100,
+   "H": 8593.721342153038,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 591.7558159286756,
+    "wall": 25.762306043994613
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d3",
+     "costX": 591.7558159286756,
+     "initX": 593.7355994306045,
+     "launch_truck": "t3",
+     "rec_truck": "t3",
+     "cross": false,
+     "n_served": 1,
+     "n_handover": 1,
+     "t_fail": 2500.449215107461,
+     "H": 8593.721342153038,
+     "remaining_s": 6093.272127045577,
+     "d_launch_to_fail": 2261.2993656149015,
+     "d_rec_to_fail": 2261.2993656149015,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.33313021278052624,
+     "n_trucks": 5,
+     "initS": 593.7355994306045,
+     "costS": 591.7558159286756
+    }
+   ]
+  },
+  {
+   "case": "RC100",
+   "seed": 9,
+   "nominal_cost": 587.3346231464257,
+   "n_cust": 100,
+   "H": 8593.721342153038,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 587.3346231464257,
+    "wall": 0.02440682699671015
+   },
+   "events": []
+  },
+  {
+   "case": "R100",
+   "seed": 9,
+   "nominal_cost": 678.7399867529127,
+   "n_cust": 100,
+   "H": 7364.128757697377,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 698.5797884539332,
+    "wall": 63.33182589399803
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d4",
+     "costX": 698.5797884539332,
+     "initX": 698.7246343302634,
+     "launch_truck": "t4",
+     "rec_truck": "t4",
+     "cross": false,
+     "n_served": 1,
+     "n_handover": 1,
+     "t_fail": 1486.1784850246731,
+     "H": 7364.128757697377,
+     "remaining_s": 5877.950272672704,
+     "d_launch_to_fail": 0.0,
+     "d_rec_to_fail": 0.0,
+     "d_rec_point_from_fail": 3249.829616227264,
+     "drone_energy_frac": 0.773979058797936,
+     "n_trucks": 5,
+     "initS": 698.7246343302634,
+     "costS": 698.5797884539332
+    }
+   ]
+  },
+  {
+   "case": "RC100",
+   "seed": 5,
+   "nominal_cost": 587.3346231464257,
+   "n_cust": 100,
+   "H": 8593.721342153038,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 591.7645154262077,
+    "wall": 44.01169210200169
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d4",
+     "costX": 591.7645154262077,
+     "initX": 593.8774192731496,
+     "launch_truck": "t4",
+     "rec_truck": "t4",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 1069.196677593845,
+     "H": 8593.721342153038,
+     "remaining_s": 7524.524664559192,
+     "d_launch_to_fail": 1425.3247657328754,
+     "d_rec_to_fail": 1425.3247657328754,
+     "d_rec_point_from_fail": 1425.3247657328754,
+     "drone_energy_frac": 0.7955905476229547,
+     "n_trucks": 5,
+     "initS": 593.8774192731496,
+     "costS": 591.7645154262077
+    }
+   ]
+  },
+  {
+   "case": "C50",
+   "seed": 2,
+   "nominal_cost": 194.34313887937913,
+   "n_cust": 50,
+   "H": 4104.643892453637,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 201.38511371647334,
+    "wall": 9.642776849999791
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d4",
+     "costX": 201.38511371647334,
+     "initX": 201.38511371647334,
+     "launch_truck": "t4",
+     "rec_truck": "t4",
+     "cross": false,
+     "n_served": 3,
+     "n_handover": 2,
+     "t_fail": 1451.2583682108746,
+     "H": 4104.643892453637,
+     "remaining_s": 2653.3855242427626,
+     "d_launch_to_fail": 1702.0014308934412,
+     "d_rec_to_fail": 1702.0014308934412,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.5575582431251406,
+     "n_trucks": 5,
+     "initS": 201.38511371647334,
+     "costS": 201.38511371647334
+    }
+   ]
+  },
+  {
+   "case": "RC100",
+   "seed": 8,
+   "nominal_cost": 587.3346231464257,
+   "n_cust": 100,
+   "H": 8593.721342153038,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 644.4545084305645,
+    "wall": 31.212961703000474
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d1",
+     "costX": 590.2199493233444,
+     "initX": 590.2199493233444,
+     "launch_truck": "t1",
+     "rec_truck": "t1",
+     "cross": false,
+     "n_served": 1,
+     "n_handover": 1,
+     "t_fail": 2080.5653200280644,
+     "H": 8593.721342153038,
+     "remaining_s": 6513.156022124973,
+     "d_launch_to_fail": 2157.2013433613147,
+     "d_rec_to_fail": 2157.2013433613147,
+     "d_rec_point_from_fail": 3590.2908489501274,
+     "drone_energy_frac": 0.560452403323727,
+     "n_trucks": 5,
+     "initS": 590.2199493233444,
+     "costS": 590.2199493233444
+    },
+    {
+     "replan": 2,
+     "drone": "d4",
+     "costX": 644.4545084305645,
+     "initX": 644.4545084305645,
+     "launch_truck": "t4",
+     "rec_truck": "t4",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 3,
+     "t_fail": 3469.0744019732365,
+     "H": 8593.721342153038,
+     "remaining_s": 5124.646940179801,
+     "d_launch_to_fail": 4897.166450005307,
+     "d_rec_to_fail": 4897.166450005307,
+     "d_rec_point_from_fail": 8165.428181136551,
+     "drone_energy_frac": 0.5257075995575345,
+     "n_trucks": 5,
+     "initS": 644.4545084305645,
+     "costS": 644.4545084305645
+    }
+   ]
+  },
+  {
+   "case": "C50",
+   "seed": 3,
+   "nominal_cost": 194.34313887937913,
+   "n_cust": 50,
+   "H": 4104.643892453637,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 204.3447529999614,
+    "wall": 9.156308229001297
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d1",
+     "costX": 204.3447529999614,
+     "initX": 234.4270387315045,
+     "launch_truck": "t1",
+     "rec_truck": "t1",
+     "cross": false,
+     "n_served": 4,
+     "n_handover": 1,
+     "t_fail": 926.1138897812086,
+     "H": 4104.643892453637,
+     "remaining_s": 3178.530002672428,
+     "d_launch_to_fail": 1153.0707373285206,
+     "d_rec_to_fail": 1153.0707373285206,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.7995755797876781,
+     "n_trucks": 5,
+     "initS": 234.4270387315045,
+     "costS": 204.3447529999614
+    }
+   ]
+  },
+  {
+   "case": "C50",
+   "seed": 5,
+   "nominal_cost": 194.34313887937913,
+   "n_cust": 50,
+   "H": 4104.643892453637,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 194.34313887937913,
+    "wall": 0.007279206998646259
+   },
+   "events": []
+  },
+  {
+   "case": "C50",
+   "seed": 1,
+   "nominal_cost": 194.34313887937913,
+   "n_cust": 50,
+   "H": 4104.643892453637,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 207.206410620714,
+    "wall": 26.219735972998023
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d2",
+     "costX": 205.793379373064,
+     "initX": 206.66662349898812,
+     "launch_truck": "t2",
+     "rec_truck": "t1",
+     "cross": true,
+     "n_served": 1,
+     "n_handover": 5,
+     "t_fail": 1024.9553604039522,
+     "H": 4104.643892453637,
+     "remaining_s": 3079.688532049685,
+     "d_launch_to_fail": 2183.4678847680048,
+     "d_rec_to_fail": 3621.4793097242455,
+     "d_rec_point_from_fail": 2794.9481828408725,
+     "drone_energy_frac": 0.8709719690386062,
+     "n_trucks": 5,
+     "initS": 209.7788108254843,
+     "costS": 208.69191264261332
+    },
+    {
+     "replan": 2,
+     "drone": "d4",
+     "costX": 207.206410620714,
+     "initX": 209.9984153951373,
+     "launch_truck": "t4",
+     "rec_truck": "t5",
+     "cross": true,
+     "n_served": 6,
+     "n_handover": 1,
+     "t_fail": 1243.717702377645,
+     "H": 4104.643892453637,
+     "remaining_s": 2860.926190075992,
+     "d_launch_to_fail": 993.4261187859664,
+     "d_rec_to_fail": 3342.4039417814843,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.6819436974203377,
+     "n_trucks": 5,
+     "initS": 210.62410479008096,
+     "costS": 210.3907941876923
+    }
+   ]
+  },
+  {
+   "case": "RC100",
+   "seed": 10,
+   "nominal_cost": 587.3346231464257,
+   "n_cust": 100,
+   "H": 8593.721342153038,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 615.0758769515967,
+    "wall": 33.06274478099658
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d5",
+     "costX": 615.0758769515967,
+     "initX": 615.0758769515967,
+     "launch_truck": "t5",
+     "rec_truck": "t5",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 1983.744297936594,
+     "H": 8593.721342153038,
+     "remaining_s": 6609.977044216444,
+     "d_launch_to_fail": 4223.202634781042,
+     "d_rec_to_fail": 4223.202634781042,
+     "d_rec_point_from_fail": 5048.804339320518,
+     "drone_energy_frac": 0.686785866191698,
+     "n_trucks": 5,
+     "initS": 615.0758769515967,
+     "costS": 615.0758769515967
+    }
+   ]
+  },
+  {
+   "case": "C50",
+   "seed": 4,
+   "nominal_cost": 194.34313887937913,
+   "n_cust": 50,
+   "H": 4104.643892453637,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 196.48554338143165,
+    "wall": 7.024609033003799
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d1",
+     "costX": 196.48554338143165,
+     "initX": 198.22550464450381,
+     "launch_truck": "t1",
+     "rec_truck": "t1",
+     "cross": false,
+     "n_served": 2,
+     "n_handover": 1,
+     "t_fail": 1097.889375049564,
+     "H": 4104.643892453637,
+     "remaining_s": 3006.754517404073,
+     "d_launch_to_fail": 1788.0131222640816,
+     "d_rec_to_fail": 1788.0131222640816,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.6989971942772877,
+     "n_trucks": 5,
+     "initS": 198.22550464450381,
+     "costS": 196.48554338143165
+    }
+   ]
+  },
+  {
+   "case": "C50",
+   "seed": 9,
+   "nominal_cost": 194.34313887937913,
+   "n_cust": 50,
+   "H": 4104.643892453637,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 194.34313887937913,
+    "wall": 0.011057414994866122
+   },
+   "events": []
+  },
+  {
+   "case": "C50",
+   "seed": 7,
+   "nominal_cost": 194.34313887937913,
+   "n_cust": 50,
+   "H": 4104.643892453637,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 195.93517060066748,
+    "wall": 7.234524965999299
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d2",
+     "costX": 195.93517060066748,
+     "initX": 195.93517060066748,
+     "launch_truck": "t2",
+     "rec_truck": "t2",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 1637.9864018375324,
+     "H": 4104.643892453637,
+     "remaining_s": 2466.6574906161045,
+     "d_launch_to_fail": 904.3639327560413,
+     "d_rec_to_fail": 904.3639327560413,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.517874588429686,
+     "n_trucks": 5,
+     "initS": 195.93517060066748,
+     "costS": 195.93517060066748
+    }
+   ]
+  },
+  {
+   "case": "R50",
+   "seed": 1,
+   "nominal_cost": 501.5063491219374,
+   "n_cust": 50,
+   "H": 6407.266157238089,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 501.5063491219374,
+    "wall": 0.015746236000268254
+   },
+   "events": []
+  },
+  {
+   "case": "C50",
+   "seed": 6,
+   "nominal_cost": 194.34313887937913,
+   "n_cust": 50,
+   "H": 4104.643892453637,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 201.67220311529624,
+    "wall": 14.32002528799785
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d1",
+     "costX": 195.8429359981283,
+     "initX": 195.8429359981283,
+     "launch_truck": "t1",
+     "rec_truck": "t1",
+     "cross": false,
+     "n_served": 5,
+     "n_handover": 1,
+     "t_fail": 812.3552308413588,
+     "H": 4104.643892453637,
+     "remaining_s": 3292.2886616122782,
+     "d_launch_to_fail": 1759.8939550241744,
+     "d_rec_to_fail": 1759.8939550241744,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.8674185304609825,
+     "n_trucks": 5,
+     "initS": 195.8429359981283,
+     "costS": 195.8429359981283
+    },
+    {
+     "replan": 2,
+     "drone": "d4",
+     "costX": 201.67220311529624,
+     "initX": 201.67220311529624,
+     "launch_truck": "t4",
+     "rec_truck": "t4",
+     "cross": false,
+     "n_served": 2,
+     "n_handover": 4,
+     "t_fail": 1373.8911641136017,
+     "H": 4104.643892453637,
+     "remaining_s": 2730.752728340035,
+     "d_launch_to_fail": 1493.3020886202216,
+     "d_rec_to_fail": 1493.3020886202216,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.6045592964832146,
+     "n_trucks": 5,
+     "initS": 201.67220311529624,
+     "costS": 201.67220311529624
+    }
+   ]
+  },
+  {
+   "case": "R50",
+   "seed": 3,
+   "nominal_cost": 501.5063491219374,
+   "n_cust": 50,
+   "H": 6407.266157238089,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 501.5063491219374,
+    "wall": 0.008771339998929761
+   },
+   "events": []
+  },
+  {
+   "case": "C50",
+   "seed": 10,
+   "nominal_cost": 194.34313887937913,
+   "n_cust": 50,
+   "H": 4104.643892453637,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 205.793379373064,
+    "wall": 9.792627576003724
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d2",
+     "costX": 205.793379373064,
+     "initX": 206.66662349898812,
+     "launch_truck": "t2",
+     "rec_truck": "t1",
+     "cross": true,
+     "n_served": 1,
+     "n_handover": 5,
+     "t_fail": 1024.9553604039522,
+     "H": 4104.643892453637,
+     "remaining_s": 3079.688532049685,
+     "d_launch_to_fail": 2183.4678847680048,
+     "d_rec_to_fail": 3621.4793097242455,
+     "d_rec_point_from_fail": 2794.9481828408725,
+     "drone_energy_frac": 0.8709719690386062,
+     "n_trucks": 5,
+     "initS": 209.7788108254843,
+     "costS": 208.69191264261332
+    }
+   ]
+  },
+  {
+   "case": "R50",
+   "seed": 2,
+   "nominal_cost": 501.5063491219374,
+   "n_cust": 50,
+   "H": 6407.266157238089,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 499.1503907348664,
+    "wall": 11.418187758994463
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d1",
+     "costX": 499.1503907348664,
+     "initX": 501.5350438393941,
+     "launch_truck": "t1",
+     "rec_truck": "t1",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 2121.257416826528,
+     "H": 6407.266157238089,
+     "remaining_s": 4286.008740411562,
+     "d_launch_to_fail": 0.0,
+     "d_rec_to_fail": 0.0,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.2615157130196585,
+     "n_trucks": 5,
+     "initS": 501.5350438393941,
+     "costS": 499.1503907348664
+    }
+   ]
+  },
+  {
+   "case": "R50",
+   "seed": 6,
+   "nominal_cost": 501.5063491219374,
+   "n_cust": 50,
+   "H": 6407.266157238089,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 505.2825283943661,
+    "wall": 7.420777528001054
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d5",
+     "costX": 505.2825283943661,
+     "initX": 505.2825283943661,
+     "launch_truck": "t5",
+     "rec_truck": "t5",
+     "cross": false,
+     "n_served": 1,
+     "n_handover": 1,
+     "t_fail": 2473.5562442167848,
+     "H": 6407.266157238089,
+     "remaining_s": 3933.7099130213046,
+     "d_launch_to_fail": 7152.474210148278,
+     "d_rec_to_fail": 7152.474210148278,
+     "d_rec_point_from_fail": 5220.827044663013,
+     "drone_energy_frac": 0.5310466448261268,
+     "n_trucks": 5,
+     "initS": 505.2825283943661,
+     "costS": 505.2825283943661
+    }
+   ]
+  },
+  {
+   "case": "C50",
+   "seed": 8,
+   "nominal_cost": 194.34313887937913,
+   "n_cust": 50,
+   "H": 4104.643892453637,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 206.18330297502362,
+    "wall": 29.287802029000886
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d4",
+     "costX": 201.47892436545393,
+     "initX": 202.95366831090442,
+     "launch_truck": "t4",
+     "rec_truck": "t5",
+     "cross": true,
+     "n_served": 8,
+     "n_handover": 1,
+     "t_fail": 993.3119679777142,
+     "H": 4104.643892453637,
+     "remaining_s": 3111.3319244759227,
+     "d_launch_to_fail": 703.8120590182396,
+     "d_rec_to_fail": 4540.790644896498,
+     "d_rec_point_from_fail": 976.6908554869508,
+     "drone_energy_frac": 0.8343272768536081,
+     "n_trucks": 5,
+     "initS": 206.1326234825456,
+     "costS": 200.6053594664742
+    },
+    {
+     "replan": 2,
+     "drone": "d5",
+     "costX": 206.18330297502362,
+     "initX": 206.18330297502362,
+     "launch_truck": "t5",
+     "rec_truck": "t5",
+     "cross": false,
+     "n_served": 1,
+     "n_handover": 1,
+     "t_fail": 1457.6899379798251,
+     "H": 4104.643892453637,
+     "remaining_s": 2646.953954473812,
+     "d_launch_to_fail": 521.5824573402525,
+     "d_rec_to_fail": 521.5824573402525,
+     "d_rec_point_from_fail": 901.2986014795723,
+     "drone_energy_frac": 0.5631178484605265,
+     "n_trucks": 5,
+     "initS": 206.18330297502362,
+     "costS": 206.18330297502362
+    }
+   ]
+  },
+  {
+   "case": "R50",
+   "seed": 4,
+   "nominal_cost": 501.5063491219374,
+   "n_cust": 50,
+   "H": 6407.266157238089,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 541.706552344027,
+    "wall": 22.72725472699676
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d1",
+     "costX": 524.0088134565838,
+     "initX": 524.0088134565838,
+     "launch_truck": "t1",
+     "rec_truck": "t1",
+     "cross": false,
+     "n_served": 2,
+     "n_handover": 1,
+     "t_fail": 1731.0686455604264,
+     "H": 6407.266157238089,
+     "remaining_s": 4676.197511677663,
+     "d_launch_to_fail": 3419.748313699067,
+     "d_rec_to_fail": 3419.748313699067,
+     "d_rec_point_from_fail": 2857.6504812790354,
+     "drone_energy_frac": 0.48053719902041686,
+     "n_trucks": 5,
+     "initS": 524.0088134565838,
+     "costS": 524.0088134565838
+    },
+    {
+     "replan": 2,
+     "drone": "d5",
+     "costX": 541.706552344027,
+     "initX": 541.706552344027,
+     "launch_truck": "t5",
+     "rec_truck": "t5",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 2838.0040369769513,
+     "H": 6407.266157238089,
+     "remaining_s": 3569.262120261138,
+     "d_launch_to_fail": 6521.026441794083,
+     "d_rec_to_fail": 6521.026441794083,
+     "d_rec_point_from_fail": 4800.8655349020555,
+     "drone_energy_frac": 0.332718557005051,
+     "n_trucks": 5,
+     "initS": 541.706552344027,
+     "costS": 541.706552344027
+    }
+   ]
+  },
+  {
+   "case": "R50",
+   "seed": 5,
+   "nominal_cost": 501.5063491219374,
+   "n_cust": 50,
+   "H": 6407.266157238089,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 497.63873446918774,
+    "wall": 23.66234056200483
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d2",
+     "costX": 497.63873446918774,
+     "initX": 500.5271311262251,
+     "launch_truck": "t2",
+     "rec_truck": "t1",
+     "cross": true,
+     "n_served": 1,
+     "n_handover": 1,
+     "t_fail": 921.8931312526075,
+     "H": 6407.266157238089,
+     "remaining_s": 5485.373025985482,
+     "d_launch_to_fail": 1154.2353839524692,
+     "d_rec_to_fail": 4139.447574705807,
+     "d_rec_point_from_fail": 4044.0832318661064,
+     "drone_energy_frac": 0.924134438066058,
+     "n_trucks": 5,
+     "initS": 512.3340842254585,
+     "costS": 512.3340842254585
+    }
+   ]
+  },
+  {
+   "case": "R50",
+   "seed": 7,
+   "nominal_cost": 501.5063491219374,
+   "n_cust": 50,
+   "H": 6407.266157238089,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 502.83478408867774,
+    "wall": 15.981224538998504
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d1",
+     "costX": 499.1503907348664,
+     "initX": 501.5350438393941,
+     "launch_truck": "t1",
+     "rec_truck": "t1",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 2121.257416826528,
+     "H": 6407.266157238089,
+     "remaining_s": 4286.008740411562,
+     "d_launch_to_fail": 0.0,
+     "d_rec_to_fail": 0.0,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.2615157130196585,
+     "n_trucks": 5,
+     "initS": 501.5350438393941,
+     "costS": 499.1503907348664
+    },
+    {
+     "replan": 2,
+     "drone": "d3",
+     "costX": 502.83478408867774,
+     "initX": 502.83478408867774,
+     "launch_truck": "t3",
+     "rec_truck": "t3",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 3047.869258385313,
+     "H": 6407.266157238089,
+     "remaining_s": 3359.3968988527763,
+     "d_launch_to_fail": 780.1020843902045,
+     "d_rec_to_fail": 780.1020843902045,
+     "d_rec_point_from_fail": 733.3648475693323,
+     "drone_energy_frac": 0.17826695291218717,
+     "n_trucks": 5,
+     "initS": 502.83478408867774,
+     "costS": 502.83478408867774
+    }
+   ]
+  },
+  {
+   "case": "RC50",
+   "seed": 1,
+   "nominal_cost": 410.5872975603074,
+   "n_cust": 50,
+   "H": 5839.67838014313,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 410.5872975603074,
+    "wall": 0.015626307998900302
+   },
+   "events": []
+  },
+  {
+   "case": "RC50",
+   "seed": 2,
+   "nominal_cost": 410.5872975603074,
+   "n_cust": 50,
+   "H": 5839.67838014313,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 410.5872975603074,
+    "wall": 0.01973129499674542
+   },
+   "events": []
+  },
+  {
+   "case": "RC50",
+   "seed": 3,
+   "nominal_cost": 410.5872975603074,
+   "n_cust": 50,
+   "H": 5839.67838014313,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 427.1413685534458,
+    "wall": 4.203112369999872
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d3",
+     "costX": 427.1413685534458,
+     "initX": 427.1413685534458,
+     "launch_truck": "t3",
+     "rec_truck": "t3",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 2861.7489952923097,
+     "H": 5839.67838014313,
+     "remaining_s": 2977.9293848508205,
+     "d_launch_to_fail": 3204.569014694701,
+     "d_rec_to_fail": 3204.569014694701,
+     "d_rec_point_from_fail": 3204.569014694701,
+     "drone_energy_frac": 0.2663135166258873,
+     "n_trucks": 5,
+     "initS": 427.1413685534458,
+     "costS": 427.1413685534458
+    }
+   ]
+  },
+  {
+   "case": "R50",
+   "seed": 10,
+   "nominal_cost": 501.5063491219374,
+   "n_cust": 50,
+   "H": 6407.266157238089,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 499.07679173985713,
+    "wall": 17.511658663999697
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d4",
+     "costX": 499.07679173985713,
+     "initX": 501.5533026753336,
+     "launch_truck": "t4",
+     "rec_truck": "t4",
+     "cross": false,
+     "n_served": 1,
+     "n_handover": 1,
+     "t_fail": 984.0835126281734,
+     "H": 6407.266157238089,
+     "remaining_s": 5423.182644609916,
+     "d_launch_to_fail": 1825.3249661823963,
+     "d_rec_to_fail": 1825.3249661823963,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.7114042740218771,
+     "n_trucks": 5,
+     "initS": 501.5533026753336,
+     "costS": 499.07679173985713
+    }
+   ]
+  },
+  {
+   "case": "RC50",
+   "seed": 5,
+   "nominal_cost": 410.5872975603074,
+   "n_cust": 50,
+   "H": 5839.67838014313,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 410.5872975603074,
+    "wall": 0.011528593000548426
+   },
+   "events": []
+  },
+  {
+   "case": "RC50",
+   "seed": 4,
+   "nominal_cost": 410.5872975603074,
+   "n_cust": 50,
+   "H": 5839.67838014313,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 439.34246808066985,
+    "wall": 13.421816343994578
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d3",
+     "costX": 439.34246808066985,
+     "initX": 452.2829404594266,
+     "launch_truck": "t3",
+     "rec_truck": "t3",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 1714.405394333303,
+     "H": 5839.67838014313,
+     "remaining_s": 4125.272985809827,
+     "d_launch_to_fail": 5241.216645601461,
+     "d_rec_to_fail": 5241.216645601461,
+     "d_rec_point_from_fail": 5211.295586024091,
+     "drone_energy_frac": 0.7136452056746175,
+     "n_trucks": 5,
+     "initS": 452.2829404594266,
+     "costS": 439.34246808066985
+    }
+   ]
+  },
+  {
+   "case": "R50",
+   "seed": 9,
+   "nominal_cost": 501.5063491219374,
+   "n_cust": 50,
+   "H": 6407.266157238089,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 493.26744479213636,
+    "wall": 24.099112559000787
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d3",
+     "costX": 493.26744479213636,
+     "initX": 495.69864952864117,
+     "launch_truck": "t3",
+     "rec_truck": "t3",
+     "cross": false,
+     "n_served": 3,
+     "n_handover": 1,
+     "t_fail": 1329.619376134128,
+     "H": 6407.266157238089,
+     "remaining_s": 5077.646781103961,
+     "d_launch_to_fail": 3986.5276604551495,
+     "d_rec_to_fail": 3986.5276604551495,
+     "d_rec_point_from_fail": 3481.0307628439186,
+     "drone_energy_frac": 0.8940221718340464,
+     "n_trucks": 5,
+     "initS": 495.69864952864117,
+     "costS": 493.26744479213636
+    }
+   ]
+  },
+  {
+   "case": "R50",
+   "seed": 8,
+   "nominal_cost": 501.5063491219374,
+   "n_cust": 50,
+   "H": 6407.266157238089,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 487.1639516328685,
+    "wall": 32.415659897000296
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d1",
+     "costX": 487.1639516328685,
+     "initX": 502.0134016054403,
+     "launch_truck": "t1",
+     "rec_truck": "t1",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 698.9443106262231,
+     "H": 6407.266157238089,
+     "remaining_s": 5708.321846611866,
+     "d_launch_to_fail": 249.31578732319292,
+     "d_rec_to_fail": 249.31578732319292,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.7836061824968608,
+     "n_trucks": 5,
+     "initS": 502.0134016054403,
+     "costS": 487.1639516328685
+    }
+   ]
+  },
+  {
+   "case": "RC50",
+   "seed": 9,
+   "nominal_cost": 410.5872975603074,
+   "n_cust": 50,
+   "H": 5839.67838014313,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 410.5872975603074,
+    "wall": 0.007650896004633978
+   },
+   "events": []
+  },
+  {
+   "case": "RC50",
+   "seed": 6,
+   "nominal_cost": 410.5872975603074,
+   "n_cust": 50,
+   "H": 5839.67838014313,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 427.23793399571036,
+    "wall": 26.57276152599661
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d1",
+     "costX": 394.25629246829635,
+     "initX": 410.4224259299626,
+     "launch_truck": "t1",
+     "rec_truck": "t5",
+     "cross": true,
+     "n_served": 2,
+     "n_handover": 1,
+     "t_fail": 821.1557899105317,
+     "H": 5839.67838014313,
+     "remaining_s": 5018.522590232598,
+     "d_launch_to_fail": 2179.63817605125,
+     "d_rec_to_fail": 1482.2941166119679,
+     "d_rec_point_from_fail": 0.0,
+     "drone_energy_frac": 0.809852552826226,
+     "n_trucks": 5,
+     "initS": 415.099236231302,
+     "costS": 415.099236231302
+    },
+    {
+     "replan": 2,
+     "drone": "d1",
+     "costX": 427.23793399571036,
+     "initX": 427.23793399571036,
+     "launch_truck": "t5",
+     "rec_truck": "t5",
+     "cross": false,
+     "n_served": 1,
+     "n_handover": 1,
+     "t_fail": 2251.785456566017,
+     "H": 5839.67838014313,
+     "remaining_s": 3587.8929235771134,
+     "d_launch_to_fail": 5821.788335471494,
+     "d_rec_to_fail": 5821.788335471494,
+     "d_rec_point_from_fail": 2882.158013252435,
+     "drone_energy_frac": 0.40791199290860897,
+     "n_trucks": 5,
+     "initS": 427.23793399571036,
+     "costS": 427.23793399571036
+    }
+   ]
+  },
+  {
+   "case": "RC50",
+   "seed": 7,
+   "nominal_cost": 410.5872975603074,
+   "n_cust": 50,
+   "H": 5839.67838014313,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 422.77934925378065,
+    "wall": 26.337912947994482
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d5",
+     "costX": 422.77934925378065,
+     "initX": 423.01134718121415,
+     "launch_truck": "t5",
+     "rec_truck": "t5",
+     "cross": false,
+     "n_served": 1,
+     "n_handover": 1,
+     "t_fail": 1110.2274291027609,
+     "H": 5839.67838014313,
+     "remaining_s": 4729.45095104037,
+     "d_launch_to_fail": 1060.63027158063,
+     "d_rec_to_fail": 1060.63027158063,
+     "d_rec_point_from_fail": 2082.8015871978764,
+     "drone_energy_frac": 0.7494565630307579,
+     "n_trucks": 5,
+     "initS": 423.01134718121415,
+     "costS": 422.77934925378065
+    }
+   ]
+  },
+  {
+   "case": "RC50",
+   "seed": 10,
+   "nominal_cost": 410.5872975603074,
+   "n_cust": 50,
+   "H": 5839.67838014313,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 402.893015437264,
+    "wall": 22.64858668800298
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d1",
+     "costX": 402.893015437264,
+     "initX": 411.4004549144303,
+     "launch_truck": "t1",
+     "rec_truck": "t5",
+     "cross": true,
+     "n_served": 1,
+     "n_handover": 1,
+     "t_fail": 900.8175481100653,
+     "H": 5839.67838014313,
+     "remaining_s": 4938.860832033065,
+     "d_launch_to_fail": 1811.3458989064236,
+     "d_rec_to_fail": 1456.947651252223,
+     "d_rec_point_from_fail": 294.92637299300503,
+     "drone_energy_frac": 0.7617172065875172,
+     "n_trucks": 5,
+     "initS": 413.4109960708571,
+     "costS": 413.4109960708571
+    }
+   ]
+  },
+  {
+   "case": "RC50",
+   "seed": 8,
+   "nominal_cost": 410.5872975603074,
+   "n_cust": 50,
+   "H": 5839.67838014313,
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 409.6666560747476,
+    "wall": 31.1117408909995
+   },
+   "events": [
+    {
+     "replan": 1,
+     "drone": "d5",
+     "costX": 409.6666560747476,
+     "initX": 412.8477833057224,
+     "launch_truck": "t5",
+     "rec_truck": "t5",
+     "cross": false,
+     "n_served": 0,
+     "n_handover": 1,
+     "t_fail": 399.6771711973688,
+     "H": 5839.67838014313,
+     "remaining_s": 5440.001208945761,
+     "d_launch_to_fail": 1504.9039205979802,
+     "d_rec_to_fail": 1504.9039205979802,
+     "d_rec_point_from_fail": 3709.4574194756474,
+     "drone_energy_frac": 0.9459766176377981,
+     "n_trucks": 5,
+     "initS": 412.8477833057224,
+     "costS": 409.6666560747476
+    }
+   ]
+  }
+ ]
+}

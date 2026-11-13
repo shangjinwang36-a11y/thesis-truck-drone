@@ -1,0 +1,43 @@
+## results/v5_l2_p01_base.json  (runs=60)
+env  n pair  Δmean±sd  ±CI95  Δ/C_S%  better/same/worse  stopS/stopX  air%S/X  crossX%(nfail)  fails/env  failrate(obs/attempt) 
+C100  10  10   8.67±13.60  8.43   1.84 6/1/3 0/0 65.1/64.3  31.9(72)  7.50 75/726=0.103
+C50   10  10   1.82± 3.49  2.17   0.79 3/6/1 0/0 72.4/72.4  18.5(27)  3.20 32/394=0.081
+R100  10   5  -4.72±17.61 15.43  -0.61 1/2/2 5/3 70.2/70.2  18.8(48)  6.10 61/589=0.104
+R50   10   8   1.06± 3.65  2.53   0.23 1/5/2 2/2 63.8/62.8   9.5(21)  3.00 30/328=0.091
+RC100  10   7  -9.53±49.52 36.69  -1.29 2/2/3 1/2 73.7/72.9  14.9(47)  6.10 61/766=0.080
+RC50  10   7  -3.46±14.04 10.40  -0.97 2/4/1 3/1 56.9/57.4  14.8(27)  2.80 28/285=0.098
+ALL   60  47  -0.02±21.18  6.05  -0.01 15/20/12 11/8 67.7/67.2  20.7(242)  4.78 287/3088=0.093
+configured_fail S!=X: []
+标记失败(全部客户) 437/4500=0.097 目标 p=0.1
+X 更差 12/47: [('C100', 3, -0.42), ('C100', 10, -2.54), ('C100', 9, -7.79), ('R100', 2, -32.03), ('R100', 3, -7.82), ('RC100', 2, -109.83), ('RC100', 1, -1.56), ('C50', 2, -1.91), ('RC100', 7, -22.75), ('R50', 1, -0.0), ('R50', 10, -1.5), ('RC50', 8, -34.8)]
+符号检验(忽略平局): better=15 worse=12 双侧p≈0.7011
+-- 审计[S] 重规划数=276 主搜索评价=271984 ALNS迭代=74705 停止原因={'EVAL_LIMIT': 270, 'MAX_ROUNDS': 6} 搜索无任何改进(init=final)的重规划=72/276  平均patch_back=11.014
+   评价按用途: {'ALNS_BASE': 203820, 'COORDINATE': 56223, 'RECOVERY_INITIAL_BASE': 6494, 'MIP_RETURN': 5447}
+   D-算子: calls / empty / leftover / geom_none / infeasible / new_best / cur_improve / sa_accept / rejected
+     AFFECTED_SORTIE               11329   262   1328   1085      0   295   622   821   6916
+     ENERGY_CHAIN                  10922   307   1346   1284      0   193   453   635   6704
+     GROUND_TO_AIR                 10549   247   1982   1277      0   197   421   501   5924
+     RANDOM_DEPENDENCY              9325   304   1514   1277      0    84   213   300   5633
+     RENDEZVOUS_RESOURCE           11841   297   1402   1087      0   226   679   791   7359
+     SORTIE_REGROUP                10993   286   1399   1405      0   251   470   596   6586
+     SUPPORT_VISIT                  9746   297   1447    870      0   125   349   504   6154
+   R-算子: calls / empty / leftover / geom_none / infeasible / new_best / cur_improve / sa_accept / rejected
+     AIR_FIRST                     24778     0   3445   2671      0   393  1045  1540  14994
+     GREEDY_PROXY                  24012     0   3494   2669      0   413  1000  1177  14606
+     REGRET2_PROXY                 25915     0   3479   2945      0   565  1162  1431  15676
+   次级算子: {'polish:calls': 6599, 'polish:improve': 3119, 'reassign:calls': 5310, 'local_reorder:calls': 7115, 'local_reorder:improve': 335, 'reassign:improve': 1, 'reassign:adopt_gap_max': -0.09867237303933507}
+-- 审计[X] 重规划数=286 主搜索评价=284911 ALNS迭代=79436 停止原因={'EVAL_LIMIT': 283, 'MAX_ROUNDS': 3} 搜索无任何改进(init=final)的重规划=76/286  平均patch_back=8.709
+   评价按用途: {'ALNS_BASE': 212495, 'COORDINATE': 55833, 'RECOVERY_INITIAL_BASE': 10704, 'MIP_RETURN': 5879}
+   D-算子: calls / empty / leftover / geom_none / infeasible / new_best / cur_improve / sa_accept / rejected
+     AFFECTED_SORTIE               11987   290   1227   1243      0   291   557   800   7579
+     ENERGY_CHAIN                  11490   304   1252   1392      0   192   455   585   7310
+     GROUND_TO_AIR                 11185   276   1977   1400      0   188   457   480   6407
+     RANDOM_DEPENDENCY              9714   273   1230   1476      0    67   178   277   6213
+     RENDEZVOUS_RESOURCE           12509   306   1343   1282      0   213   665   810   7890
+     SORTIE_REGROUP                12012   276   1140   1720      0   237   460   614   7565
+     SUPPORT_VISIT                 10539   275   1385   1044      0   134   317   496   6888
+   R-算子: calls / empty / leftover / geom_none / infeasible / new_best / cur_improve / sa_accept / rejected
+     AIR_FIRST                     26323     0   2263   2953      0   400   983  1558  17495
+     GREEDY_PROXY                  25502     0   3668   3135      0   380   928  1135  15579
+     REGRET2_PROXY                 27611     0   3623   3469      0   542  1178  1369  16778
+   次级算子: {'polish:calls': 6930, 'polish:improve': 3105, 'reassign:calls': 5686, 'local_reorder:calls': 8654, 'local_reorder:improve': 312, 'reassign:improve': 1, 'reassign:adopt_gap_max': -0.09867237303933507}

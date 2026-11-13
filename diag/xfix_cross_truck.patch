@@ -1,0 +1,12 @@
+--- ../proj2/src/tdr/recovery.py	2026-11-12 16:49:39.966586580 +0800
++++ src/tdr/recovery.py	2026-11-12 16:59:38.447465324 +0800
+@@ -373,6 +373,9 @@
+             freed_later.extend(so.air + so.handover)
+             cand.remove_sortie(sid)
+     hand = _set_recovery(cand, f, truck, rv, served)
++    # DIAG-FIX: 失败票/未续飞票由机上交接给接机车，残段里遗留在别的车上的旧地送安排必须先清除
++    for v in cand.visits.values():
++        v.ground = [p for p in v.ground if p not in set(hand) or v.truck == truck]
+     if _place_handover_guarded(cand, inst, truck, rv, hand):
+         return []
+     protect = _fixed_first_vids(cand, state) | {rv}

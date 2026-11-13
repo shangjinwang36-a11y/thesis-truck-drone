@@ -1,0 +1,758 @@
+diff --git a/.gitignore b/.gitignore
+index a39c4c8..59b7e0d 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -4,3 +4,4 @@
+ .venv/
+ __pycache__/
+ ﻿__pycache__/
++outputs/
+diff --git a/scripts/run_repeats.py b/scripts/run_repeats.py
+new file mode 100644
+index 0000000..e4bb5b4
+--- /dev/null
++++ b/scripts/run_repeats.py
+@@ -0,0 +1,27 @@
++"""算法基种子重复实验：同一批环境，换算法基种子重跑（对应规范 12.5(6) 的稳定性补充实验）.
++
++用法：python scripts/run_repeats.py --budget 1000 --seed 20261112 --out outputs/fix1000_s20261112
++"""
++import argparse
++import json
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
++from tdr.config import AlgorithmConfig, PhysicalConfig          # noqa: E402
++from tdr.experiment import run_batch                             # noqa: E402
++
++ap = argparse.ArgumentParser()
++ap.add_argument("--package", default="data/package.json")
++ap.add_argument("--nominal-dir", default="outputs_summary/nominal2")
++ap.add_argument("--budget", type=int, required=True)
++ap.add_argument("--seed", type=int, required=True)
++ap.add_argument("--out", required=True)
++a = ap.parse_args()
++pkg = json.load(open(a.package, encoding="utf-8"))
++phys = PhysicalConfig.from_dict(pkg["config"])
++alg = AlgorithmConfig.from_dict(pkg["algorithm_protocol"]["default_parameters"])
++alg.base_algorithm_seed = a.seed
++cases = ["C50", "R50", "RC50", "C100", "R100", "RC100"]
++run_batch(pkg, cases, list(range(1, 11)), ["S", "X"], a.nominal_dir, a.out, phys, alg,
++          a.budget, None, make_figures=False)
+diff --git a/src/tdr/alns.py b/src/tdr/alns.py
+index 8556ed7..5d37d85 100644
+--- a/src/tdr/alns.py
++++ b/src/tdr/alns.py
+@@ -305,7 +305,13 @@ class SolveResult:
+ 
+ 
+ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full",
+-             stats: SearchStats | None = None) -> SolveResult:
++             stats: SearchStats | None = None, init_ev: Evaluation | None = None) -> SolveResult:
++    """ALNS 主循环.
++
++    init_ev：调用方已经完整评价过起始解时传入（恢复阶段由 initial_recovery 评价，
++    计入"初始化预算"），这里不再重复评价，也不占主循环预算。
++    此时 budget 是**主循环预算**（S/X 相同），SA 退火进度只由主循环进度决定。
++    """
+     inst, phys, alg = ctx.inst, ctx.phys, ctx.alg
+     stats = stats or SearchStats()
+     t_start = time.perf_counter()
+@@ -313,7 +319,9 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
+     rng_des = ctx.rngs.get("destroy", random.Random(2))
+     rng_acc = ctx.rngs.get("accept", random.Random(3))
+     # 初始评价（若外部已评价过则跳过）
+-    if budget.used == 0:
++    if init_ev is not None:
++        cur_ev = init_ev
++    elif budget.used == 0:
+         cur_ev = eval_counted(plan, inst, phys, ctx.state, ctx.H,
+                               "RECOVERY_INITIAL_BASE" if ctx.mode == "recovery" else "NOMINAL_GROUND",
+                               stats, budget)
+@@ -632,7 +640,7 @@ def coordinate_polish(plan: Plan, ctx: SolveContext, stats: SearchStats,
+ def try_recovery_reassign(plan: Plan, ctx: SolveContext, budget: Budget,
+                           stats: SearchStats, n: int = 2):
+     """在统一预算内继续展开恢复候选目录，尝试替换受影响残段的接机车/点/继续子集."""
+-    from .recovery import build_candidates
++    from .recovery import build_catalog_candidates
+     cat = ctx.catalog
+     if cat is None or ctx.frag_sid is None:
+         return None, None
+@@ -640,6 +648,7 @@ def try_recovery_reassign(plan: Plan, ctx: SolveContext, budget: Budget,
+     pool = getattr(cat, "pool", None)
+     if base is None or pool is None:
+         return None, None
++    res_plan = getattr(cat, "res_plan", None) or base
+     best_p, best_ev = None, None
+     for _ in range(n):
+         if budget.evals_left() <= 0:
+@@ -651,10 +660,10 @@ def try_recovery_reassign(plan: Plan, ctx: SolveContext, budget: Budget,
+         cat.n_evaluated += 1
+         cat.covered_trucks.add(entry["truck"])
+         cat.covered_customers.add(entry["ref"] if entry["support"]
+-                                  else base.visits[entry["ref"]].customer)
++                                  else res_plan.visits[entry["ref"]].customer)
+         cat.covered_subsets.add(len(entry["served"]))
+-        cands = build_candidates(base, pool, ctx.frag_sid, entry, ctx.inst, ctx.phys,
+-                                 ctx.state, ctx.H, ctx.ground_required)
++        cands = build_catalog_candidates(cat, entry, ctx.inst, ctx.phys, ctx.state, ctx.H,
++                                         ctx.ground_required, ctx.frag_sid)
+         for cand in cands:
+             if budget.evals_left() <= 0:
+                 break
+diff --git a/src/tdr/config.py b/src/tdr/config.py
+index 6b190e4..7131193 100644
+--- a/src/tdr/config.py
++++ b/src/tdr/config.py
+@@ -125,6 +125,9 @@ class AlgorithmConfig:
+     recovery_wallclock_seconds: float = 60.0
+     final_verification_reserve_seconds: float = 2.0
+     deterministic_recovery_eval_budget: int = 1000
++    # 第一轮修改（修复2）：恢复初始化（残段候选 + 接机目录枚举）单独记账，S/X 相同上限；
++    # recovery 预算（250/1000...）只管 ALNS 主循环。
++    recovery_init_eval_budget: int = 100
+     max_search_rounds: int = 2000
+     geometry_base_starts: int = 5
+     coordinate_polish_every_alns_iterations: int = 10
+diff --git a/src/tdr/recovery.py b/src/tdr/recovery.py
+index ebaa800..03d89cf 100644
+--- a/src/tdr/recovery.py
++++ b/src/tdr/recovery.py
+@@ -1,5 +1,13 @@
+ """恢复初始构造：同点/异点、原车/跨车、机上余票子集、R-U-G 闭包（第7.4节）.
+ 
++【第一轮修改（修复1）】初始解不再"清空未来重建"，而是以**名义残段**（truncate 之后保持原样的
++未执行部分）为底板，只做最小改动：给失败票安排一次回收 + 回收后的地面送达。
++  * 候选 RESIDUAL：保持原计划的回收访问不变（S/X 都允许，只要回收车合规）；
++  * 候选 CATALOG：在残段底板上换接机车/接机点/继续配送子集（仍不清空其余任务）；
++  * 候选 REBUILD：旧的"清空重建"路径，只作为对照候选，不再是默认起点。
++三类候选都评价（计入"初始化预算"，与 ALNS 主循环预算分开），取最优者作为 ALNS 起点，
++因此 ALNS 返回的解永远不会比 RESIDUAL 候选差。
++
+ 候选目录按"接机车辆 → 接机位置（既有访问或全客户支援访问）→ 继续配送子集"
+ 的稳定顺序**持续展开**，由统一预算决定本次评到哪一步；不再用固定候选上限。
+ 每次求解释放一个 `RecoveryCatalog`，其游标可在 ALNS 的恢复邻域中继续前进，
+@@ -113,8 +121,9 @@ def _place_handover_g(plan: Plan, inst: Instance, truck: str, rv: int,
+     return errs
+ 
+ 
+-def _cleanup(plan: Plan) -> None:
+-    used = set()
++def _cleanup(plan: Plan, protect: set[int] | None = None) -> None:
++    protect = protect or set()
++    used = set(protect)
+     for s in plan.sorties.values():
+         used.add(s.rec_vid)
+         if s.launch_vid is not None:
+@@ -174,6 +183,9 @@ class RecoveryCatalog:
+         self.n_generated = 0
+         self.n_evaluated = 0
+         self.exhausted = False
++        self.skip_keys: set[tuple] = set()      # 已作为 RESIDUAL 候选评价过的条目，不重复
++        self.mode = "rebuild"                   # "residual"：在名义残段上做最小改动
++        self.res_plan: Plan | None = None
+ 
+     def _truck_order(self, plan: Plan) -> list[str]:
+         trucks = [self.launch_truck] if self.strategy == "S" else sorted(plan.routes)
+@@ -215,7 +227,7 @@ class RecoveryCatalog:
+             support = kind_rank == 1
+             for served in subsets:
+                 key = (truck, ref, tuple(served))
+-                if key in seen:
++                if key in seen or key in self.skip_keys:
+                     continue
+                 seen.add(key)
+                 self.n_generated += 1
+@@ -269,17 +281,177 @@ def build_candidates(base: Plan, pool: list[str], frag_sid: int, entry: dict,
+     return attempts
+ 
+ 
++def _assigned(plan: Plan) -> set[str]:
++    out: set[str] = set()
++    for v in plan.visits.values():
++        out.update(v.ground)
++    for so in plan.sorties.values():
++        out.update(so.air)
++        out.update(so.handover)
++    return out
++
++
++def _fixed_first_vids(plan: Plan, state: StartState) -> set[int]:
++    """正在驶向的首个访问（已承诺的道路段）不得被清理."""
++    out: set[int] = set()
++    for truck, route in plan.routes.items():
++        if route and state.truck_fixed_first.get(truck):
++            out.add(route[0])
++    return out
++
++
++def _place_handover_guarded(plan: Plan, inst: Instance, truck: str, rv: int,
++                            parcels: list[str]) -> list[str]:
++    """同 _place_handover_g，但已经安排了地面交付的票不再重复安排（残段底板里可能已有）."""
++    already: set[str] = set()
++    for v in plan.visits.values():
++        already.update(v.ground)
++    todo = [p for p in parcels if p not in already]
++    if not todo:
++        return []
++    return _place_handover_g(plan, inst, truck, rv, todo)
++
++
++def prepare_residual(new_plan: Plan, inst: Instance) -> Plan:
++    """名义残段底板：truncate 之后的计划原样保留（不清空任何未来任务）.
++
++    只做一件事：其他已在飞残段（非本次失败航次）带的交接票，若还没有地送安排则补上。
++    """
++    base = new_plan.clone()
++    for so in list(base.sorties.values()):
++        if so.started and so.handover and so.rec_vid in base.visits:
++            _place_handover_guarded(base, inst, base.visits[so.rec_vid].truck, so.rec_vid,
++                                    list(so.handover))
++    return base
++
++
++def build_residual_candidate(res: Plan, frag_sid: int, entry: dict | None, inst: Instance,
++                             phys: PhysicalConfig, state: StartState, ground_required: set[str],
++                             strategy: str) -> list[Plan]:
++    """在残段底板上构造一个"最小改动"恢复候选.
++
++    entry=None  → RESIDUAL：保持残段原计划的回收访问不变，只给失败票/交接票补地送。
++    entry=dict  → CATALOG：换接机车/接机点/继续配送子集；该无人机之后的未起飞航次整体释放重排
++                  （回收点变了，原后续航次的放飞时刻/承运车不再成立），其余任务保持原样。
++    规则：S 只能回收到原放飞车；X 可回收到任意车（含原放飞车）。
++    返回候选列表（尝试不同的补位修复方式），可能为空。
++    """
++    cand = res.clone()
++    f = cand.sorties.get(frag_sid)
++    if f is None:
++        return []
++    launch_truck = f.launch_truck or f.truck
++    if entry is None:
++        rv = f.rec_vid
++        if rv not in cand.visits:
++            return []                      # 原回收访问已不存在 → 无法保持原样
++        truck = cand.visits[rv].truck
++        served = [p for p in f.air if p not in ground_required]
++        changed = False
++    else:
++        truck = entry["truck"]
++        if entry["support"]:
++            rv = _insert_support(cand, inst, truck, entry["ref"],
++                                 min_pos=state.truck_min_insert.get(truck, 0))
++        else:
++            rv = entry["ref"]
++            if rv not in cand.visits or cand.visits[rv].truck != truck:
++                return []
++        served = list(entry["served"])
++        changed = True
++    if strategy == "S" and truck != launch_truck:
++        return []
++    freed_later: list[str] = []
++    if changed:
++        # 回收点变化：该机之后的未起飞航次释放，由修复器重排
++        for sid in list(cand.drone_sorties.get(f.drone, [])):
++            if sid == frag_sid:
++                continue
++            so = cand.sorties.get(sid)
++            if so is None or so.started:
++                continue
++            freed_later.extend(so.air + so.handover)
++            cand.remove_sortie(sid)
++    hand = _set_recovery(cand, f, truck, rv, served)
++    if _place_handover_guarded(cand, inst, truck, rv, hand):
++        return []
++    protect = _fixed_first_vids(cand, state) | {rv}
++    pool = [c.parcel_id for c in inst.customers
++            if c.parcel_id not in state.delivered and c.parcel_id not in _assigned(cand)]
++    mp = state.truck_min_insert or None
++    attempts: list[Plan] = []
++    if not pool:
++        attempts.append(cand)
++    else:
++        c1, left = repair_greedy(cand.clone(), inst, phys, pool, forbid_air=ground_required,
++                                 min_pos=mp, state=state)
++        if not left:
++            attempts.append(c1)
++        attempts.append(repair_ground_append(cand.clone(), inst, phys, pool, mp, state)[0])
++        attempts.append(repair_ground_only(cand.clone(), inst, phys, pool, mp, state)[0])
++    for at in attempts:
++        _cleanup(at, protect)
++    return attempts
++
++
++def build_catalog_candidates(cat: "RecoveryCatalog", entry: dict, inst: Instance,
++                             phys: PhysicalConfig, state: StartState, H: float | None,
++                             ground_required: set[str], frag_sid: int) -> list[Plan]:
++    """ALNS 恢复邻域/初始化共用：按目录模式分派到"残段最小改动"或"清空重建"."""
++    if cat.mode == "residual" and cat.res_plan is not None:
++        return build_residual_candidate(cat.res_plan, frag_sid, entry, inst, phys, state,
++                                        ground_required, cat.strategy)
++    return build_candidates(cat.base_plan, cat.pool, frag_sid, entry, inst, phys, state, H,
++                            ground_required)
++
++
++def _first_feasible(cands: list[Plan], inst, phys, state, H, stats, budget):
++    """按顺序评价候选，返回第一个可行者 (plan, ev)；预算耗尽返回 (None, None, True)."""
++    reasons: list[str] = []
++    for cand in cands:
++        if budget is not None and budget.evals_left() <= 0:
++            return None, None, True, reasons
++        if stats is not None and budget is not None:
++            ev = eval_counted(cand, inst, phys, state, H, "RECOVERY_INITIAL_BASE", stats, budget)
++            if ev is None:
++                return None, None, True, reasons
++        else:
++            ev = evaluate_plan(cand, inst, phys, state, H, "RECOVERY_INITIAL_BASE")
++        if ev.feasible:
++            return cand, ev, False, reasons
++        reasons.append(ev.violations[0] if ev.violations else ev.status)
++    return None, None, False, reasons
++
++
+ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: PhysicalConfig,
+                      strategy: str, ground_required: set[str],
+                      max_candidates: int | None = None, H: float | None = None,
+                      extra_pool: list[str] | None = None, frag_sid: int | None = None,
+                      stats=None, budget: Budget | None = None,
+-                     catalog: RecoveryCatalog | None = None
++                     catalog: RecoveryCatalog | None = None,
++                     init_catalog_entries: int | None = None,
++                     rescue_evals: int = 0, info: dict | None = None
+                      ) -> tuple[RecoveryOption | None, list[str], RecoveryCatalog | None]:
++    """恢复初始解（修复1）：RESIDUAL → CATALOG（残段最小改动）→ REBUILD（旧清空重建，对照）.
++
++    budget 是**初始化预算**（S/X 相同上限），与 ALNS 主循环预算分开记账；
++    若初始化预算内一个可行解都没有，再追加 rescue_evals 次评价继续找（两种策略同规则）。
++    info（可选）被填入：residual_cost / residual_feasible / best_source / rebuild_cost / rescue_used。
++    """
++    info = info if info is not None else {}
++    info.update({"residual_feasible": False, "residual_cost": None, "residual_z": None,
++                 "rebuild_cost": None, "best_source": None, "rescue_used": False,
++                 "n_catalog_entries": 0})
+     frag = plan.sorties.get(frag_sid) if frag_sid is not None else \
+         next((s for s in plan.sorties.values() if s.started), None)
+     if frag is None:
+         return None, ["NO_FRAGMENT"], catalog
++    res = prepare_residual(plan, inst)
++    if catalog is None:
++        catalog = RecoveryCatalog(res, frag, inst, strategy, state, ground_required)
++    catalog.mode = "residual"
++    catalog.res_plan = res
++    # 重建路径（对照）所需的底板与待插入票
+     base, pool = _skeleton(plan, inst)
+     pool = [p for p in pool if p not in state.delivered]
+     for s in base.sorties.values():
+@@ -290,57 +462,96 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
+                 for p in s.handover:
+                     if p in pool:
+                         pool.remove(p)
+-    pool = list(dict.fromkeys(list(extra_pool or []) + pool))   # 去重：同一票只能插入一次
+-    if catalog is None:
+-        catalog = RecoveryCatalog(base, frag, inst, strategy, state, ground_required)
++    pool = list(dict.fromkeys(list(extra_pool or []) + pool))
+     catalog.base_plan = base
+     catalog.pool = pool
++
+     reasons: list[str] = []
+     best: RecoveryOption | None = None
+-    best_by_truck: dict[str, float] = {}
+-    cap = max_candidates
+-    if cap is None:
+-        cap = max(40, int(0.25 * (budget.eval_limit if budget and budget.eval_limit else 250)))
++    best_src = None
++    best_entry: dict | None = None
++
++    def _consider(cand_plan, ev, entry, src):
++        nonlocal best, best_src, best_entry
++        rv = cand_plan.sorties[frag.sid].rec_vid
++        opt = RecoveryOption(cand_plan, ev, f"{src}:truck={cand_plan.visits[rv].truck},rv={rv},"
++                             f"served={len(cand_plan.sorties[frag.sid].air)}",
++                             cand_plan.visits[rv].truck, rv, len(cand_plan.sorties[frag.sid].air),
++                             list(cand_plan.sorties[frag.sid].handover))
++        if best is None or (ev.cost or 0) < (best.ev.cost or 0) - 1e-9:
++            best, best_src, best_entry = opt, src, entry
++
++    def _rescue_check():
++        # 初始化预算耗尽且还没有可行解：追加一次 rescue 额度（两种策略同规则）
++        if (budget is not None and best is None and rescue_evals > 0
++                and not info["rescue_used"] and budget.evals_left() <= 0):
++            budget.eval_limit = (budget.eval_limit or 0) + rescue_evals
++            info["rescue_used"] = True
++
++    # ① RESIDUAL：保持原回收访问
++    cands = build_residual_candidate(res, frag.sid, None, inst, phys, state, ground_required,
++                                     strategy)
++    if cands:
++        cp, ev, exhausted, rs = _first_feasible(cands, inst, phys, state, H, stats, budget)
++        reasons += rs
++        if cp is not None:
++            info["residual_feasible"] = True
++            info["residual_cost"] = ev.cost
++            info["residual_z"] = ev.z
++            ent = {"truck": cp.visits[cp.sorties[frag.sid].rec_vid].truck, "kind": "visit",
++                   "ref": cp.sorties[frag.sid].rec_vid, "support": False,
++                   "served": list(cp.sorties[frag.sid].air)}
++            catalog.skip_keys.add((ent["truck"], ent["ref"], tuple(ent["served"])))
++            _consider(cp, ev, ent, "RESIDUAL")
++            info["_residual"] = (cp, ev)
++    else:
++        reasons.append("RESIDUAL_NOT_AVAILABLE")
++
++    # ② CATALOG：残段底板上换接机车/点/继续子集（初始化预算内，S/X 同上限）
++    cap = init_catalog_entries if init_catalog_entries is not None else \
++        (max_candidates if max_candidates is not None else 10 ** 9)   # 实际由初始化预算限制
+     tried = 0
+-    # 初始份额用尽但还没有任何可行解时，继续在共同预算内展开（不提前宣告无解）
+-    while (tried < cap or best is None) and (budget is None or budget.evals_left() > 0):
++    while (tried < cap or best is None):
++        _rescue_check()
++        if budget is not None and budget.evals_left() <= 0:
++            break
++        if best is not None and budget is not None and budget.evals_left() <= 3:
++            break                      # 给 REBUILD 对照候选留 3 次评价
+         entries = catalog.next_entries(1)
+         if not entries:
+             break
+         entry = entries[0]
+         tried += 1
++        info["n_catalog_entries"] = tried
+         catalog.n_evaluated += 1
+         catalog.covered_trucks.add(entry["truck"])
+         catalog.covered_customers.add(entry["ref"] if entry["support"]
+-                                      else base.visits[entry["ref"]].customer)
++                                      else res.visits[entry["ref"]].customer)
+         catalog.covered_subsets.add(len(entry["served"]))
+-        cands = build_candidates(base, pool, frag.sid, entry, inst, phys, state, H,
+-                                 ground_required)
++        cands = build_residual_candidate(res, frag.sid, entry, inst, phys, state,
++                                         ground_required, strategy)
+         if not cands:
+             reasons.append("BUILD_FAILED")
+             continue
+-        for cand in cands:
+-            if budget is not None and budget.evals_left() <= 0:
+-                break
+-            if stats is not None and budget is not None:
+-                ev = eval_counted(cand, inst, phys, state, H, "RECOVERY_INITIAL_BASE", stats, budget)
+-                if ev is None:
+-                    break
+-            else:
+-                ev = evaluate_plan(cand, inst, phys, state, H, "RECOVERY_INITIAL_BASE")
+-            if ev.feasible:
+-                opt = RecoveryOption(cand, ev,
+-                                     f"truck={entry['truck']},rv={cand.sorties[frag.sid].rec_vid},"
+-                                     f"served={len(entry['served'])}", entry["truck"],
+-                                     cand.sorties[frag.sid].rec_vid, len(entry["served"]),
+-                                     list(cand.sorties[frag.sid].handover))
+-                if best is None or (ev.cost or 0) < (best.ev.cost or 0):
+-                    best = opt
+-                best_by_truck[entry["truck"]] = min(best_by_truck.get(entry["truck"], float("inf")),
+-                                                    ev.cost or 0)
+-                break
+-            else:
+-                reasons.append(ev.violations[0] if ev.violations else ev.status)
++        cp, ev, exhausted, rs = _first_feasible(cands, inst, phys, state, H, stats, budget)
++        reasons += rs
++        if cp is not None:
++            _consider(cp, ev, entry, "CATALOG")
++        if exhausted:
++            continue
++
++    # ③ REBUILD：对照候选——用当前最优接机安排，但清空未来重建（旧做法）
++    if best is not None and best_entry is not None and (budget is None or budget.evals_left() > 0):
++        if best_entry["support"]:
++            pass  # 重建路径用 build_candidates 的支援访问插入，同样支持
++        rb = build_candidates(base, pool, frag.sid, best_entry, inst, phys, state, H,
++                              ground_required)
++        if rb:
++            cp, ev, _, rs = _first_feasible(rb, inst, phys, state, H, stats, budget)
++            if cp is not None:
++                info["rebuild_cost"] = ev.cost
++                _consider(cp, ev, best_entry, "REBUILD")
+     if best is not None:
+-        best.description += "|" + ",".join(f"{k}:{v:.2f}" for k, v in sorted(best_by_truck.items()))
++        info["best_source"] = best_src
++        info["init_cost"] = best.ev.cost
+     return best, reasons[:20], catalog
+diff --git a/src/tdr/simulate.py b/src/tdr/simulate.py
+index d073645..9cbbe60 100644
+--- a/src/tdr/simulate.py
++++ b/src/tdr/simulate.py
+@@ -7,7 +7,7 @@ import time
+ from dataclasses import dataclass, field
+ from typing import Any
+ 
+-from .alns import Budget, SearchStats, SolveContext, optimize
++from .alns import Budget, SearchStats, SolveContext, SolveResult, optimize
+ from .config import AlgorithmConfig, PhysicalConfig
+ from .data import Instance
+ from .evaluate import Evaluation, evaluate_plan
+@@ -145,16 +145,26 @@ def _truck_is_driving(truck: str, t: float, tl: Timeline) -> bool:
+ 
+ 
+ def _compute_holders(new: Plan, plan: Plan, inst: Instance, delivered: set[str],
+-                     prev_state: StartState | None) -> dict[str, str]:
++                     prev_state: StartState | None,
++                     inflight: set[int] | None = None) -> dict[str, str]:
+     holders: dict[str, str] = {}
+     drone_of: dict[str, str] = {}
++    handed: dict[str, str] = {}      # 已回收并交接给回收车、尚未地送的票 → 回收车
+     for s in new.sorties.values():
+         if s.started:
+             for p in s.air + s.handover:
+                 drone_of[p] = s.drone
+     # 原计划中在飞（started）的航次：其机上票在快照时确实在机上
++    # 修复（第一轮顺带）：只有"此刻仍在飞"的残段，机上票才算无人机保管；
++    # 已经回收并交接（R、U 完成）的残段，其交接票已转给回收车，保管者是该车（等待地送）。
+     for s in plan.sorties.values():
+         if s.started and s.start_time <= (prev_state.t0 if prev_state else 0.0) + 1e9:
++            if inflight is not None and s.sid not in inflight and s.rec_vid in plan.visits:
++                rec_truck = plan.visits[s.rec_vid].truck
++                for p in s.air + s.handover:
++                    if p not in delivered:
++                        handed.setdefault(p, rec_truck)
++                continue
+             for p in s.air + s.handover:
+                 if p not in delivered:
+                     drone_of.setdefault(p, s.drone)
+@@ -170,6 +180,8 @@ def _compute_holders(new: Plan, plan: Plan, inst: Instance, delivered: set[str],
+             holders[p] = "DELIVERED"
+         elif p in drone_of:
+             holders[p] = f"DRONE:{drone_of[p]}"
++        elif p in handed:
++            holders[p] = f"TRUCK:{handed[p]}"
+         elif p in holders:
+             continue
+         else:
+@@ -396,7 +408,7 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
+         new.drone_sorties[d] = [x for x in new.drone_sorties[d] if x in new.sorties]
+         if not new.drone_sorties[d]:
+             new.drone_sorties.pop(d)
+-    st.parcel_holder = _compute_holders(new, plan, inst, all_delivered, prev_state)
++    st.parcel_holder = _compute_holders(new, plan, inst, all_delivered, prev_state, inflight)
+     info = {"unloaded": unloaded, "delivered": all_delivered, "prefix_dist": prefix_dist, "q_prefix": q_prefix,
+             "t_cut": t_cut, "freed": sorted(set(freed)), "inflight": sorted(inflight)}
+     return new, st, info
+@@ -656,13 +668,19 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
+             res.notes.append("MAX_REPLANS")
+             res.plan, res.evaluation = new_plan, None
+             break
+-        budget = Budget(recovery_eval_budget if recovery_eval_budget is not None else
+-                        alg.deterministic_recovery_eval_budget, recovery_wall_s)
+-        stats = SearchStats()
++        main_limit = (recovery_eval_budget if recovery_eval_budget is not None
++                      else alg.deterministic_recovery_eval_budget)
++        # 修复2：初始化预算与 ALNS 主循环预算分开记账，S/X 使用相同的两份额度
++        t_budget0 = time.perf_counter()
++        init_budget = Budget(alg.recovery_init_eval_budget, recovery_wall_s, start=t_budget0)
++        init_stats = SearchStats()
++        init_info: dict[str, Any] = {}
+         opt, reasons, catalog = initial_recovery(new_plan, state2, inst, phys, strategy,
+                                                  ground_required, H=H,
+                                                  extra_pool=info_.get("freed", []),
+-                                                 frag_sid=a.sid, stats=stats, budget=budget)
++                                                 frag_sid=a.sid, stats=init_stats,
++                                                 budget=init_budget, rescue_evals=main_limit,
++                                                 info=init_info)
+         if opt is None:
+             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
+             res.notes.append("INITIAL_RECOVERY_FAILED:" + ",".join(reasons[:5]))
+@@ -674,9 +692,40 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
+                            ground_required=set(ground_required), replan_index=replan_index + 1,
+                            rngs=rr, catalog=catalog, frag_sid=a.sid)
+         t_r = time.perf_counter()
+-        sol = optimize(opt.plan, ctx, budget, variant=variant, stats=stats)
++        budget = Budget(main_limit, recovery_wall_s, start=t_budget0)   # 主循环预算
++        stats = SearchStats()
++        sol = optimize(opt.plan, ctx, budget, variant=variant, stats=stats, init_ev=opt.ev)
+         dt = time.perf_counter() - t_r
+         res.replan_times.append(dt)
++        # 永不劣于残段候选：理论上 optimize 的最好解从起始解出发、只会更好；这里再做显式兜底
++        res_cost = init_info.get("residual_cost")
++        if (res_cost is not None and sol.evaluation is not None and sol.evaluation.feasible
++                and (sol.evaluation.cost or 0.0) > res_cost + alg.cost_tolerance_yuan):
++            res.notes.append("RESIDUAL_GUARD_TRIGGERED")
++            rp, rev = init_info["_residual"]
++            sol = SolveResult(rp, rev, "FEASIBLE_LIMIT", sol.stats)
++        init_counts = {
++            "n_init_evals": init_stats.eval_requests,
++            "init_by_reason": dict(init_stats.eval_by_reason),
++            "n_main_evals": stats.eval_requests,
++            "n_main_iterations": stats.iterations,
++            "main_by_reason": dict(stats.eval_by_reason),
++            "n_eval_requests": init_stats.eval_requests + stats.eval_requests,
++            "init_budget_limit": alg.recovery_init_eval_budget,
++            "main_budget_limit": main_limit,
++            "init_rescue_used": init_info.get("rescue_used", False),
++            "init_source": init_info.get("best_source"),
++            "init_cost": init_info.get("init_cost"),
++            "residual_feasible": init_info.get("residual_feasible"),
++            "residual_cost": res_cost,
++            "rebuild_cost": init_info.get("rebuild_cost"),
++            "n_init_catalog_entries": init_info.get("n_catalog_entries"),
++            "stop_reason": stats.stop_reason,
++            "final_cost": sol.evaluation.cost if sol.evaluation is not None else None,
++        }
++        if init_counts["init_cost"] is not None and init_counts["final_cost"] is not None:
++            init_counts["patch_back"] = init_counts["init_cost"] - init_counts["final_cost"]
++        sol.stats.counts.update(init_counts)
+         if sol.plan is None or sol.evaluation is None or not sol.evaluation.feasible:
+             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
+             res.notes.append("RECOVERY_OPT_FAILED")
+diff --git a/tests/test_round1.py b/tests/test_round1.py
+new file mode 100644
+index 0000000..6b349f5
+--- /dev/null
++++ b/tests/test_round1.py
+@@ -0,0 +1,150 @@
++"""第一轮修改（修复1：残段最小改动恢复；修复2：S/X 搜索量可比）的验收测试."""
++import json
++from pathlib import Path
++
++import pytest
++
++from tdr.alns import Budget, SearchStats, _progress
++from tdr.config import AlgorithmConfig, PhysicalConfig
++from tdr.data import load_instance
++from tdr.evaluate import evaluate_plan
++from tdr.hidden_world import TestWorld
++from tdr.nominal import build_nominal
++from tdr.recovery import RecoveryCatalog, build_residual_candidate, initial_recovery, prepare_residual
++from tdr.schedule import initial_state
++from tdr.simulate import (SearchStats as _SS, air_arrivals, compute_cut, derive_rngs,
++                          initial_run_state, run_episode, truncate)
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++@pytest.fixture(scope="module")
++def env():
++    p = ROOT / "data" / "package.json"
++    if not p.exists():
++        pytest.skip("run extract first")
++    pkg = json.loads(p.read_text(encoding="utf-8"))
++    phys = PhysicalConfig.from_dict(pkg["config"])
++    inst = load_instance(pkg, "C50")
++    alg = AlgorithmConfig.from_dict(pkg["algorithm_protocol"]["default_parameters"])
++    res = build_nominal(inst, phys, alg, derive_rngs(alg.base_algorithm_seed, "C50", "nominal", 0),
++                        eval_budget=200)
++    if not res.evaluation or not res.evaluation.feasible:
++        pytest.skip("nominal not feasible")
++    H = max(res.evaluation.timeline.truck_finish.values()) + phys.shift_slack_s
++    air = [q for s in res.plan.sorties.values() for q in s.air]
++    if not air:
++        pytest.skip("no air parcels in nominal plan")
++    return inst, phys, alg, res, H, air[0]
++
++
++def _episode(env, strategy, budget):
++    inst, phys, alg, res, H, target = env
++    world = TestWorld(inst, "C50", (target,))
++    return run_episode(inst, res.plan, res.evaluation, H, phys, world, strategy, alg,
++                       derive_rngs(alg.base_algorithm_seed, "C50", "recovery", 0),
++                       recovery_eval_budget=budget)
++
++
++def _first_replan_stats(ep):
++    return [r for r in ep.replans if r.index >= 1][0].stats
++
++
++def _truncated(env):
++    """复现 run_episode 第一次失败后的截断状态，返回 (new_plan, state, frag_sid, a)."""
++    inst, phys, alg, res, H, target = env
++    plan = res.plan.clone()
++    state = initial_run_state(plan, inst, phys)
++    ev = evaluate_plan(plan, inst, phys, state, H, "T")
++    tl = ev.timeline
++    a = next(x for x in air_arrivals(plan, tl, inst) if x.parcel == target)
++    t_cut = compute_cut(tl, a.time, a.drone)
++    new_plan, st2, info = truncate(plan, tl, inst, phys, t_cut, a.time, a.sid, a.parcel,
++                                   a.drone, prev_state=state)
++    return new_plan, st2, a, info
++
++
++@pytest.mark.parametrize("strategy", ["S", "X"])
++def test_residual_not_worse_than_returned(env, strategy):
++    """ALNS 返回的解不得比"残段候选"差；起点来源与成本被记录."""
++    ep = _episode(env, strategy, 100)
++    assert ep.status == "COMPLETED_VERIFIED", ep.notes
++    st = _first_replan_stats(ep)
++    assert st["init_source"] in ("RESIDUAL", "CATALOG", "REBUILD")
++    assert st["residual_feasible"] is True      # 本夹具中残段候选可行，保证下面的断言不是空转
++    if st["residual_feasible"]:
++        assert st["init_cost"] <= st["residual_cost"] + 1e-9
++        assert st["final_cost"] <= st["residual_cost"] + 1e-6
++        assert ep.evaluation.cost <= st["residual_cost"] + 1e-6
++    assert "RESIDUAL_GUARD_TRIGGERED" not in ep.notes
++
++
++def test_residual_candidate_keeps_future_intact(env):
++    """残段候选只改失败航次及失败票的地送，其他访问/航次/地送指派原样保留."""
++    inst, phys, alg, res, H, target = env
++    new_plan, st2, a, info = _truncated(env)
++    base = prepare_residual(new_plan, inst)
++    cands = build_residual_candidate(base, a.sid, None, inst, phys, st2, {target}, "X")
++    assert cands, "名义计划里该失败航次的回收访问应仍在残段中"
++    cand = cands[0]
++    # 其他无人机的未起飞航次：全部保留
++    for sid, s in base.sorties.items():
++        if s.drone == a.drone:
++            continue
++        assert sid in cand.sorties
++        assert cand.sorties[sid].air == s.air
++        assert cand.sorties[sid].rec_vid == s.rec_vid
++    # 原有访问的地送指派只能增加（失败票/新插入），不能丢
++    for vid, v in base.visits.items():
++        assert set(v.ground) <= set(cand.visits[vid].ground)
++    # 失败票被安排在地面送达，且仍在机上交接清单里
++    assert any(target in v.ground for v in cand.visits.values())
++    assert target in cand.sorties[a.sid].handover
++    assert cand.sorties[a.sid].rec_vid == base.sorties[a.sid].rec_vid
++
++
++def test_s_rule_blocks_cross_truck_residual(env):
++    """S：只能回收到原放飞车；X 允许任意合格车."""
++    inst, phys, alg, res, H, target = env
++    new_plan, st2, a, info = _truncated(env)
++    base = prepare_residual(new_plan, inst)
++    frag = base.sorties[a.sid]
++    launch = frag.launch_truck or frag.truck
++    other = next((t for t, r in base.routes.items() if t != launch and r), None)
++    if other is None:
++        pytest.skip("残段中没有其他车辆的访问")
++    entry = {"truck": other, "kind": "visit", "ref": base.routes[other][0], "support": False,
++             "served": []}
++    assert build_residual_candidate(base, a.sid, entry, inst, phys, st2, {target}, "S") == []
++    cat = RecoveryCatalog(base, frag, inst, "S", st2, {target})
++    # S 的目录里只出现原放飞车
++    assert {e["truck"] for e in cat.next_entries(80)} == {launch}
++
++
++def test_init_and_main_budget_are_separate_and_comparable(env):
++    """修复2：初始化评价与主循环评价分开记账；S/X 的主循环评价、迭代数可比."""
++    inst, phys, alg, res, H, target = env
++    out = {}
++    for strategy in ("S", "X"):
++        ep = _episode(env, strategy, 150)
++        assert ep.status == "COMPLETED_VERIFIED", ep.notes
++        out[strategy] = _first_replan_stats(ep)
++    for st in out.values():
++        assert st["n_main_evals"] <= 150
++        assert st["n_main_evals"] >= 140                      # 主循环基本用满自己的预算
++        assert st["n_init_evals"] <= alg.recovery_init_eval_budget + 150
++        assert st["n_eval_requests"] == st["n_init_evals"] + st["n_main_evals"]
++        assert "RECOVERY_INITIAL_BASE" in st["init_by_reason"]
++    assert out["S"]["n_init_evals"] <= alg.recovery_init_eval_budget
++    assert out["X"]["n_init_evals"] <= alg.recovery_init_eval_budget
++    ratio = out["S"]["n_main_iterations"] / max(1, out["X"]["n_main_iterations"])
++    assert 0.5 <= ratio <= 2.0, out
++
++
++def test_sa_progress_depends_on_main_loop_only():
++    b = Budget(100, None)
++    st = SearchStats()
++    st.eval_requests = 25
++    assert abs(_progress(st, b) - 0.25) < 1e-12
++    st.eval_requests = 100
++    assert abs(_progress(st, b) - 1.0) < 1e-12

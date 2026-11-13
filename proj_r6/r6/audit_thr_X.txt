@@ -1,0 +1,26 @@
+## 算子审计（thr_X，S/X 各 0/60 个名义解求和）
+算子 | S: calls/infeas/feas/best/acc | X: calls/infeas/feas/best/acc
+AFFECTED_SORTIE        |    0/   0/   0/  0/  0 |  616/ 226/ 390/ 85/ 87
+CROSS_CONVERT          |    0/   0/   0/  0/  0 | 1080/ 484/ 596/238/  0
+CROSS_REPAIR_TRIALS    |    0/   0/   0/  0/  0 | 2633/   0/1488/313/326
+ENERGY_CHAIN           |    0/   0/   0/  0/  0 |  630/ 227/ 403/ 97/ 99
+GROUND_TO_AIR          |    0/   0/   0/  0/  0 |  664/ 316/ 348/ 88/ 90
+R:AIR_FIRST            |    0/   0/   0/  0/  0 | 1455/ 675/ 780/145/151
+R:GREEDY_PROXY         |    0/   0/   0/  0/  0 | 1492/ 553/ 939/212/222
+R:REGRET2_PROXY        |    0/   0/   0/  0/  0 | 1502/ 526/ 976/248/255
+RANDOM_DEPENDENCY      |    0/   0/   0/  0/  0 |  603/ 294/ 309/ 59/ 60
+RENDEZVOUS_RESOURCE    |    0/   0/   0/  0/  0 |  655/ 236/ 419/ 92/ 98
+SORTIE_REGROUP         |    0/   0/   0/  0/  0 |  637/ 257/ 380/ 90/ 96
+SUPPORT_VISIT          |    0/   0/   0/  0/  0 |  644/ 198/ 446/ 94/ 98
+
+不可行原因（评价次数，按 reason|状态 合并）
+S 总评价 0，不可行合计 0 (0.0%)
+X 总评价 56549，不可行合计 15901 (28.1%)
+    15351 ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#
+    544 INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#
+    6 ENERGY_INFEASIBLE|SWAP_SPARES:t#:#>#
+Traceback (most recent call last):
+  File "/workspace/thesis/proj_r6/r6/agg_audit.py", line 30, in <module>
+    print('\n最后一次改进所处迭代占比(均值)  S: %.2f  X: %.2f ；平均迭代数 S %.1f X %.1f' % (sum(LI['S'])/len(LI['S']), sum(LI['X'])/len(LI['X']), sum(ITS['S'])/len(ITS['S']), sum(ITS['X'])/len(ITS['X'])))
+                                                                                             ~~~~~~~~~~~~^~~~~~~~~~~~~
+ZeroDivisionError: division by zero
