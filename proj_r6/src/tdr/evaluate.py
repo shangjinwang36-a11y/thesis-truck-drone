@@ -174,10 +174,17 @@ def truck_slot_check(plan: Plan, inst: Instance, phys: PhysicalConfig, tl: Timel
     return errs
 
 
-def channel_check(plan: Plan, phys: PhysicalConfig, tl: Timeline) -> list[str]:
+def channel_check(plan: Plan, phys: PhysicalConfig, tl: Timeline,
+                  state: StartState | None = None) -> list[str]:
     errs: list[str] = []
+    t0 = state.t0 if state is not None else 0.0
     for k in [f"t{i+1}" for i in range(phys.truck_count)]:
         intervals: list[tuple[float, float]] = []
+        # T02：截断时正在进行、按承诺跨过截断点完成的放飞（残段 start_time > t0）仍占着放飞车的通道。
+        # 旧检查只看未起飞航次的放飞，后缀里同车的回收可以和它重叠，回放才报 CHANNEL_OVERLAP。
+        for s in plan.sorties.values():
+            if state is not None and s.started and s.start_time > t0 + 1e-9 and (s.launch_truck or s.truck) == k:
+                intervals.append((max(t0, s.start_time - phys.launch_s), s.start_time))
         for s in plan.sorties.values():
             lt = tl.launch_times.get(s.sid)
             if lt and not s.started:
@@ -293,7 +300,7 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
         return ev
     viol = []
     viol += truck_slot_check(plan, inst, phys, tl, state)
-    viol += channel_check(plan, phys, tl)
+    viol += channel_check(plan, phys, tl, state)
     # 终端：每个出飞机体最后必须在车上；返库时刻与 H
     for k, f in tl.truck_finish.items():
         if H is not None and f > H + 1e-6 and not phys.soft_h:

@@ -91,7 +91,7 @@ def verify_plan(inst: Instance, state: StartState | None, plan: Plan, strategy: 
         rep.violations.append("SCHEDULE_NOT_CONVERGED")
     else:
         rep.violations += truck_slot_check(plan, inst, phys, tl, state)
-        rep.violations += channel_check(plan, phys, tl)
+        rep.violations += channel_check(plan, phys, tl, state)
     for k, f in tl.truck_finish.items():
         if H is not None and f > H + 1e-6 and not phys.soft_h:
             rep.violations.append(f"H_EXCEEDED:{k}@{f:.1f}>{H:.1f}")
