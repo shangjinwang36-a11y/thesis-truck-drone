@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from .config import PhysicalConfig
 from .data import Instance
-from .evaluate import final_carrier
+from .evaluate import channel_check, final_carrier, recovery_is_cross, truck_slot_check
 from .plan import Plan
 from .schedule import (StartState, allocate_charging, initial_state, schedule_plan, stage_energy)
 
@@ -42,12 +42,15 @@ def verify_plan(inst: Instance, state: StartState | None, plan: Plan, strategy: 
     rep = VerificationReport()
     state = state or initial_state(inst, phys)
     errs = plan.validate_structure(inst, phys)
-    # 策略资格：S 的受影响航次只能回收到原放飞车
-    for s in plan.sorties.values():
-        if strategy == "S" and s.started and s.truck is not None:
-            rec_truck = plan.visits[s.rec_vid].truck if s.rec_vid in plan.visits else None
-            if rec_truck is not None and s.drone and s.truck != rec_truck:
-                errs.append(f"S_POLICY_VIOLATION: sortie {s.sid} launch {s.truck} rec {rec_truck}")
+    # 策略资格：S 的任一航次（含已起飞残段）都只能回收到原放飞车。
+    # 残段的 truck 字段在改派后等于接机车，必须用 launch_truck 对照。
+    if strategy == "S":
+        for s in plan.sorties.values():
+            if recovery_is_cross(plan, s):
+                rec_truck = plan.visits[s.rec_vid].truck
+                launch = s.launch_truck or (plan.visits[s.launch_vid].truck
+                                            if s.launch_vid in plan.visits else s.truck)
+                errs.append(f"S_POLICY_VIOLATION: sortie {s.sid} launch {launch} rec {rec_truck}")
     if errs:
         rep.violations = errs[:30]
         return rep
@@ -84,6 +87,11 @@ def verify_plan(inst: Instance, state: StartState | None, plan: Plan, strategy: 
         rep.energy_kwh[d] = consumed
     rep.charging_kwh = tl.q_total
     # ---- 资源 ----
+    if not tl.converged:
+        rep.violations.append("SCHEDULE_NOT_CONVERGED")
+    else:
+        rep.violations += truck_slot_check(plan, inst, phys, tl, state)
+        rep.violations += channel_check(plan, phys, tl)
     for k, f in tl.truck_finish.items():
         if H is not None and f > H + 1e-6 and not phys.soft_h:
             rep.violations.append(f"H_EXCEEDED:{k}@{f:.1f}>{H:.1f}")
@@ -92,7 +100,9 @@ def verify_plan(inst: Instance, state: StartState | None, plan: Plan, strategy: 
         for i, st in enumerate(stages):
             if i + 1 < len(energies) and energies[i + 1] < -phys.energy_tol:
                 rep.violations.append(f"NEGATIVE_SOC:{d}@{st.start:.1f}")
-            if st.kind == "R" and i + 1 < len(energies) and energies[i + 1] < phys.e_min - phys.energy_tol:
+            # 降落等待的回收不要求备用电量，与 evaluate_plan 一致；电量仍须 ≥ 0。
+            if (st.kind == "R" and not st.landed and i + 1 < len(energies)
+                    and energies[i + 1] < phys.e_min - phys.energy_tol):
                 rep.violations.append(f"RESERVE_VIOLATION:{d}@{st.start:.1f}")
     # ---- 交付与终端 ----
     delivered = set(state.delivered)
@@ -122,12 +132,17 @@ def verify_plan(inst: Instance, state: StartState | None, plan: Plan, strategy: 
     refill += state.prefix_refill_kwh + tl.swap_refill_kwh
     c_km = phys.c_km * (state.prefix_distance_m + dist) / 1000.0
     c_driver = phys.wage_per_s * sumF
-    c_veh = phys.cost_vehicle_kwh * Qac
+    overtime_s = (sum(max(0.0, f - H) for f in tl.truck_finish.values())
+                  if (phys.soft_h and H is not None) else 0.0)
+    c_overtime = phys.wage_per_s * (phys.overtime_mult - 1.0) * overtime_s
+    Qnet = phys.slot_efficiency * Qac
+    c_veh = phys.cost_vehicle_kwh * Qnet
     c_dep = phys.cost_depot_kwh * refill
-    rep.cost = c_km + c_driver + c_veh + c_dep
+    rep.cost = c_km + c_driver + c_veh + c_dep + c_overtime
     rep.cost_breakdown = {"c_km": c_km, "c_driver": c_driver, "c_vehicle": c_veh, "c_depot": c_dep,
+                          "c_overtime": c_overtime, "overtime_s": overtime_s,
                           "distance_km": rep.distance_km, "driver_s": sumF,
-                          "ac_kwh": Qac, "refill_kwh": refill}
+                          "ac_kwh": Qac, "net_kwh": Qnet, "refill_kwh": refill}
     # 能量守恒：机载总耗 = 初始 + 充电净入 - 入库余电
     lhs = sum(rep.energy_kwh.values())
     rhs = 0.0

@@ -37,6 +37,11 @@ PRESETS = {
     # 并加上地面绕路 vs 跨车再飞的算子。不在评价种子上调任何常数。
     "R4": {"label": "R3 名义 + X 风险价新开空送 + 绕路再飞",
            "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True},
+    # 第五轮诊断预设，不是最终设计。名义文件仍是 R3。发布时若 X 名义含跨车航次，改用 S 的名义。
+    # 这会删掉名义跨车。论文要保留失败前的跨车，所以这个预设只用来记录“整份退回同车”的代价。
+    # 开关依据来自调参种子 101–110。恢复仍可跨车。
+    "R5": {"label": "诊断：含跨车的名义整份退回 S（不作为最终设计）",
+           "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r5": True},
 }
 
 
@@ -63,8 +68,12 @@ def configs(pkg, preset: str):
         ad.update(x_cross_hs_cap=True, x_cross_energy_margin_frac=0.05,
                   x_limit_new_air=True, x_new_air_penalty=0.0, cross_ops=True)
     if ps.get("r4"):
-        # 已知伯努利概率，不是在种子 1–10 上拟合的。硬禁止关掉，改由风险价决定每票开不开。
+        # 已知伯努利概率，不是在种子上拟合的。x_new_air_penalty 仍为 0，因此
+        # simulate 里的 x_limit_new_air 继续硬禁止通用修复新开空送；
+        # 风险价只约束再飞算子提出的那一票。硬禁止没有关掉。
         ad.update(x_risk_price_air=True, failure_prob=0.2, x_new_air_penalty=0.0)
+    if ps.get("r5"):
+        ad.update(x_adopt_s_if_cross=True)
     alg = AlgorithmConfig.from_dict(ad)
     alg.recovery_eval_budget_override = None
     alg.recovery_time_limit_override_s = None
@@ -104,7 +113,7 @@ def ep_one(args):
     pkg_path, preset, case, seed, budget, nom_root, failure_mode, p = args[:8]
     max_replans_spec = args[8] if len(args) > 8 else "n_cust"
     from tdr.data import load_instance
-    from tdr.experiment import load_case_nominal, episode_metrics
+    from tdr.experiment import load_case_nominal, episode_metrics, nominal_plan_for_run
     from tdr.evaluate import evaluate_plan, is_cross_sortie
     from tdr.hidden_world import make_world, bernoulli_failure_flags, HiddenWorld
     from tdr.schedule import initial_state
@@ -131,7 +140,7 @@ def ep_one(args):
         hidden = sorted(HiddenWorld(inst, case, seed).finish_episode().hidden_failure_parcels)
     out["hidden_failure_parcels"] = hidden
     for strat in ("S", "X"):
-        plan, ncost, Hown = noms[strat]
+        plan = nominal_plan_for_run(noms["S"][0], noms[strat][0], strat, bool(alg.x_adopt_s_if_cross))
         nom_ev = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
         air = sorted({p for s in plan.sorties.values() for p in s.air})
         out[strat + "_nominal"] = dict(
@@ -171,7 +180,10 @@ def ep_one(args):
                 init_sources.append(stt["init_source"])
         n_cross_final = None
         if ep.plan is not None:
-            n_cross_final = sum(1 for s in ep.plan.sorties.values() if is_cross_sortie(ep.plan, s))
+            # 已起飞残段的 truck 会被改写成接机车，is_cross_sortie 故意不计。
+            # 回合结束时的跨车次数用放飞车 launch_truck 对照回收车。
+            from tdr.evaluate import recovery_is_cross
+            n_cross_final = sum(1 for s in ep.plan.sorties.values() if recovery_is_cross(ep.plan, s))
         notes = list(ep.notes or [])
         rec_reasons = []
         for nt in notes:
@@ -301,7 +313,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
 
     # 名义共享：A0 与 A1 共用 A0 名义；A2 与 A3 共用 A2 名义；A4 独立
-    nom_src = {"A0": "A0", "A1": "A0", "A2": "A2", "A3": "A2", "A4": "A4", "R3": "R3", "R4": "R3"}
+    nom_src = {"A0": "A0", "A1": "A0", "A2": "A2", "A3": "A2", "A4": "A4", "R3": "R3", "R4": "R3", "R5": "R3"}
 
     if args.phase in ("nominal", "all"):
         need = sorted({nom_src[p] for p in presets if p in nom_src})

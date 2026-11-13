@@ -35,6 +35,21 @@ def is_cross_sortie(plan: Plan, s) -> bool:
     return plan.visits[s.launch_vid].truck != plan.visits[s.rec_vid].truck
 
 
+def recovery_is_cross(plan: Plan, s) -> bool:
+    """放飞车与回收车不同，含已起飞残段。
+
+    已起飞残段的 ``truck`` 在改派后会被写成接机车，原放飞车在 ``launch_truck``。
+    ``is_cross_sortie`` 故意不含残段，避免把已经发生的放飞再送进名义跨车图。
+    """
+    if s.rec_vid not in plan.visits:
+        return False
+    rec = plan.visits[s.rec_vid].truck
+    if s.started:
+        launch = s.launch_truck or s.truck
+        return bool(launch) and launch != rec
+    return is_cross_sortie(plan, s)
+
+
 def has_wait_cycle(plan: Plan) -> bool:
     """第六轮：名义跨车航次的等待成环（死锁）检测.
 
@@ -245,9 +260,11 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
         ev.violations = ["CROSS_WAIT_CYCLE"]
         return ev
     tl = schedule_plan(plan, inst, phys, state)
-    if not tl.converged and any(is_cross_sortie(plan, s) for s in plan.sorties.values()):
+    # 未收敛的时刻不是不动点：卡车与无人机互相等待的时间还在变。
+    # 只在存在跨车航次时拒绝，会把同车长链或振荡误记成 H_EXCEEDED 或一个并不成立的成本。
+    if not tl.converged:
         ev.status = "INFEASIBLE_RESOURCE"
-        ev.violations = ["SCHEDULE_NOT_CONVERGED(cross-truck cycle)"]
+        ev.violations = ["SCHEDULE_NOT_CONVERGED"]
         ev.timeline = tl
         return ev
     ok, msg, q = allocate_charging(tl, phys, state)

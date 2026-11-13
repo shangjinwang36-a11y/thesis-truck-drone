@@ -231,6 +231,11 @@ class AlgorithmConfig:
     # 第六轮续：X 专属（S 不触发）。改进才接受的跨车精炼；名义结束后若 X>S 则采用 S 解以保证 X≤S
     x_improve_only_cross: bool = False
     x_adopt_s_nominal: bool = False
+    # 诊断用回退，不是最终设计。为真时，已搜到的 X 名义若仍含跨车航次，发布时改用 S 的名义。
+    # 这会把失败前的跨车从名义方案里拿掉。论文要的是名义阶段也使用跨车，所以正式设计不打开它。
+    # 第 5 轮用它在调参种子 101–110 和一次评价种子上量过“整份删掉”的代价，见 ROUND5_REPORT_CN.md。
+    # 恢复阶段仍允许跨车。S 不读这个字段。默认关，第 4 轮预设也不打开。
+    x_adopt_s_if_cross: bool = False
     # X 专属：改回收车时尽量保留/改派后续航次，而不是整链丢掉
     x_preserve_cross_repair: bool = False
     # X 专属：同一残差上保留 S 资格可行恢复作为候选，使 X 恢复不差于该残差上的 S 恢复

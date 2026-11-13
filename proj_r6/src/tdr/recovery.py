@@ -294,7 +294,6 @@ class RecoveryCatalog:
                     "ref": st.ref, "support": st.support, "served": list(x[4]), "est": x[0]}
 
         n_guard = 0
-        trucks_ok = [launch] if self.strategy == "S" else None
         for x in s_list:                       # 先放 S 排序的前 guard_n 个（X、S 完全一致）
             if n_guard >= self.guard_n and self.strategy != "S":
                 break

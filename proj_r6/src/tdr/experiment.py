@@ -149,6 +149,17 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
             res.plan, ev = s_plan, s_ev
             adopted_s = True
             adopt_reason = "makespan_cap" if over_cap and not worse else ("cost" if worse else "makespan_cap")
+    # 诊断回退，默认关。打开后整份丢掉仍含跨车的 X 名义。正式设计要保留名义跨车，不走这里。
+    if cross_launch and getattr(alg, "x_adopt_s_if_cross", False) and adopt_from:
+        from .evaluate import is_cross_sortie as _is_cross
+        if any(_is_cross(res.plan, s) for s in res.plan.sorties.values()):
+            if s_plan_cap is None:
+                s_plan_cap, _, _ = load_case_nominal(inst, adopt_from)
+                s_ev_cap = evaluate_plan(s_plan_cap, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+            if s_plan_cap is not None and s_ev_cap is not None and s_ev_cap.feasible:
+                res.plan, ev = s_plan_cap.clone(), s_ev_cap
+                adopted_s = True
+                adopt_reason = (adopt_reason + "+cross_nominal") if adopt_reason else "cross_nominal"
     H = max(ev.timeline.truck_finish.values()) + phys.shift_slack_s
     from .evaluate import is_cross_sortie as is_cross_sortie_
     if not cross_launch:   # S：名义阶段不得出现跨车航次
@@ -162,7 +173,8 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
                 [s.end for lst in tl.drone_stages.values() for s in lst] + [0.0])
     seg = collect_segment(res.plan, tl, inst, phys, 0.0, t_end, st0)
     replay = verify_replay(inst, phys, [seg])
-    rep = verify_plan(inst, initial_state(inst, phys), res.plan, "NOMINAL", phys, None)
+    rep = verify_plan(inst, initial_state(inst, phys), res.plan,
+                      "X" if cross_launch else "S", phys, None)
     plan_id = f"{inst.case_id}-nominal-{SCHEMA_VERSION}"
     _write_json(out / "nominal_plan.json",
                 {"plan_id": plan_id, "H_s": H, "algorithm_id": ALGORITHM_ID,
@@ -221,6 +233,21 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
     }
     _write_json(out / "result.json", meta)
     return meta
+
+
+def nominal_plan_for_run(plan_s: Plan, plan: Plan, strategy: str, drop_cross: bool) -> Plan:
+    """本回合使用的名义计划。
+
+    S 用自己的计划。drop_cross 为真且 X 的名义仍含跨车航次时，改用 S 的名义的克隆。
+    这是第 5 轮的诊断回退：它去掉名义阶段的跨车，只把跨车留在恢复里。正式设计不采用。
+    克隆是为了不让 X 的恢复改写 S 那份计划对象。恢复时的策略仍是调用方传入的 X。
+    """
+    if strategy != "X" or not drop_cross:
+        return plan
+    from .evaluate import is_cross_sortie
+    if any(is_cross_sortie(plan, s) for s in plan.sorties.values()):
+        return plan_s.clone()
+    return plan
 
 
 def load_case_nominal(inst: Instance, nominal_dir: str | Path) -> tuple[Plan, dict, float]:

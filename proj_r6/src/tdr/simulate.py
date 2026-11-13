@@ -862,7 +862,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                         [st.end for lst in tl.drone_stages.values() for st in lst] + [state.t0])
             segments.append(collect_segment(plan, tl, inst, phys, state.t0, t_end, seg_start))
             ev = evaluate_plan(plan, inst, phys, state, H, "FINAL")
-            rep = verify_replay(inst, phys, segments, H)
+            rep = verify_replay(inst, phys, segments, H, strategy=strategy)
             res.segments = segments
             res.replay = rep
             res.plan = plan
@@ -1013,6 +1013,9 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             res.status = "ERROR"
             res.notes.append("REPLAN_LOOP")
             break
+    # 停止/失败出口此前只在 COMPLETED 路径上保存日志。已执行的前缀（换电、回收、
+    # 交付）因此从回合对象上消失，不变量和 n_fail_cross 都看不见。搜索与成本不变。
+    res.segments = segments
     res.wall_s = time.perf_counter() - t_start
     try:
         res.audit = world.finish_episode()
