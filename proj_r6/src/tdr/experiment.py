@@ -172,8 +172,11 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
                 within_tau = ev.cost <= s_ev.cost + tau + 1e-9
             # 稳健跨车可以比 S 贵，但贵不过 tau。否则先回到 S，再在 S 上试一次互换。
             keep_robust = has_cross and not viol and within_tau
+        from .expected_cost import cost_gap_discards_nominal
+        drop_for_cost = cost_gap_discards_nominal(
+            bool(getattr(alg, "expected_accept", False)), worse) and not keep_robust
         if s_ev is not None and s_ev.feasible and (
-                not ev.feasible or over_cap or (worse and not keep_robust)):
+                not ev.feasible or over_cap or drop_for_cost):
             if not ev.feasible:
                 adopt_reason = "repair_infeasible"
             elif over_cap and worse:
@@ -403,7 +406,8 @@ def nominal_and_recovery(strategy: str, plan_s: Plan, plan_x: Plan, drop_cross: 
     """
     if strategy == "S":
         return plan_s, "S"
-    if strategy == "R":
+    if strategy in ("R", "X0"):
+        # X0 与 X 用同一套恢复。当前名义搜索在关掉跨车之后就是 S 的路径，所以 X0 的名义等于 S。
         return plan_s.clone(), "X"
     return nominal_plan_for_run(plan_s, plan_x, "X", drop_cross), "X"
 

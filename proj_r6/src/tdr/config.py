@@ -262,6 +262,10 @@ class AlgorithmConfig:
     # 跨车航次是连接两辆车的列，必须同时选中两边的路线。S 不生成这种列。
     set_partition: bool = False
     set_partition_period: int = 5
+    # 第 9 轮：接受准则用 J = C0 + 期望补救，不再用固定的 2 元 τ。S 和 X 同一套。
+    # 新出现的跨车组件可以在自己的期望补救额度内先留在当前解，全局最优仍比真实情景分。
+    expected_accept: bool = False
+    expected_reeval_every: int = 80
     # 第 9 轮：接机车可以插入一个只用于会合的访问。X 插在另一辆车上，S 只插在放飞车上。
     # 评价次数仍在同一份名义预算里。默认关，第 8 轮的搜索轨迹不变。
     support_rendezvous: bool = False

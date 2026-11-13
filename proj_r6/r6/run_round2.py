@@ -108,7 +108,9 @@ def configs(pkg, preset: str):
                   pair_handoff=True, s_keep_true_cost=True,
                   convert_polish_n=20, x_s_second_start=True,
                   scenario_eval_cap=200, scenario_screen_yuan=20.0,
-                  scenario_elite_refill=True)
+                  scenario_elite_refill=True,
+                  expected_accept=True, expected_reeval_every=80,
+                  x_exchange_cost_tau=0.0, x_improve_only_cross=False)
     alg = AlgorithmConfig.from_dict(ad)
     alg.recovery_eval_budget_override = None
     alg.recovery_time_limit_override_s = None
@@ -176,9 +178,10 @@ def ep_one(args):
     out["hidden_failure_parcels"] = hidden
     plan_s, plan_x = noms["S"][0], noms["X"][0]
     # R 的克隆要在 S 的回合改写计划对象之前做好。三个策略共用同一个恢复评价上限。
+    strategies = ("S", "R", "X0", "X") if preset == "R9" else ("S", "R", "X")
     prepared = {
         strat: nominal_and_recovery(strat, plan_s, plan_x, bool(alg.x_adopt_s_if_cross))
-        for strat in ("S", "R", "X")
+        for strat in strategies
     }
     for strat, (plan, recovery_strategy) in prepared.items():
         nom_ev = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")

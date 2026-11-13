@@ -48,16 +48,22 @@ def test_x_inserts_a_cross_rendezvous_and_s_stays_on_one_truck():
     state = initial_state(inst, phys)
     ctx = SolveContext(inst, phys, alg, state, None, "nominal")
     before = _parcels(plan)
+    from tdr.support_nominal import rendezvous_candidates
+    end = inst.customer("c002")
+    legal = rendezvous_candidates(plan, inst, "t2", (end.x, end.y), {"c002"})
+    assert 1 <= len(legal) <= 10
+    assert all(customer in {c.customer_id for c in inst.customers} for customer in legal)
     cross = propose_support_rendezvous(plan, ctx, 1, set(), True)
     assert cross
     _, cand = cross[0]
     crossed = [s for s in cand.sorties.values() if is_cross_sortie(cand, s)]
     assert len(crossed) == 1
     rec = cand.visits[crossed[0].rec_vid]
-    assert rec.ground == []
     assert rec.truck != cand.visits[crossed[0].launch_vid].truck
+    assert rec.customer in legal
     assert rec.customer not in {inst.parcel_to_customer[p] for p in crossed[0].air}
-    assert rec.vid not in plan.visits
+    if rec.vid not in plan.visits:
+        assert rec.ground == []
     assert _parcels(cand) == before
 
     same = propose_support_rendezvous(plan, ctx, 2, set(), False)
@@ -109,6 +115,8 @@ def test_new_flags_default_off():
     assert alg.scenario_eval_cap == 0
     assert alg.scenario_screen_yuan == 0.0
     assert alg.scenario_elite_refill is False
+    assert alg.expected_accept is False
+    assert alg.expected_reeval_every == 80
     assert "JOINT_NEAR" not in alg.destroy_operators
 
 

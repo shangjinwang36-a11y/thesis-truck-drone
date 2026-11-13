@@ -61,8 +61,77 @@ def _tails(plan):
         yield s
 
 
+def _segment_distance(point, start, end) -> tuple[float, float]:
+    px, py = point
+    ax, ay = start
+    bx, by = end
+    dx, dy = bx - ax, by - ay
+    length = dx * dx + dy * dy
+    if length < 1e-12:
+        return math.hypot(px - ax, py - ay), 0.0
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy)), t
+
+
+def _route_arcs(plan, inst, truck: str):
+    route = plan.routes.get(truck, [])
+    depot = (inst.depot_x, inst.depot_y)
+    points = [depot] + [_pos(inst, plan, vid) for vid in route] + [depot]
+    vids = [None] + list(route) + [None]
+    return [(points[i], points[i + 1], vids[i], vids[i + 1]) for i in range(len(points) - 1)]
+
+
+def rendezvous_candidates(plan, inst, truck: str, target, air_customers: set[str],
+                          n_arcs: int = 4, cap: int = 10) -> list[str]:
+    """目标客户附近、接机车 2–4 条最近弧上的合法停靠客户。最多 10 个，不生成弧外的任意坐标。"""
+    arcs = _route_arcs(plan, inst, truck)
+    ranked = []
+    for arc in arcs:
+        dist, _ = _segment_distance(target, arc[0], arc[1])
+        ranked.append((dist, arc))
+    ranked.sort(key=lambda item: item[0])
+    take = ranked[:max(2, min(n_arcs, len(ranked)))] if len(ranked) >= 2 else ranked
+    chosen: list[str] = []
+
+    def add(customer: str | None) -> None:
+        if not customer or customer in air_customers or customer in chosen:
+            return
+        if len(chosen) >= cap:
+            return
+        chosen.append(customer)
+
+    for _, arc in take:
+        for vid in (arc[2], arc[3]):
+            if vid is not None:
+                add(plan.visits[vid].customer)
+        near = []
+        for cust in inst.customers:
+            if cust.customer_id in air_customers:
+                continue
+            dist, t = _segment_distance((cust.x, cust.y), arc[0], arc[1])
+            if 0.05 < t < 0.95:
+                near.append((dist, cust.customer_id))
+        near.sort()
+        for _, customer in near[:2]:
+            add(customer)
+    return chosen
+
+
+def _window(route: list[int], vid: int) -> list[int]:
+    if vid not in route:
+        return [vid]
+    i = route.index(vid)
+    lo = max(0, i - 1)
+    hi = min(len(route), lo + 4)
+    lo = max(0, hi - 4)
+    if hi - lo < 2 and len(route) >= 2:
+        lo = max(0, i - 1)
+        hi = min(len(route), i + 1)
+    return route[lo:hi]
+
+
 def joint_near_seeds(plan, inst, allow_cross: bool) -> list[str]:
-    """X 取两辆最近的车各一站；S 取同一辆车上最近的相邻两站。"""
+    """X 在两辆最近的车各取会合点周围 2–4 站；S 只在同一辆车上取相邻的 2–4 站。"""
     best = None
     vids: set[int] = set()
     if allow_cross:
@@ -79,7 +148,10 @@ def joint_near_seeds(plan, inst, allow_cross: bool) -> list[str]:
                     best = (dist, a[1], b[1])
         if best is None:
             return []
-        vids = {best[1], best[2]}
+        vids = set()
+        for vid in (best[1], best[2]):
+            truck = plan.visits[vid].truck
+            vids.update(_window(plan.routes.get(truck, []), vid))
     else:
         for truck, route in plan.routes.items():
             for i in range(len(route) - 1):
@@ -89,7 +161,9 @@ def joint_near_seeds(plan, inst, allow_cross: bool) -> list[str]:
                     best = (dist, route[i], route[i + 1])
         if best is None:
             return []
-        vids = {best[1], best[2]}
+        truck = plan.visits[best[1]].truck
+        vids = set(_window(plan.routes.get(truck, []), best[1]))
+        vids.update(_window(plan.routes.get(truck, []), best[2]))
     seeds: list[str] = []
     for vid in vids:
         seeds.extend(plan.visits[vid].ground)
@@ -118,7 +192,6 @@ def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool)
         sp = sortie_start(inst, plan, s)
         trucks = [t for t in plan.routes if (t != launch if allow_cross else t == launch)]
         for truck in trucks:
-            owned = _customers_on(plan, truck)
             route = plan.routes.get(truck, [])
             min_pos = 0
             if truck == launch:
@@ -127,14 +200,10 @@ def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool)
                 min_pos = route.index(s.launch_vid) + 1
                 if min_pos > len(route):
                     continue
-            near = []
-            for c in inst.customers:
-                if c.customer_id in air_customers or c.customer_id in owned:
-                    continue
-                dist = math.hypot(c.x - endpos[0], c.y - endpos[1])
-                near.append((dist, c))
-            near.sort(key=lambda x: (x[0], x[1].customer_id))
-            for _, c in near[:4]:
+            owned = _customers_on(plan, truck)
+            near_ids = rendezvous_candidates(plan, inst, truck, endpos, air_customers)
+            for customer_id in near_ids:
+                c = inst.customer(customer_id)
                 key = (s.sid, truck, c.customer_id)
                 if key in tried:
                     continue
@@ -147,27 +216,47 @@ def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool)
                 if energy > phys.e_cap - phys.e_min + phys.energy_tol:
                     _funnel(stats, "energy")
                     continue
-                det = _min_detour(plan, inst, truck, c.customer_id, min_pos)
-                if det is None:
-                    _funnel(stats, "schedule")
-                    continue
-                ranked.append((det[0] + phys.cost_depot_kwh * energy, s.sid, truck, c.customer_id, min_pos))
+                existing = None
+                if c.customer_id in owned:
+                    existing = next((vid for vid in route[min_pos:]
+                                     if plan.visits[vid].customer == c.customer_id), None)
+                    if existing is None:
+                        _funnel(stats, "schedule")
+                        continue
+                    detour = 0.0
+                else:
+                    det = _min_detour(plan, inst, truck, c.customer_id, min_pos)
+                    if det is None:
+                        _funnel(stats, "schedule")
+                        continue
+                    detour = det[0]
+                flight = math.hypot(c.x - endpos[0], c.y - endpos[1])
+                wait = abs(flight / phys.drone_speed_m_s - detour / phys.truck_speed_m_s)
+                score = (phys.c_km * detour / 1000.0
+                         + phys.wage_per_s * detour / phys.truck_speed_m_s
+                         + phys.cost_depot_kwh * energy
+                         + phys.wage_per_s * wait)
+                ranked.append((score, s.sid, truck, c.customer_id, min_pos, existing))
     ranked.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
     from .evaluate import has_wait_cycle
     out = []
-    for _, sid, truck, customer, min_pos in ranked:
+    for _, sid, truck, customer, min_pos, existing in ranked:
         if len(out) >= n:
             break
         tried.add((sid, truck, customer))
         cand = plan.clone()
         so = cand.sorties[sid]
-        spot = _min_detour(cand, inst, truck, customer, min_pos)
-        if spot is None:
-            _funnel(stats, "schedule")
-            continue
-        visit = cand.add_visit(truck, customer, pos=spot[1], ground=[])
-        old = so.rec_vid
-        so.rec_vid = visit.vid
+        if existing is not None and existing in cand.visits:
+            old = so.rec_vid
+            so.rec_vid = existing
+        else:
+            spot = _min_detour(cand, inst, truck, customer, min_pos)
+            if spot is None:
+                _funnel(stats, "schedule")
+                continue
+            visit = cand.add_visit(truck, customer, pos=spot[1], ground=[])
+            old = so.rec_vid
+            so.rec_vid = visit.vid
         ov = cand.visits.get(old)
         if ov is not None and not ov.ground and not any(
                 o.sid != sid and (o.launch_vid == old or o.rec_vid == old) for o in cand.sorties.values()):
@@ -208,8 +297,70 @@ def try_support_rendezvous(plan, ctx, budget, stats):
     return best_p, best_ev
 
 
+def matched_handoff(plan, ctx):
+    """把若干航次同时改派到不同的（车，访问）上。边权是飞行加等待的代理，一次匹配。"""
+    from .evaluate import has_wait_cycle
+    inst, phys = ctx.inst, ctx.phys
+    tails = list(_tails(plan))[:4]
+    if not tails:
+        return None
+    options: dict[int, list[tuple[int, float]]] = {}
+    vids: list[int] = []
+    for sortie in tails:
+        launch = plan.visits[sortie.launch_vid].truck
+        end = inst.customer(inst.parcel_to_customer[sortie.air[-1]])
+        start = sortie_start(inst, plan, sortie)
+        for truck, route in plan.routes.items():
+            if truck == launch:
+                continue
+            for vid in route:
+                try:
+                    energy = air_energy(inst, phys, start, list(sortie.air), _pos(inst, plan, vid))
+                except KeyError:
+                    continue
+                if energy > phys.e_cap - phys.e_min + phys.energy_tol:
+                    continue
+                flight = math.hypot(_pos(inst, plan, vid)[0] - end.x, _pos(inst, plan, vid)[1] - end.y)
+                weight = phys.cost_depot_kwh * energy + phys.wage_per_s * flight / phys.drone_speed_m_s
+                options.setdefault(sortie.sid, []).append((vid, weight))
+                if vid not in vids:
+                    vids.append(vid)
+    sids = [sid for sid in options if options[sid]]
+    if not sids:
+        return None
+    vids = vids[:8]
+    if len(sids) == 1:
+        vid, _ = min(options[sids[0]], key=lambda item: (item[1], item[0]))
+        chosen = [(sids[0], vid)]
+    else:
+        from scipy.optimize import linear_sum_assignment
+        big = 1e6
+        matrix = []
+        for sid in sids:
+            weights = {vid: weight for vid, weight in options[sid]}
+            matrix.append([weights.get(vid, big) for vid in vids])
+        rows, cols = linear_sum_assignment(matrix)
+        chosen = []
+        used = set()
+        for row, col in zip(rows, cols):
+            if matrix[row][col] >= big or vids[col] in used:
+                continue
+            used.add(vids[col])
+            chosen.append((sids[row], vids[col]))
+    if not chosen:
+        return None
+    cand = plan.clone()
+    for sid, vid in chosen:
+        if vid not in cand.visits or sid not in cand.sorties:
+            return None
+        cand.sorties[sid].rec_vid = vid
+    if has_wait_cycle(cand):
+        return None
+    return cand
+
+
 def try_pair_handoff(plan, ctx, budget, stats):
-    """修复后的一次两机互换。只在 X 的名义阶段调用。"""
+    """一次把多架无人机匹配到不同的接机位置。只在 X 的名义阶段调用。"""
     from .alns import _nominal_cross_intact, _within_makespan_cap, eval_counted
     from .cross_nominal import propose_exchange
     if not getattr(ctx.state, "nominal_cross", False):
@@ -219,7 +370,10 @@ def try_pair_handoff(plan, ctx, budget, stats):
         tried = set()
         ctx.handoff_tried = tried
     best_p, best_ev = None, None
-    proposed = propose_exchange(plan, ctx, 1, tried)
+    matched = matched_handoff(plan, ctx)
+    proposed = [("PAIR_MATCH", matched)] if matched is not None else []
+    if not proposed:
+        proposed = propose_exchange(plan, ctx, 1, tried)
     stats.aud("FUNNEL_HANDOFF", "generated" if proposed else "empty")
     for _, cand in proposed:
         if budget.evals_left() <= 0:

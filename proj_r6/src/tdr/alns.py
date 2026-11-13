@@ -160,6 +160,30 @@ def _better_air(ev: Evaluation | None, plan: Plan | None,
         return False
     # scenario_on 只在阶段2打开。阶段1仍按真实成本下降，否则两个情景的噪声会把搜索带离
     # 情景分本身更低的方案。阶段2从该方案出发，只有情景分变好才接受。
+    if (ctx.mode == "nominal" and getattr(alg, "expected_accept", False)
+            and plan is not None and ev.feasible and ev.cost is not None):
+        from .expected_cost import expected_j, failure_prob
+        p = failure_prob(alg)
+        j_new = expected_j(ev.cost, plan, ctx.inst, ctx.phys, p)
+        j_old = None
+        if other is not None and other.feasible and other.cost is not None and other_plan is not None:
+            j_old = expected_j(other.cost, other_plan, ctx.inst, ctx.phys, p)
+        if j_new is not None and (j_old is None or j_new < j_old - alg.cost_tolerance_yuan):
+            return True
+        if j_new is not None and j_old is not None and abs(j_new - j_old) <= alg.cost_tolerance_yuan:
+            return _better(ev, other, alg)
+        # 情景评价仍是最终判据。期望值变差很多时才跳过，名义变贵本身不再跳过。
+        if (getattr(alg, "scenario_aware", False) and getattr(ctx, "scenario_on", False)
+                and other_plan is not None and other is not None and other.feasible):
+            from .scenario_eval import screen_skips_scenario
+            screen = float(getattr(alg, "scenario_screen_yuan", 0.0) or 0.0)
+            if not screen_skips_scenario(j_new, j_old, screen):
+                from .hybrid import scenario_score
+                s_new = scenario_score(plan, ev, ctx)
+                s_old = scenario_score(other_plan, other, ctx)
+                if s_new is not None and s_old is not None and s_new < s_old - alg.cost_tolerance_yuan:
+                    return True
+        return False
     if (ctx.mode == "nominal" and getattr(alg, "scenario_aware", False)
             and getattr(ctx, "scenario_on", False)
             and plan is not None and ev.feasible):
@@ -188,6 +212,17 @@ def _better_air(ev: Evaluation | None, plan: Plan | None,
     left = _PenalizedEval(ev, _air_penalty(plan, ctx))
     right = None if other is None else _PenalizedEval(other, _air_penalty(other_plan, ctx))
     return _better(left, right, alg)
+
+
+def _incubate_cross(cand_plan, cur_plan, cand_ev, cur_ev, inst, phys, alg) -> bool:
+    """新跨车组件可以先留在当前解里，升高不超过它自己的期望补救。不改全局最优。"""
+    from .expected_cost import expected_j, failure_prob, insurance_room
+    p_fail = failure_prob(alg)
+    j_new = expected_j(cand_ev.cost, cand_plan, inst, phys, p_fail)
+    j_cur = expected_j(cur_ev.cost, cur_plan, inst, phys, p_fail)
+    if j_new is None or j_cur is None:
+        return False
+    return j_new <= j_cur + insurance_room(cand_plan, cur_plan, inst, phys, p_fail) + alg.cost_tolerance_yuan
 
 
 def _within_makespan_cap(ev: Evaluation | None, ctx: "SolveContext") -> bool:
@@ -720,7 +755,15 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             reward = alg.score_current_improvement
             accepted = True
             stagnation = 0
-        elif trial_cross and getattr(alg, "x_improve_only_cross", False) and ctx.mode == "nominal":
+        elif (trial_cross and ctx.mode == "nominal" and getattr(alg, "expected_accept", False)
+              and cand_ev is not None and cand_ev.feasible and cur_ev is not None and cur_ev.feasible
+              and _incubate_cross(cand_plan, cur_plan, cand_ev, cur_ev, inst, phys, alg)):
+            accepted = True
+            reward = alg.score_current_improvement
+            stagnation = 0
+            stats.aud("EXPECTED", "incubated")
+        elif trial_cross and getattr(alg, "x_improve_only_cross", False) and ctx.mode == "nominal" \
+                and not getattr(alg, "expected_accept", False):
             # X 专属：跨车移动只接受严格改进（不用 SA），以保证相对当前解不退步
             accepted = False
             reward = 0.0
@@ -737,13 +780,20 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
         else:
             # SA
             if cand_ev.feasible:
-                from .hybrid import cached_scenario_cost
-                sn = cached_scenario_cost(cand_plan, ctx)
-                sc = cached_scenario_cost(cur_plan, ctx)
-                if sn is not None and sc is not None:
-                    dc = sn - sc
+                if ctx.mode == "nominal" and getattr(alg, "expected_accept", False):
+                    from .expected_cost import expected_j, failure_prob
+                    p_fail = failure_prob(alg)
+                    j_new = expected_j(cand_ev.cost, cand_plan, inst, phys, p_fail)
+                    j_cur = expected_j(cur_ev.cost, cur_plan, inst, phys, p_fail) if cur_ev is not None else None
+                    dc = 0.0 if j_new is None or j_cur is None else j_new - j_cur
                 else:
-                    dc = (cand_ev.cost or 0.0) - (cur_ev.cost or 0.0)
+                    from .hybrid import cached_scenario_cost
+                    sn = cached_scenario_cost(cand_plan, ctx)
+                    sc = cached_scenario_cost(cur_plan, ctx)
+                    if sn is not None and sc is not None:
+                        dc = sn - sc
+                    else:
+                        dc = (cand_ev.cost or 0.0) - (cur_ev.cost or 0.0)
                 if abs(dc) <= alg.cost_tolerance_yuan:
                     accepted = False
                 else:
@@ -835,6 +885,16 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                     stats.aud("REFLY", "best")
                     best_ev, best_plan = e_f, p_f.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+        if (getattr(alg, "expected_accept", False) and ctx.mode == "nominal"
+                and getattr(alg, "scenario_aware", False) and best_plan is not None
+                and best_ev is not None and best_ev.feasible):
+            every = int(getattr(alg, "expected_reeval_every", 80) or 80)
+            mark = stats.eval_requests // every if every > 0 else 0
+            if mark > getattr(ctx, "_expected_reeval_mark", 0):
+                ctx._expected_reeval_mark = mark
+                from .hybrid import scenario_score
+                scenario_score(best_plan, best_ev, ctx)
+                stats.aud("EXPECTED", "true_reeval")
         # 第 9 轮：插入会合访问。X 插到另一辆车，S 只插到放飞车。两边同一频率、同一评价上限。
         if (getattr(alg, "support_rendezvous", False) and ctx.mode == "nominal"
                 and (getattr(ctx.state, "nominal_cross", False) or getattr(ctx, "scenario_on", False))

@@ -109,7 +109,7 @@ def paired_on(rows, left: str, right: str, cost_of) -> dict:
     }
 
 
-def fairness_report(rows, strategies=("S", "R", "X")) -> dict:
+def fairness_report(rows, strategies=("S", "R", "X0", "X")) -> dict:
     present = [s for s in strategies if any(r.get(s) for r in rows)]
     tables = {}
     costs = {}
