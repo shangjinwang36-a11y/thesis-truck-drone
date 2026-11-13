@@ -41,6 +41,18 @@ def _ctx(inst, phys, robust=True):
     return ctx
 
 
+def test_a_full_truck_is_legal_and_one_over_capacity_is_not():
+    import dataclasses
+    inst, phys, plan = _saved("R50", "X")
+    ev = evaluate_plan(plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+    assert phys.truck_drone_slots == 3
+    full = cross_robust_violations(plan, inst, phys, ev.timeline, 90.0)
+    assert not any(t.startswith("SLOT:") for tags in full.values() for t in tags)
+    tight = dataclasses.replace(phys, truck_drone_slots=2)
+    over = cross_robust_violations(plan, inst, tight, ev.timeline, 90.0)
+    assert any(t.startswith("SLOT:") for tags in over.values() for t in tags)
+
+
 def test_light_reserve_is_0_075_kwh():
     _, phys = _light("R50")
     assert abs(reserve_kwh(phys) - 0.075) < 1e-12
@@ -53,12 +65,13 @@ def test_published_cross_sorties_fail_final_timetable_checks():
     assert set(viol) == {48, 53, 54}
     assert any(t.startswith("MARGIN:") for t in viol[48])
     assert any(t.startswith("SLACK:") for t in viol[48])
-    assert any(t.startswith("SLOT:") for t in viol[48])
+    assert not any(t.startswith("SLOT:") for t in viol[48])
     assert any(t.startswith("GROUND:p030@") for t in viol[48])
-    # s53 余电够 0.075，也够 90 秒；它不合格是因为占满机位，并且带走了接机车自己的客户。
+    # s53 余电够 0.075，也够 90 秒。在车 3 架、机位 3 个，调度器允许满载，不再因为没有空位被拒。
+    # 它仍不合格，因为带走了接机车自己的客户。
     assert not any(t.startswith("MARGIN:") for t in viol[53])
     assert not any(t.startswith("SLACK:") for t in viol[53])
-    assert any(t.startswith("SLOT:") for t in viol[53])
+    assert not any(t.startswith("SLOT:") for t in viol[53])
     assert any(t.startswith("GROUND:p014@") for t in viol[53])
     assert any(t.startswith("GROUND:p027@") for t in viol[54])
     inst2, phys2, plan2 = _saved("RC50", "X")
@@ -66,7 +79,7 @@ def test_published_cross_sorties_fail_final_timetable_checks():
     viol2 = cross_robust_violations(plan2, inst2, phys2, ev2.timeline, 90.0)
     assert 12 in viol2
     assert any(t.startswith("GROUND:p041@") for t in viol2[12])
-    assert any(t.startswith("SLOT:") for t in viol2[12])
+    assert not any(t.startswith("SLOT:") for t in viol2[12])
 
 
 def test_longer_slack_rejects_a_sortie_the_90s_check_allows():

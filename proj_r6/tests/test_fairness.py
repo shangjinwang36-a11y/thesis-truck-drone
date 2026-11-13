@@ -8,7 +8,7 @@ from tdr.evaluate import evaluate_plan
 from tdr.experiment import plan_from_dict
 from tdr.fairness import completion_table, fair_cost, mcnemar_exact
 from tdr.ground_finish import ground_finish_cost
-from tdr.schedule import initial_state
+from tdr.schedule import DroneStart, initial_state
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -67,3 +67,45 @@ def test_ground_finish_uses_truck_delivery_and_overtime_not_a_penalty():
     short, short_status = ground_finish_cost(plan, state, inst, phys, 1.0)
     assert short_status == "FEASIBLE:truck"
     assert short > cost
+
+
+def test_hover_at_recovery_lands_only_after_the_three_modes_fail():
+    """飞机已经在接机客户上空，电量不够悬停等车。前三种收尾因此不可行。
+    降落等待只去掉这段悬停的电耗，票仍由卡车地面送达。已经可行的收尾不走这条。"""
+    inst, phys = _light("C50")
+    raw = json.loads((ROOT / "r6/results/round3/R3/nominal/S/C50/nominal_plan.json").read_text())
+    plan = plan_from_dict(raw["plan"])
+    state = initial_state(inst, phys)
+    base = evaluate_plan(plan, inst, phys, state, None, "NOMINAL")
+    assert base.feasible
+    plain, plain_status = ground_finish_cost(
+        plan, state, inst, phys, max(base.timeline.truck_finish.values()))
+    assert plain_status == "FEASIBLE:truck"
+
+    sortie = next(s for s in plan.sorties.values() if s.rec_vid in plan.visits)
+    rec = plan.visits[sortie.rec_vid]
+    customer = inst.customer(rec.customer)
+    parked = plan.clone()
+    frag = parked.sorties[sortie.sid]
+    frag.started = True
+    frag.start_time = 0.0
+    frag.start_pos = (customer.x, customer.y)
+    frag.handover = list(dict.fromkeys(list(frag.air) + list(frag.handover)))
+    frag.air = []
+    frag.landed = False
+    low = initial_state(inst, phys)
+    low.drone_energy[frag.drone] = 0.01
+    low.drone_start[frag.drone] = DroneStart(
+        "AIRBORNE", None, 0.0, (customer.x, customer.y), 0.01, aboard=list(frag.handover))
+    cost, status = ground_finish_cost(
+        parked, low, inst, phys, max(base.timeline.truck_finish.values()))
+    assert status == "FEASIBLE:truck:landed"
+    assert cost is not None and cost > 0
+    # 同一份计划、电量充足时仍由原来的卡车收尾定价，不改成降落。
+    enough = initial_state(inst, phys)
+    enough.drone_start[frag.drone] = DroneStart(
+        "AIRBORNE", None, 0.0, (customer.x, customer.y), phys.e_cap, aboard=list(frag.handover))
+    enough_cost, enough_status = ground_finish_cost(
+        parked, enough, inst, phys, max(base.timeline.truck_finish.values()))
+    assert enough_status == "FEASIBLE:truck"
+    assert enough_cost is not None

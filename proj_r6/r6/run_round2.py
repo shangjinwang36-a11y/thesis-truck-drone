@@ -53,6 +53,9 @@ PRESETS = {
            "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r6": True, "r7": True, "r8": True},
     "R9": {"label": "会合访问 + 近邻成对破坏",
            "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r6": True, "r7": True, "r8": True, "r9": True},
+    # 只在调参种子上和 R9 比较。上限是评价班次 H，不是 Cmax(S)。正式评价用比较之后选定的那一个。
+    "R9H": {"label": "R9 + 搜索/发布上限改为评价班次 H",
+            "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r6": True, "r7": True, "r8": True, "r9": True, "r9h": True},
 }
 
 
@@ -110,7 +113,11 @@ def configs(pkg, preset: str):
                   scenario_eval_cap=200, scenario_screen_yuan=20.0,
                   scenario_elite_refill=True,
                   expected_accept=True, expected_reeval_every=80,
-                  x_exchange_cost_tau=0.0, x_improve_only_cross=False)
+                  x_exchange_cost_tau=0.0, x_improve_only_cross=False,
+                  # 种子 101–110 上两种上限比过。评价班次 H 的 60 对 Δ/C_S 更低，所以正式用它。
+                  x_cap_is_shift=True)
+    if ps.get("r9h"):
+        ad.update(x_cap_is_shift=True)
     alg = AlgorithmConfig.from_dict(ad)
     alg.recovery_eval_budget_override = None
     alg.recovery_time_limit_override_s = None
@@ -178,7 +185,9 @@ def ep_one(args):
     out["hidden_failure_parcels"] = hidden
     plan_s, plan_x = noms["S"][0], noms["X"][0]
     # R 的克隆要在 S 的回合改写计划对象之前做好。三个策略共用同一个恢复评价上限。
-    strategies = ("S", "R", "X0", "X") if preset == "R9" else ("S", "R", "X")
+    # 本轮正式回合只跑调用方点名的策略。X0 与 R 在当前名义构造下相同，不默认加进 60 对。
+    named = args[9] if len(args) > 9 and args[9] else "S,R,X"
+    strategies = tuple(part for part in str(named).split(",") if part)
     prepared = {
         strat: nominal_and_recovery(strat, plan_s, plan_x, bool(alg.x_adopt_s_if_cross))
         for strat in strategies
@@ -464,6 +473,8 @@ def main():
                     help="replan cap: n_cust (default, never binding for unique parcel failures), unlimited, or an int")
     ap.add_argument("--nom-from", default=None,
                     help="reuse prebuilt nominals from this directory (e.g. r6/results/round2) instead of out/")
+    ap.add_argument("--strategies", default="S,R,X",
+                    help="episode strategies, comma-separated. X0 is optional and currently equals R.")
     args = ap.parse_args()
     pkg = args.package
     presets = (args.presets or args.preset).split(",")
@@ -473,7 +484,8 @@ def main():
 
     # 名义共享：A0 与 A1 共用 A0 名义；A2 与 A3 共用 A2 名义；A4 独立
     nom_src = {"A0": "A0", "A1": "A0", "A2": "A2", "A3": "A2", "A4": "A4",
-               "R3": "R3", "R4": "R3", "R5": "R3", "R6": "R6", "R7": "R7", "R8": "R8", "R9": "R9"}
+               "R3": "R3", "R4": "R3", "R5": "R3", "R6": "R6", "R7": "R7", "R8": "R8",
+               "R9": "R9", "R9H": "R9H"}
 
     if args.phase in ("nominal", "all"):
         need = sorted({nom_src[p] for p in presets if p in nom_src})
@@ -503,7 +515,8 @@ def main():
             nom_root = nom_base / src / "nominal"
             for c in cases:
                 for s in range(args.seed0, args.seed0 + args.seeds):
-                    jobs.append((pkg, pr, c, s, args.budget, str(nom_root), args.world, args.p, args.max_replans))
+                    jobs.append((pkg, pr, c, s, args.budget, str(nom_root), args.world, args.p,
+                                 args.max_replans, args.strategies))
         t0 = time.perf_counter()
         print(f"EPISODES jobs={len(jobs)} workers={args.workers} max_replans={args.max_replans} budget={args.budget}", flush=True)
         jsonl = out / "episodes.jsonl"

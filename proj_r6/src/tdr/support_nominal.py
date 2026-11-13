@@ -16,9 +16,12 @@ import math
 from .moves import air_energy, sortie_start
 
 
-def _funnel(stats, tag: str) -> None:
-    if stats is not None:
-        stats.aud("FUNNEL_SUPPORT", tag)
+def _funnel(stats, tag: str, cross: bool = False) -> None:
+    if stats is None:
+        return
+    stats.aud("FUNNEL_SUPPORT", tag)
+    if cross:
+        stats.aud("FUNNEL_CROSS", tag)
 
 
 def _customers_on(plan, truck: str) -> set[str]:
@@ -207,27 +210,27 @@ def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool)
                 key = (s.sid, truck, c.customer_id)
                 if key in tried:
                     continue
-                _funnel(stats, "generated")
+                _funnel(stats, "generated", allow_cross)
                 try:
                     energy = air_energy(inst, phys, sp, list(s.air), (c.x, c.y))
                 except KeyError:
-                    _funnel(stats, "energy")
+                    _funnel(stats, "energy", allow_cross)
                     continue
                 if energy > phys.e_cap - phys.e_min + phys.energy_tol:
-                    _funnel(stats, "energy")
+                    _funnel(stats, "energy", allow_cross)
                     continue
                 existing = None
                 if c.customer_id in owned:
                     existing = next((vid for vid in route[min_pos:]
                                      if plan.visits[vid].customer == c.customer_id), None)
                     if existing is None:
-                        _funnel(stats, "schedule")
+                        _funnel(stats, "schedule", allow_cross)
                         continue
                     detour = 0.0
                 else:
                     det = _min_detour(plan, inst, truck, c.customer_id, min_pos)
                     if det is None:
-                        _funnel(stats, "schedule")
+                        _funnel(stats, "schedule", allow_cross)
                         continue
                     detour = det[0]
                 flight = math.hypot(c.x - endpos[0], c.y - endpos[1])
@@ -252,7 +255,7 @@ def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool)
         else:
             spot = _min_detour(cand, inst, truck, customer, min_pos)
             if spot is None:
-                _funnel(stats, "schedule")
+                _funnel(stats, "schedule", allow_cross)
                 continue
             visit = cand.add_visit(truck, customer, pos=spot[1], ground=[])
             old = so.rec_vid
@@ -262,7 +265,7 @@ def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool)
                 o.sid != sid and (o.launch_vid == old or o.rec_vid == old) for o in cand.sorties.values()):
             cand.remove_visit(old)
         if has_wait_cycle(cand):
-            _funnel(stats, "schedule")
+            _funnel(stats, "schedule", allow_cross)
             continue
         out.append(("SUPPORT_RENDEZVOUS", cand))
     return out
@@ -283,14 +286,14 @@ def try_support_rendezvous(plan, ctx, budget, stats):
         stats.aud("SUPPORT_RENDEZVOUS", "calls")
         if not ev.feasible:
             stats.aud("SUPPORT_RENDEZVOUS", "infeasible")
-            stats.aud("FUNNEL_SUPPORT", "schedule")
+            _funnel(stats, "schedule", allow)
             continue
         stats.aud("SUPPORT_RENDEZVOUS", "feasible")
         if not _within_makespan_cap(ev, ctx):
-            stats.aud("FUNNEL_SUPPORT", "schedule")
+            _funnel(stats, "cap", allow)
             continue
         if not _nominal_cross_intact(cand, ev, ctx):
-            stats.aud("FUNNEL_SUPPORT", "margin")
+            _funnel(stats, "margin", allow)
             continue
         if best_ev is None or (ev.cost is not None and (best_ev.cost is None or ev.cost < best_ev.cost)):
             best_p, best_ev = cand, ev
@@ -375,6 +378,8 @@ def try_pair_handoff(plan, ctx, budget, stats):
     if not proposed:
         proposed = propose_exchange(plan, ctx, 1, tried)
     stats.aud("FUNNEL_HANDOFF", "generated" if proposed else "empty")
+    if proposed:
+        stats.aud("FUNNEL_CROSS", "generated", len(proposed))
     for _, cand in proposed:
         if budget.evals_left() <= 0:
             break
@@ -383,9 +388,15 @@ def try_pair_handoff(plan, ctx, budget, stats):
             break
         if not ev.feasible:
             stats.aud("FUNNEL_HANDOFF", "schedule")
+            stats.aud("FUNNEL_CROSS", "schedule")
             continue
-        if not _within_makespan_cap(ev, ctx) or not _nominal_cross_intact(cand, ev, ctx):
+        if not _within_makespan_cap(ev, ctx):
+            stats.aud("FUNNEL_HANDOFF", "cap")
+            stats.aud("FUNNEL_CROSS", "cap")
+            continue
+        if not _nominal_cross_intact(cand, ev, ctx):
             stats.aud("FUNNEL_HANDOFF", "margin")
+            stats.aud("FUNNEL_CROSS", "margin")
             continue
         best_p, best_ev = cand, ev
     return best_p, best_ev

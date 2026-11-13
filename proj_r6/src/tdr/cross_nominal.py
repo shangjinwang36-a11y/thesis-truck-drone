@@ -107,16 +107,20 @@ def try_cross_convert(plan, ctx, budget, stats):
         if ev is None:
             break
         stats.aud("CROSS_CONVERT", "calls")
+        stats.aud("FUNNEL_CROSS", "generated")
         if ev.feasible:
             stats.aud("CROSS_CONVERT", "feasible")
             if not _within_makespan_cap(ev, ctx):
                 stats.aud("HS_CAP", "rejected_convert")
+                stats.aud("FUNNEL_CROSS", "cap")
                 continue
             if not _cross_energy_ok(cand, plan, ev, ctx):
                 stats.aud("CROSS_ENERGY_MARGIN", "rejected_convert")
+                stats.aud("FUNNEL_CROSS", "energy")
                 continue
             if not _nominal_cross_intact(cand, ev, ctx):
                 stats.aud("CROSS_ROBUST", "rejected_convert")
+                stats.aud("FUNNEL_CROSS", "margin")
                 continue
             if best_ev is None or _better(ev, best_ev, ctx.alg):
                 best_p, best_ev = cand, ev
@@ -271,17 +275,22 @@ def polish_with_convert(plan, ev, ctx, budget, stats, n: int):
         if got is None:
             break
         stats.aud("CONVERT_POLISH", "calls")
+        stats.aud("FUNNEL_CROSS", "generated")
         if not got.feasible or got.timeline is None:
             stats.aud("CONVERT_POLISH", "infeasible")
+            stats.aud("FUNNEL_CROSS", "schedule")
             continue
         if not _within_makespan_cap(got, ctx):
             stats.aud("CONVERT_POLISH", "makespan")
+            stats.aud("FUNNEL_CROSS", "cap")
             continue
         if cross_robust_violations(cand, ctx.inst, ctx.phys, got.timeline, slack):
             stats.aud("CONVERT_POLISH", "margin")
+            stats.aud("FUNNEL_CROSS", "margin")
             continue
         if not _nominal_cross_intact(cand, got, ctx):
             stats.aud("CONVERT_POLISH", "margin")
+            stats.aud("FUNNEL_CROSS", "margin")
             continue
         if not _better(got, ev, ctx.alg):
             stats.aud("CONVERT_POLISH", "not_better")
@@ -289,6 +298,8 @@ def polish_with_convert(plan, ev, ctx, budget, stats, n: int):
         if best_ev is None or _better(got, best_ev, ctx.alg):
             best_p, best_ev = cand, got
             ev = got
+    if best_p is not None:
+        stats.aud("FUNNEL_CROSS", "accepted")
     return best_p, best_ev
 
 
@@ -309,15 +320,19 @@ def try_cross_exchange(plan, ctx, budget, stats, n: int | None = None):
         if ev is None:
             break
         stats.aud("CROSS_EXCHANGE", "calls")
+        stats.aud("FUNNEL_CROSS", "generated")
         if not ev.feasible:
             stats.aud("CROSS_EXCHANGE", "infeasible")
+            stats.aud("FUNNEL_CROSS", "schedule")
             continue
         stats.aud("CROSS_EXCHANGE", "feasible")
         if not _within_makespan_cap(ev, ctx):
             stats.aud("CROSS_EXCHANGE", "rejected_makespan")
+            stats.aud("FUNNEL_CROSS", "cap")
             continue
         if not _nominal_cross_intact(cand, ev, ctx):
             stats.aud("CROSS_EXCHANGE", "rejected_robust")
+            stats.aud("FUNNEL_CROSS", "margin")
             continue
         if best_ev is None or (ev.cost is not None and (best_ev.cost is None or ev.cost < best_ev.cost - 1e-9)):
             best_p, best_ev = cand, ev

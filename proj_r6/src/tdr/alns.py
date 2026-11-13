@@ -700,6 +700,7 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
         trial_cross = any(_isx(trial, so) for so in trial.sorties.values() if so.sid >= cur_plan.next_sid)
         if trial_cross:
             stats.aud("CROSS_REPAIR_TRIALS", "gen")
+            stats.aud("FUNNEL_CROSS", "generated")
         cand_ev, cand_plan = _geometry_evaluate(
             trial, ctx, stats, "ALNS_BASE", budget,
             multistart=(new_sortie or not alg.geometry_new_sortie_only))
@@ -707,6 +708,8 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             _cp = any(_isx(cur_plan, so) for so in cur_plan.sorties.values())
             stats.aud("PLAN_HAS_CROSS" if _cp else "PLAN_NO_CROSS", ("TC_" if trial_cross else "TN_") + ("infeasible" if cand_ev is None else "feasible"))
         if cand_ev is None:
+            if trial_cross:
+                stats.aud("FUNNEL_CROSS", "schedule")
             stats.aud(op, "infeasible")
             stats.aud("R:" + rep, "infeasible")
             _reward(s_d, op, 0.0)
@@ -726,13 +729,18 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
         if not _within_makespan_cap(cand_ev, ctx):
             blocked = True
             stats.aud("HS_CAP", "rejected")
+            if trial_cross:
+                stats.aud("FUNNEL_CROSS", "cap")
         elif (trial_cross and not getattr(alg, "x_cross_robust", False)
               and not _cross_energy_ok(cand_plan, cur_plan, cand_ev, ctx)):
             blocked = True
             stats.aud("CROSS_ENERGY_MARGIN", "rejected")
+            stats.aud("FUNNEL_CROSS", "energy")
         elif not _nominal_cross_intact(cand_plan, cand_ev, ctx):
             blocked = True
             stats.aud("CROSS_ROBUST", "rejected")
+            if trial_cross:
+                stats.aud("FUNNEL_CROSS", "margin")
         if blocked:
             reward = 0.0
             stagnation += 1
@@ -817,6 +825,7 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             stats.aud("R:" + rep, "accepted")
             if trial_cross:
                 stats.aud("CROSS_REPAIR_TRIALS", "accepted")
+                stats.aud("FUNNEL_CROSS", "accepted")
             cur_plan, cur_ev = cand_plan.clone(), cand_ev
         _reward(s_d, op, reward)
         _reward(s_r, rep, reward)
@@ -907,6 +916,8 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                     and _within_makespan_cap(e_s, ctx)
                     and _nominal_cross_intact(p_s, e_s, ctx)):
                 stats.aud("FUNNEL_SUPPORT", "accepted")
+                if getattr(ctx.state, "nominal_cross", False):
+                    stats.aud("FUNNEL_CROSS", "accepted")
                 from .hybrid import cached_scenario_cost
                 sn = cached_scenario_cost(p_s, ctx)
                 sc = cached_scenario_cost(cur_plan, ctx)
@@ -930,6 +941,7 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                     and _within_makespan_cap(e_h, ctx)
                     and _nominal_cross_intact(p_h, e_h, ctx)):
                 stats.aud("FUNNEL_HANDOFF", "accepted")
+                stats.aud("FUNNEL_CROSS", "accepted")
                 cur_plan, cur_ev = p_h, e_h
                 if _better_air(e_h, p_h, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_h, ctx):
                     best_ev, best_plan = e_h, p_h.clone()
@@ -946,6 +958,7 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                     and _cross_energy_ok(p_x, cur_plan, e_x, ctx)
                     and _nominal_cross_intact(p_x, e_x, ctx)):
                 stats.aud("CROSS_CONVERT", "cur_improve")
+                stats.aud("FUNNEL_CROSS", "accepted")
                 cur_plan, cur_ev = p_x, e_x
                 if _better_air(e_x, p_x, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_x, ctx):
                     stats.aud("CROSS_CONVERT", "best")

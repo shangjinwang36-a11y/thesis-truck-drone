@@ -7,7 +7,8 @@
 
 - 回收结束余电 ≥ E_min + 0.05·E_cap（light 配置下 0.075 kWh）
 - 这笔余电还要够再空载悬停 slack 秒，吸收失败带来的会合推迟
-- 客机落地后直到该车收工，在车机体数 ≤ 机位数 − 1
+- 落地后直到该车收工，在车机体数不得超过机位数。等于机位数是调度器允许的满载。
+  以前这里要求再空出一个机位，合法的单向会合会被整批丢掉，尽管真实情景分和名义成本都更好。
 - 接机车路线上的客户留在卡车上，不进这条跨车航次
 """
 from __future__ import annotations
@@ -137,8 +138,8 @@ def cross_robust_violations(plan: Plan, inst: Instance, phys: PhysicalConfig, tl
         else:
             t_end = tl.truck_finish.get(rec.truck, rt[1])
             peak = max_occupancy(plan, phys, tl, rec.truck, rt[1], t_end)
-            if peak >= phys.truck_drone_slots:
-                tags.append(f"SLOT:{rec.truck}:{peak}>={phys.truck_drone_slots}")
+            if peak > phys.truck_drone_slots:
+                tags.append(f"SLOT:{rec.truck}:{peak}>{phys.truck_drone_slots}")
         if tags:
             out[s.sid] = tags
     return out

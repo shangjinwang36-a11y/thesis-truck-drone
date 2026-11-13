@@ -101,6 +101,14 @@ def test_x0_uses_s_nominal_and_x_recovery():
     assert plan.case_id == s.case_id
 
 
+def test_shift_cap_is_s_finish_plus_slack_and_stays_off_by_default():
+    from tdr.experiment import nominal_makespan_cap
+    assert nominal_makespan_cap(1000.0, 1800.0, False) == 1000.0
+    assert nominal_makespan_cap(1000.0, 1800.0, True) == 2800.0
+    assert nominal_makespan_cap(None, 1800.0, True) is None
+    assert AlgorithmConfig().x_cap_is_shift is False
+
+
 def test_r9_preset_replaces_tau():
     import sys
     sys.path.insert(0, str(ROOT / "r6"))
@@ -114,3 +122,7 @@ def test_r9_preset_replaces_tau():
     _, alg8, _, _ = configs(pkg, "R8")
     assert alg8.expected_accept is False
     assert alg8.x_exchange_cost_tau == 2.0
+    assert alg.x_cap_is_shift is True
+    _, algh, _, _ = configs(pkg, "R9H")
+    assert algh.x_cap_is_shift is True
+    assert algh.expected_accept is True

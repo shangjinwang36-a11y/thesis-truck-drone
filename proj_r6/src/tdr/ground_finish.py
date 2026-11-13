@@ -92,7 +92,7 @@ def _insert(plan, inst, phys, state, pool: list[str]) -> list[str]:
     return left
 
 
-def _build(plan, state, inst, phys, mode: str):
+def _build(plan, state, inst, phys, mode: str, land: bool = False):
     p = plan.clone()
     st = copy.copy(state)
     st.parcel_holder = dict(state.parcel_holder)
@@ -108,6 +108,12 @@ def _build(plan, state, inst, phys, mode: str):
                 if parcel not in s.handover:
                     s.handover.append(parcel)
             s.air = []
+    if land:
+        # 只改已经在飞的残段。降落等待的电耗规则在 schedule.stage_energy：
+        # 落地后的等待和回收不再悬停耗电，飞到接机点的航程仍按原电耗计。
+        for s in p.sorties.values():
+            if s.started:
+                s.landed = True
     # 失败票已经在交接清单里，但停止时的计划还没给它地送访问。三种收尾都补上。
     _place_handover_after_recovery(p, inst, st)
     left = _insert(p, inst, phys, st, _pool(p, st, inst, freed))
@@ -120,21 +126,32 @@ def _evaluate(plan, state, inst, phys, H):
     return evaluate_plan(plan, inst, priced, state, H, "GROUND_FINISH")
 
 
+def _attempt(plan, state, inst, phys, H, mode: str, land: bool) -> tuple[float | None, str]:
+    tag = f"{mode}:landed" if land else mode
+    try:
+        built, st, left = _build(plan, state, inst, phys, mode, land=land)
+        if left:
+            return None, f"UNPLACED:{tag}:{len(left)}"
+        ev = _evaluate(built, st, inst, phys, H)
+    except Exception as exc:
+        return None, f"{tag}:EXC:{type(exc).__name__}"
+    if ev is not None and ev.feasible and ev.cost is not None:
+        return float(ev.cost), f"FEASIBLE:{tag}"
+    note = ev.status if ev is None else (ev.violations[0] if ev.violations else ev.status)
+    return None, f"{tag}:{str(note)[:160]}"
+
+
 def ground_finish_cost(plan, state, inst, phys, H) -> tuple[float | None, str]:
-    """返回 (真实成本, 状态)。成本含里程、工时、能耗和加班，不含每客户罚金。"""
+    """返回 (真实成本, 状态)。成本含里程、工时、能耗和加班，不含每客户罚金。
+
+    前三种收尾都不可行时，才允许已在飞的残段改成降落等待。这只去掉接机点上的悬停耗电，
+    不改已经由前三种收尾定过价的回合，也不加每客户罚金。飞到接机点的电耗仍照计。
+    """
     notes = []
-    for mode in ("truck", "keep_inflight", "overtime_only"):
-        try:
-            built, st, left = _build(plan, state, inst, phys, mode)
-            if left:
-                notes.append(f"UNPLACED:{mode}:{len(left)}")
-                continue
-            ev = _evaluate(built, st, inst, phys, H)
-        except Exception as exc:
-            notes.append(f"{mode}:EXC:{type(exc).__name__}")
-            continue
-        if ev is not None and ev.feasible and ev.cost is not None:
-            return float(ev.cost), f"FEASIBLE:{mode}"
-        note = ev.status if ev is None else (ev.violations[0] if ev.violations else ev.status)
-        notes.append(f"{mode}:{str(note)[:160]}")
+    for land in (False, True):
+        for mode in ("truck", "keep_inflight", "overtime_only"):
+            cost, note = _attempt(plan, state, inst, phys, H, mode, land)
+            if cost is not None:
+                return cost, note
+            notes.append(note)
     return None, " | ".join(notes) or "NO_ATTEMPT"

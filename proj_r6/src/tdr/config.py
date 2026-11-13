@@ -291,6 +291,9 @@ class AlgorithmConfig:
     x_keep_s_recovery: bool = False
     # X 专属：名义阶段2 只接受完工时刻不超过 S 名义 makespan 的移动（评价用的是 H_S，不能靠拉长工时换成本）
     x_cross_hs_cap: bool = False
+    # 为真时，搜索和发布上限改成评价班次 H = Cmax(S) + shift_slack，而不是 Cmax(S)。
+    # 工时工资仍按卡车完工时刻计入，所以拉长完工不是免费的。默认关，保持第 8 轮的上限。
+    x_cap_is_shift: bool = False
     # X 专属：新出现/改回收点的跨车航次，回收后余电须 ≥ E_min + 该比例×E_cap，避免贴着换电下限
     x_cross_energy_margin_frac: float = 0.0
     # X 专属：恢复时不把残差里尚未空送的票新开成空中服务（已有空送可以改回收车）

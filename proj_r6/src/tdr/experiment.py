@@ -83,6 +83,15 @@ def _write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
 # ---------------------------------------------------------------------------
 # 名义计划
 # ---------------------------------------------------------------------------
+def nominal_makespan_cap(cmax_s: float | None, shift_slack_s: float, use_shift: bool) -> float | None:
+    """X 的搜索和发布上限。默认是 S 的完工时刻。use_shift 时改成评价班次 H。"""
+    if cmax_s is None:
+        return None
+    if use_shift:
+        return float(cmax_s) + float(shift_slack_s)
+    return float(cmax_s)
+
+
 def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                        out_dir: str | Path, eval_budget: int | None = None,
                        variant: str = "full", cross_launch: bool = False,
@@ -108,7 +117,9 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         s_plan_cap, _, _ = load_case_nominal(inst, adopt_from)
         s_ev_cap = evaluate_plan(s_plan_cap, inst, phys, initial_state(inst, phys), None, "NOMINAL")
         if s_ev_cap.feasible and s_ev_cap.timeline and s_ev_cap.timeline.truck_finish:
-            makespan_cap = max(s_ev_cap.timeline.truck_finish.values())
+            makespan_cap = nominal_makespan_cap(
+                max(s_ev_cap.timeline.truck_finish.values()), phys.shift_slack_s,
+                bool(getattr(alg, "x_cap_is_shift", False)))
     for ns in starts:
         r_ = build_nominal(inst, phys_nom, alg, derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0),
                            eval_budget=eval_budget, variant=variant, n_used=ns,
@@ -217,6 +228,7 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
             if p_c is not None and e_c is not None:
                 res.plan, ev = p_c, e_c
                 stats_p.aud("CONVERT_POLISH", "adopted")
+                stats_p.aud("FUNNEL_CROSS", "published_polish")
             res.stats.eval_requests = int(res.stats.eval_requests) + int(b_p.used)
             if res.stats.counts is None:
                 res.stats.counts = {}
@@ -271,7 +283,8 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
             ok = (robust_ok and _within_makespan_cap(e_e, ctx_ex)
                   and _nominal_cross_intact(p_e, e_e, ctx_ex))
             scenario_decided = False
-            if ok and getattr(alg, "scenario_aware", False) and b_ex.evals_left() > 0:
+            # 这 24 次物理评价经常已经用完。情景分记在单独的账本上，用完物理预算也要按它决定。
+            if ok and getattr(alg, "scenario_aware", False):
                 from .hybrid import scenario_score
                 ctx_ex.live_budget = b_ex
                 ctx_ex.live_stats = stats_ex
@@ -288,6 +301,7 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
             if ok:
                 res.plan, ev = p_e, e_e
                 stats_ex.aud("CROSS_EXCHANGE", "adopted")
+                stats_ex.aud("FUNNEL_CROSS", "accepted")
             else:
                 stats_ex.aud("CROSS_EXCHANGE", "not_adopted")
         else:
@@ -366,6 +380,9 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         "two_phase_b": two_phase_b, "phase1_evals": res.stats.counts.get("phase1_evals"),
         "phase1_cost": res.stats.counts.get("phase1_cost"),
         "phase1_cross": res.stats.counts.get("phase1_cross"),
+        "phase1_makespan": res.stats.counts.get("phase1_makespan"),
+        "makespan_cap_effective": res.stats.counts.get("makespan_cap_effective"),
+        "phase1_audit": res.stats.counts.get("phase1_audit"),
         "n_route_columns": res.stats.counts.get("n_route_columns"),
         "n_link_columns": res.stats.counts.get("n_link_columns"),
         "n_sync_columns": res.stats.counts.get("n_sync_columns"),
@@ -374,6 +391,7 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         "n_cross_before_repair": n_cross_before_repair,
         "cross_repair": repair_actions,
         "makespan_cap": makespan_cap,
+        "cap_basis": ("shift" if getattr(alg, "x_cap_is_shift", False) else "makespan"),
         "makespan_s": (max(ev.timeline.truck_finish.values())
                        if ev.timeline and ev.timeline.truck_finish else None),
     }
