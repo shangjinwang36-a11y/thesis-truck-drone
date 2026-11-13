@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RES = ROOT / "r6" / "results"
 CASES = ["C50", "R50", "RC50", "C100", "R100", "RC100"]
-N_BOOT = 2000
+N_BOOT = 10000
 BOOT_SEED = 20261111
 
 # 图上的横轴。基准点 id 是 base，数值来自第 11 轮 3001–3010，不另跑。
