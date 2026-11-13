@@ -9,6 +9,8 @@ from tdr.evaluate import is_cross_sortie
 from tdr.nominal import s_true_cost_keeps_phase1
 from tdr.plan import Plan
 from tdr.schedule import initial_state
+from tdr.expected_cost import expected_j, same_truck_j_adopts_baseline
+from tdr.moves import air_energy, sortie_start
 from tdr.support_nominal import joint_near_seeds, propose_support_rendezvous
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -117,6 +119,8 @@ def test_new_flags_default_off():
     assert alg.scenario_elite_refill is False
     assert alg.expected_accept is False
     assert alg.expected_reeval_every == 80
+    assert alg.x_short_return is False
+    assert alg.x_same_truck_j_gate is False
     assert "JOINT_NEAR" not in alg.destroy_operators
 
 
@@ -158,3 +162,148 @@ def test_support_launch_inserts_a_visit_the_receiver_did_not_have():
     customers = {plan.visits[v].customer for v in plan.routes[cand.rec_truck]}
     assert cand.support_customer in customers
     assert len(plan.routes[cand.rec_truck]) == before + 1
+
+
+def _geom(name, customers):
+    pkg = json.loads((ROOT / "data" / "package_light.json").read_text(encoding="utf-8"))
+    phys = PhysicalConfig.from_dict(pkg["config"])
+    phys.set_active()
+    inst = Instance(name, "T", 0.0, 0.0, customers)
+    return inst, phys
+
+
+def _ctx(inst, phys, short_return: bool):
+    alg = AlgorithmConfig(x_short_return=short_return, cross_n=2)
+    return SolveContext(inst, phys, alg, initial_state(inst, phys), None, "nominal")
+
+
+def _split_plan():
+    """整段回到接机车超电，只飞靠近接机弧的前缀则不超。电池仍是数据包里的 0.5 kWh。"""
+    inst, phys = _geom("SPLIT", (
+        Customer("cL", "pL", 500.0, 0.0, 1.0),
+        Customer("cA", "pA", 2000.0, 0.0, 1.0),
+        Customer("cB", "pB", 18000.0, 0.0, 1.0),
+        Customer("cFar", "pF", 19000.0, 0.0, 1.0),
+        Customer("cMeet", "pM", 2200.0, 100.0, 1.0),
+        Customer("cAlso", "pAlso", 2500.0, 0.0, 1.0),
+    ))
+    plan = Plan("SPLIT")
+    launch = plan.add_visit("t1", "cL", ground=["pL"])
+    far = plan.add_visit("t1", "cFar", ground=["pF"])
+    plan.add_visit("t2", "cMeet", ground=["pM"])
+    plan.add_visit("t2", "cAlso", ground=["pAlso"])
+    plan.add_sortie("d1", "t1", launch.vid, "ARC", 0.0, ["pA", "pB"], far.vid)
+    return inst, phys, plan
+
+
+def _reselect_plan():
+    """早放飞超电，晚放飞不超。晚放飞必须晚于上一航次的回收。"""
+    inst, phys = _geom("LAUNCH", (
+        Customer("cBefore", "pBefore", -20000.0, 0.0, 1.0),
+        Customer("cPrev", "pP", -16000.0, 0.0, 1.0),
+        Customer("cEarly", "pE", -15000.0, 0.0, 1.0),
+        Customer("cLate", "pLate", 1500.0, 0.0, 1.0),
+        Customer("cRec", "pRec", 19000.0, 0.0, 1.0),
+        Customer("cA", "pA", 2000.0, 0.0, 1.0),
+        Customer("cMeet", "pM", 2200.0, 100.0, 1.0),
+    ))
+    plan = Plan("LAUNCH")
+    before = plan.add_visit("t1", "cBefore", ground=["pBefore"])
+    prev = plan.add_visit("t1", "cPrev", ground=[])
+    early = plan.add_visit("t1", "cEarly", ground=["pE"])
+    plan.add_visit("t1", "cLate", ground=["pLate"])
+    rec = plan.add_visit("t1", "cRec", ground=["pRec"])
+    plan.add_visit("t2", "cMeet", ground=["pM"])
+    plan.add_sortie("d1", "t1", before.vid, "ARC", 0.0, ["pP"], prev.vid)
+    plan.add_sortie("d1", "t1", early.vid, "ARC", 0.0, ["pA"], rec.vid)
+    return inst, phys, plan
+
+
+def _energy(inst, phys, plan, sortie):
+    rec = plan.visits[sortie.rec_vid]
+    cust = inst.customer(rec.customer)
+    return air_energy(inst, phys, sortie_start(inst, plan, sortie), list(sortie.air), (cust.x, cust.y))
+
+
+def test_short_return_splits_a_leg_onto_the_nearer_arc_customer():
+    inst, phys, plan = _split_plan()
+    assert phys.battery_kwh == 0.5
+    limit = phys.e_cap - phys.e_min
+    full = plan.sorties[plan.drone_sorties["d1"][-1]]
+    meet = inst.customer("cMeet")
+    assert air_energy(inst, phys, sortie_start(inst, plan, full), list(full.air), (meet.x, meet.y)) > limit
+    before = _parcels(plan)
+    ctx = _ctx(inst, phys, True)
+    got = propose_support_rendezvous(plan, ctx, 1, set(), True)
+    assert got
+    _, cand = got[0]
+    crossed = [s for s in cand.sorties.values() if is_cross_sortie(cand, s)]
+    assert len(crossed) == 1
+    flown = crossed[0]
+    assert flown.air == ["pA"]
+    rec = cand.visits[flown.rec_vid]
+    assert rec.customer == "cMeet"
+    assert rec.customer not in {inst.parcel_to_customer[p] for p in flown.air}
+    assert rec.customer in {c.customer_id for c in inst.customers}
+    assert _energy(inst, phys, cand, flown) <= limit + phys.energy_tol
+    end = inst.customer("cA")
+    new_return = ((inst.customer(rec.customer).x - end.x) ** 2 + (inst.customer(rec.customer).y - end.y) ** 2) ** 0.5
+    old_return = ((inst.customer("cFar").x - end.x) ** 2 + (inst.customer("cFar").y - end.y) ** 2) ** 0.5
+    assert new_return < old_return
+    assert "pB" in [p for v in cand.visits.values() for p in v.ground]
+    assert _parcels(cand) == before
+    # 关掉几何、或只允许同车时，不把这段拆到另一辆车上。
+    same_air = propose_support_rendezvous(plan, _ctx(inst, phys, False), 2, set(), True)
+    assert all(list(s.air) == ["pA", "pB"] for _, alt in same_air for s in alt.sorties.values() if s.air)
+    for _, alt in propose_support_rendezvous(plan, _ctx(inst, phys, True), 2, set(), False):
+        assert not any(is_cross_sortie(alt, s) for s in alt.sorties.values())
+        assert all(len(s.air) == 2 for s in alt.sorties.values() if s.drone == "d1" and s.air)
+
+
+def test_short_return_reselects_a_later_launch_without_passing_the_previous_recovery():
+    inst, phys, plan = _reselect_plan()
+    limit = phys.e_cap - phys.e_min
+    tail = plan.sorties[plan.drone_sorties["d1"][-1]]
+    meet = inst.customer("cMeet")
+    early = next(v for v in plan.visits.values() if v.customer == "cEarly")
+    late = next(v for v in plan.visits.values() if v.customer == "cLate")
+    assert air_energy(inst, phys, (inst.customer("cEarly").x, inst.customer("cEarly").y),
+                      ["pA"], (meet.x, meet.y)) > limit
+    assert air_energy(inst, phys, (inst.customer("cLate").x, inst.customer("cLate").y),
+                      ["pA"], (meet.x, meet.y)) <= limit
+    before = _parcels(plan)
+    got = propose_support_rendezvous(plan, _ctx(inst, phys, True), 1, set(), True)
+    assert got
+    _, cand = got[0]
+    flown = next(s for s in cand.sorties.values() if is_cross_sortie(cand, s))
+    assert flown.air == ["pA"]
+    assert cand.visits[flown.launch_vid].customer == "cLate"
+    route = cand.routes["t1"]
+    prev = next(v.vid for v in cand.visits.values() if v.customer == "cPrev")
+    assert route.index(flown.launch_vid) >= route.index(prev)
+    assert cand.visits[flown.launch_vid].vid != early.vid
+    assert _energy(inst, phys, cand, flown) <= limit + phys.energy_tol
+    assert _parcels(cand) == before
+    assert late.customer == "cLate"
+
+
+def test_same_truck_j_gate_drops_extra_air_and_keeps_a_cross():
+    inst, phys, base = _tiny()
+    other = base.clone()
+    for visit in other.visits.values():
+        if "p003" in visit.ground:
+            visit.ground.remove("p003")
+    extra = next(iter(other.sorties.values()))
+    extra.air.append("p003")
+    assert expected_j(100.0, other, inst, phys, 0.2) > expected_j(100.0, base, inst, phys, 0.2)
+    assert same_truck_j_adopts_baseline(other, 100.0, base, 100.0, inst, phys, 0.2, 1e-4, None, None)
+    # 情景分已经更低时留下这份计划。打平则仍看 J。
+    assert not same_truck_j_adopts_baseline(other, 100.0, base, 100.0, inst, phys, 0.2, 1e-4, 90.0, 100.0)
+    assert same_truck_j_adopts_baseline(other, 100.0, base, 100.0, inst, phys, 0.2, 1e-4, 100.0, 100.0)
+    # J 本身更好时不退回。
+    assert not same_truck_j_adopts_baseline(other, 0.0, base, 100.0, inst, phys, 0.2, 1e-4, None, None)
+    crossed = other.clone()
+    rec = next(v.vid for v in crossed.visits.values() if v.truck == "t2")
+    next(iter(crossed.sorties.values())).rec_vid = rec
+    assert any(is_cross_sortie(crossed, s) for s in crossed.sorties.values())
+    assert not same_truck_j_adopts_baseline(crossed, 100.0, base, 100.0, inst, phys, 0.2, 1e-4, None, None)

@@ -255,6 +255,8 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         b_ex = Budget(EXCHANGE_EVALS, None)
         # 情景目标下，S 的计划也是 X 的可行候选。只在 S 的情景分更低时改用它，
         # 名义更贵但情景分更好的跨车方案会留下来。比较本身计入互换那 24 次评价。
+        score_x = None
+        score_s = None
         if getattr(alg, "scenario_aware", False) and adopt_from and b_ex.evals_left() > 0:
             if s_plan_cap is None:
                 s_plan_cap, _, _ = load_case_nominal(inst, adopt_from)
@@ -272,6 +274,22 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
                     adopted_s = True
                     adopt_reason = "scenario"
                     stats_ex.aud("SCENARIO", "adopted_s")
+        # 同车的 X 名义只是另一份搜索。J 更差、情景分又没有更好时，发布 S。
+        # 已经有跨车航次的方案不走这里，避免把 R100 那种跨车收益一起丢掉。
+        if (not adopted_s and getattr(alg, "x_same_truck_j_gate", False) and adopt_from
+                and ev is not None and ev.feasible and ev.cost is not None):
+            if s_plan_cap is None:
+                s_plan_cap, _, _ = load_case_nominal(inst, adopt_from)
+                s_ev_cap = evaluate_plan(s_plan_cap, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+            if s_plan_cap is not None and s_ev_cap is not None and s_ev_cap.feasible and s_ev_cap.cost is not None:
+                from .expected_cost import failure_prob, same_truck_j_adopts_baseline
+                if same_truck_j_adopts_baseline(
+                        res.plan, ev.cost, s_plan_cap, s_ev_cap.cost, inst, phys,
+                        failure_prob(alg), alg.cost_tolerance_yuan, score_x, score_s):
+                    res.plan, ev = s_plan_cap.clone(), s_ev_cap
+                    adopted_s = True
+                    adopt_reason = "expected_same_truck"
+                    stats_ex.aud("EXPECTED", "adopted_same_truck")
         already = any(_isc_ex(res.plan, s) for s in res.plan.sorties.values())
         if not already:
             from .cross_robust import cross_robust_violations

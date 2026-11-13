@@ -294,6 +294,12 @@ class AlgorithmConfig:
     # 为真时，搜索和发布上限改成评价班次 H = Cmax(S) + shift_slack，而不是 Cmax(S)。
     # 工时工资仍按卡车完工时刻计入，所以拉长完工不是免费的。默认关，保持第 8 轮的上限。
     x_cap_is_shift: bool = False
+    # 第 10 轮，只在 X 的跨车会合里用：换更近的放飞点，或把航段拆到接机车的弧上。
+    # 电量和 90 秒裕度不改。S 的会合仍只在放飞车上，不读这个开关。
+    x_short_return: bool = False
+    # 第 10 轮，只在发布 X 时用：没有跨车、J 又比 S 差、情景分也不更好，就发布 S。
+    # 有跨车航次的方案不经过这道门。默认关，第 9 轮的发布结果不变。
+    x_same_truck_j_gate: bool = False
     # X 专属：新出现/改回收点的跨车航次，回收后余电须 ≥ E_min + 该比例×E_cap，避免贴着换电下限
     x_cross_energy_margin_frac: float = 0.0
     # X 专属：恢复时不把残差里尚未空送的票新开成空中服务（已有空送可以改回收车）

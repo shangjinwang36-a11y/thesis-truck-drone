@@ -56,6 +56,9 @@ PRESETS = {
     # 只在调参种子上和 R9 比较。上限是评价班次 H，不是 Cmax(S)。正式评价用比较之后选定的那一个。
     "R9H": {"label": "R9 + 搜索/发布上限改为评价班次 H",
             "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r6": True, "r7": True, "r8": True, "r9": True, "r9h": True},
+    # 第 10 轮：在第 9 轮选定的班次上限上，只改 X 的会合几何和同车发布门。不重选上限，不扫参数。
+    "R10": {"label": "R9 + 短回程会合 + 同车期望门",
+            "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r6": True, "r7": True, "r8": True, "r9": True, "r10": True},
 }
 
 
@@ -118,6 +121,9 @@ def configs(pkg, preset: str):
                   x_cap_is_shift=True)
     if ps.get("r9h"):
         ad.update(x_cap_is_shift=True)
+    if ps.get("r10"):
+        # 几何和发布门都只在 X 的跨车路径上读。S 的搜索不进入这两支。
+        ad.update(x_short_return=True, x_same_truck_j_gate=True)
     alg = AlgorithmConfig.from_dict(ad)
     alg.recovery_eval_budget_override = None
     alg.recovery_time_limit_override_s = None
@@ -485,7 +491,7 @@ def main():
     # 名义共享：A0 与 A1 共用 A0 名义；A2 与 A3 共用 A2 名义；A4 独立
     nom_src = {"A0": "A0", "A1": "A0", "A2": "A2", "A3": "A2", "A4": "A4",
                "R3": "R3", "R4": "R3", "R5": "R3", "R6": "R6", "R7": "R7", "R8": "R8",
-               "R9": "R9", "R9H": "R9H"}
+               "R9": "R9", "R9H": "R9H", "R10": "R10"}
 
     if args.phase in ("nominal", "all"):
         need = sorted({nom_src[p] for p in presets if p in nom_src})

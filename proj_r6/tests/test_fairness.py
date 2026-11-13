@@ -109,3 +109,74 @@ def test_hover_at_recovery_lands_only_after_the_three_modes_fail():
         parked, enough, inst, phys, max(base.timeline.truck_finish.values()))
     assert enough_status == "FEASIBLE:truck"
     assert enough_cost is not None
+
+
+def test_land_and_wait_pricing_is_identical_for_s_r_x_and_matches_stage_energy():
+    """收尾函数没有策略参数。同一停点评三次，成本和状态相同。
+
+    降落之后，等待和回收的电量为 0，回收时长仍是 recovery_s。
+    飞到接机点的巡航电量照计。
+    """
+    import inspect
+
+    from tdr.ground_finish import _build, _evaluate
+    from tdr.schedule import DroneStage, stage_energy
+
+    assert "strategy" not in inspect.signature(ground_finish_cost).parameters
+    inst, phys = _light("C50")
+    raw = json.loads((ROOT / "r6/results/round3/R3/nominal/S/C50/nominal_plan.json").read_text())
+    plan = plan_from_dict(raw["plan"])
+    state = initial_state(inst, phys)
+    base = evaluate_plan(plan, inst, phys, state, None, "NOMINAL")
+    assert base.feasible
+    horizon = max(base.timeline.truck_finish.values())
+    sortie = next(s for s in plan.sorties.values() if s.rec_vid in plan.visits)
+    rec = plan.visits[sortie.rec_vid]
+    customer = inst.customer(rec.customer)
+    parked = plan.clone()
+    frag = parked.sorties[sortie.sid]
+    frag.started = True
+    frag.start_time = 0.0
+    frag.start_pos = (customer.x, customer.y)
+    frag.handover = list(dict.fromkeys(list(frag.air) + list(frag.handover)))
+    frag.air = []
+    frag.landed = False
+    low = initial_state(inst, phys)
+    low.drone_energy[frag.drone] = 0.01
+    low.drone_start[frag.drone] = DroneStart(
+        "AIRBORNE", None, 0.0, (customer.x, customer.y), 0.01, aboard=list(frag.handover))
+    calls = [ground_finish_cost(parked, low, inst, phys, horizon) for _ in range(3)]
+    assert calls[0] == calls[1] == calls[2]
+    assert calls[0][1] == "FEASIBLE:truck:landed"
+    assert calls[0][0] is not None and calls[0][0] > 0
+
+    flown = parked.clone()
+    piece = flown.sorties[sortie.sid]
+    piece.start_pos = (customer.x + 800.0, customer.y)
+    rich = initial_state(inst, phys)
+    rich.drone_energy[piece.drone] = phys.e_cap
+    rich.drone_start[piece.drone] = DroneStart(
+        "AIRBORNE", None, 0.0, piece.start_pos, phys.e_cap, aboard=list(piece.handover))
+    built, st, left = _build(flown, rich, inst, phys, "truck", land=True)
+    assert left == []
+    assert built.sorties[piece.sid].landed is True
+    ev = _evaluate(built, st, inst, phys, horizon)
+    assert ev.feasible, ev.violations[:4]
+    stages = [s for s in ev.timeline.drone_stages[piece.drone] if s.sid == piece.sid]
+    cruises = [s for s in stages if s.kind == "CRUISE" and s.dist > 0]
+    recoveries = [s for s in stages if s.kind == "R"]
+    assert cruises and recoveries
+    assert all(stage_energy(s, phys) > 0 for s in cruises)
+    for s in recoveries:
+        assert s.landed
+        assert abs((s.end - s.start) - phys.recovery_s) < 1e-6
+        assert stage_energy(s, phys) == 0.0
+    for s in stages:
+        if s.kind == "WAIT":
+            assert s.landed
+            assert s.end >= s.start
+            assert stage_energy(s, phys) == 0.0
+    landed_wait = DroneStage("WAIT", 10.0, 40.0, mass=1.0, landed=True)
+    hovering = DroneStage("WAIT", 10.0, 40.0, mass=1.0, landed=False)
+    assert stage_energy(landed_wait, phys) == 0.0
+    assert stage_energy(hovering, phys) > 0.0

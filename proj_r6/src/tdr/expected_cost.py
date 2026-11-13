@@ -97,6 +97,29 @@ def cost_gap_discards_nominal(expected_accept: bool, nominal_is_worse: bool) -> 
     return bool(nominal_is_worse)
 
 
+def same_truck_j_adopts_baseline(plan, cost, baseline, baseline_cost, inst, phys, p: float,
+                                 tol: float, scenario_plan: float | None = None,
+                                 scenario_base: float | None = None) -> bool:
+    """没有跨车航次时，J 比基线差、情景分也没有更低，就发布基线。
+
+    只给 X 的发布用。有跨车航次时不介入：那部分收益不靠这条门。
+    情景分严格更低的方案留下来，即使 J 稍差。情景分缺失或打平时，用两边共用的 J。
+    """
+    from .evaluate import is_cross_sortie
+    if plan is None or baseline is None or cost is None or baseline_cost is None:
+        return False
+    if any(is_cross_sortie(plan, sortie) for sortie in plan.sorties.values()):
+        return False
+    if (scenario_plan is not None and scenario_base is not None
+            and scenario_plan < scenario_base - tol):
+        return False
+    j_plan = expected_j(cost, plan, inst, phys, p)
+    j_base = expected_j(baseline_cost, baseline, inst, phys, p)
+    if j_plan is None or j_base is None:
+        return False
+    return j_base < j_plan - tol
+
+
 def insurance_room(plan, other, inst, phys, p: float) -> float:
     """新出现的跨车航次，允许名义成本升高不超过它自己的期望补救。"""
     from .evaluate import is_cross_sortie

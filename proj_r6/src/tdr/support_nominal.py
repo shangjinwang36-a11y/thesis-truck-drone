@@ -6,6 +6,10 @@
 - X：插在另一辆车上，回收点改到这个新访问，航次变成跨车。
 - S：只插在放飞车上、放飞访问之后，回收点仍在同一辆车，不会产生跨车。
 
+第 10 轮在 X 上另加一条几何：放飞点改到更靠近首票的同车访问，回程改到接机车弧上更近的客户。
+整段仍然超过电量时，只飞能量允许的前缀，剩下的票放回地面。电池、0.075 kWh 和 90 秒都不改。
+S 不读这个开关。
+
 会合客户不能是这条航次正在空送的客户，否则稳健检查会把那票改回地面。
 每次调用最多评价 cross_n 个候选，计入同一份名义预算。
 """
@@ -182,10 +186,221 @@ def joint_near_seeds(plan, inst, allow_cross: bool) -> list[str]:
     return out
 
 
+def _launch_choices(plan, inst, sortie) -> list[int]:
+    """同车、且不早于上一航次回收的放飞访问。优先靠近第一票，最多 3 个，始终保留当前放飞点。"""
+    vid0 = sortie.launch_vid
+    if vid0 not in plan.visits:
+        return []
+    truck = plan.visits[vid0].truck
+    route = plan.routes.get(truck, [])
+    if vid0 not in route:
+        return [vid0]
+    low = 0
+    chain = plan.drone_sorties.get(sortie.drone, [])
+    if sortie.sid in chain:
+        k = chain.index(sortie.sid)
+        if k > 0:
+            prev = plan.sorties[chain[k - 1]]
+            pv = plan.visits.get(prev.rec_vid)
+            if pv is None or pv.truck != truck or prev.rec_vid not in route:
+                return [vid0]
+            low = route.index(prev.rec_vid)
+            if route.index(vid0) < low:
+                return [vid0]
+    first = inst.customer(inst.parcel_to_customer[sortie.air[0]])
+    target = (first.x, first.y)
+    ranked = []
+    for i in range(low, len(route)):
+        vid = route[i]
+        pos = _pos(inst, plan, vid)
+        ranked.append((math.hypot(pos[0] - target[0], pos[1] - target[1]), vid))
+    ranked.sort()
+    chosen: list[int] = []
+    for _, vid in ranked:
+        if vid not in chosen:
+            chosen.append(vid)
+        if len(chosen) >= 3:
+            break
+    if vid0 not in chosen:
+        chosen.append(vid0)
+    return chosen
+
+
+def _covered(plan) -> list[str]:
+    got = [p for v in plan.visits.values() for p in v.ground]
+    for sortie in plan.sorties.values():
+        got.extend(sortie.air)
+        got.extend(sortie.handover)
+    return sorted(got)
+
+
+def _suffix_floor(plan, launch_vid: int) -> int:
+    """新访问插在放飞弧的下一站之后，避免改掉 ARC 插值的起点。"""
+    visit = plan.visits.get(launch_vid)
+    if visit is None:
+        return 0
+    route = plan.routes.get(visit.truck, [])
+    if launch_vid not in route:
+        return 0
+    return min(len(route), route.index(launch_vid) + 2)
+
+
+def _place_suffix(plan, inst, launch_truck: str, launch_vid: int, rec_vid: int, parcels: list[str]) -> bool:
+    """拆下来的票回到地面。接机车上、回收点之后已有的客户优先，否则放回放飞车。"""
+    if not parcels:
+        return True
+    rec = plan.visits.get(rec_vid)
+    if rec is None:
+        return False
+    rec_route = plan.routes.get(rec.truck, [])
+    rec_i = rec_route.index(rec_vid) if rec_vid in rec_route else 0
+    floor = _suffix_floor(plan, launch_vid)
+    for parcel in parcels:
+        cust = inst.parcel_to_customer[parcel]
+        placed = False
+        for i, vid in enumerate(rec_route):
+            if i >= rec_i and plan.visits[vid].customer == cust:
+                if parcel not in plan.visits[vid].ground:
+                    plan.visits[vid].ground.append(parcel)
+                placed = True
+                break
+        if placed:
+            continue
+        route = plan.routes.get(launch_truck, [])
+        for vid in route:
+            if plan.visits[vid].customer == cust and parcel not in plan.visits[vid].ground:
+                plan.visits[vid].ground.append(parcel)
+                placed = True
+                break
+        if placed:
+            continue
+        det = _min_detour(plan, inst, launch_truck, cust, floor)
+        if det is None:
+            return False
+        plan.add_visit(launch_truck, cust, pos=det[1], ground=[parcel])
+    return True
+
+
+def _apply_short_return(plan, inst, phys, sid: int, launch_vid: int, prefix: list[str],
+                        suffix: list[str], truck: str, customer: str):
+    """把一条同车航次改成更短回程的跨车航次。电量仍按 e_cap − e_min，不放宽电池。"""
+    from .evaluate import has_wait_cycle
+    before = _covered(plan)
+    cand = plan.clone()
+    so = cand.sorties[sid]
+    launch_truck = so.truck
+    old = so.rec_vid
+    route = cand.routes.get(truck, [])
+    existing = next((vid for vid in route if cand.visits[vid].customer == customer), None)
+    if existing is not None:
+        so.rec_vid = existing
+    else:
+        spot = _min_detour(cand, inst, truck, customer, 0)
+        if spot is None:
+            return None
+        visit = cand.add_visit(truck, customer, pos=spot[1], ground=[])
+        so.rec_vid = visit.vid
+    so.launch_vid = launch_vid
+    so.air = list(prefix)
+    if not _place_suffix(cand, inst, launch_truck, launch_vid, so.rec_vid, suffix):
+        return None
+    ov = cand.visits.get(old)
+    if ov is not None and not ov.ground and not any(
+            o.sid != sid and (o.launch_vid == old or o.rec_vid == old) for o in cand.sorties.values()):
+        cand.remove_visit(old)
+    if so.rec_vid not in cand.visits or has_wait_cycle(cand):
+        return None
+    if _covered(cand) != before:
+        return None
+    if any(inst.parcel_to_customer[p] == cand.visits[so.rec_vid].customer for p in so.air):
+        return None
+    try:
+        energy = air_energy(inst, phys, sortie_start(inst, cand, so), list(so.air),
+                            _pos(inst, cand, so.rec_vid))
+    except KeyError:
+        return None
+    if energy > phys.e_cap - phys.e_min + phys.energy_tol:
+        return None
+    return cand
+
+
+def _short_return_plans(plan, ctx, n: int, tried: set):
+    """X 专用。回程更短、放飞点更近，或把飞不动的后段拆回地面。"""
+    inst, phys = ctx.inst, ctx.phys
+    stats = getattr(ctx, "live_stats", None)
+    specs = []
+    limit = phys.e_cap - phys.e_min + phys.energy_tol
+    for sortie in _tails(plan):
+        launch_truck = plan.visits[sortie.launch_vid].truck
+        launches = _launch_choices(plan, inst, sortie)
+        found_k = None
+        held = []
+        for k in range(len(sortie.air), 0, -1):
+            prefix = list(sortie.air[:k])
+            suffix = list(sortie.air[k:])
+            end = inst.customer(inst.parcel_to_customer[prefix[-1]])
+            endpos = (end.x, end.y)
+            air_customers = {inst.parcel_to_customer[p] for p in prefix}
+            for truck in plan.routes:
+                if truck == launch_truck:
+                    continue
+                near = rendezvous_candidates(plan, inst, truck, endpos, air_customers)
+                near.sort(key=lambda cid: math.hypot(inst.customer(cid).x - endpos[0],
+                                                      inst.customer(cid).y - endpos[1]))
+                for customer in near[:4]:
+                    rec = inst.customer(customer)
+                    ret = math.hypot(rec.x - endpos[0], rec.y - endpos[1])
+                    for launch_vid in launches:
+                        key = (sortie.sid, truck, customer, launch_vid, k)
+                        if key in tried:
+                            continue
+                        ghost = sortie.clone()
+                        ghost.launch_vid = launch_vid
+                        try:
+                            energy = air_energy(inst, phys, sortie_start(inst, plan, ghost),
+                                                prefix, (rec.x, rec.y))
+                        except KeyError:
+                            _funnel(stats, "generated", True)
+                            _funnel(stats, "energy", True)
+                            continue
+                        _funnel(stats, "generated", True)
+                        if energy > limit:
+                            _funnel(stats, "energy", True)
+                            continue
+                        # 放飞点和航段都没变的，交给原来的会合算子，这里不重复占评价。
+                        if launch_vid == sortie.launch_vid and k == len(sortie.air):
+                            found_k = k
+                            continue
+                        held.append((ret, -k, energy, sortie.sid, launch_vid, prefix, suffix,
+                                     truck, customer))
+                        found_k = k
+            if found_k is not None:
+                break
+        held.sort()
+        specs.extend(held[:6])
+    specs.sort()
+    out = []
+    for ret, neg_k, energy, sid, launch_vid, prefix, suffix, truck, customer in specs:
+        if len(out) >= n:
+            break
+        tried.add((sid, truck, customer, launch_vid, -neg_k))
+        cand = _apply_short_return(plan, inst, phys, sid, launch_vid, prefix, suffix, truck, customer)
+        if cand is None:
+            _funnel(stats, "schedule", True)
+            continue
+        out.append(("SUPPORT_RENDEZVOUS", cand))
+    return out
+
+
 def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool):
     """返回至多 n 个已插入会合访问的计划。S 的 allow_cross 为假，回收车不变。"""
     inst, phys = ctx.inst, ctx.phys
     stats = getattr(ctx, "live_stats", None)
+    out = []
+    if allow_cross and bool(getattr(getattr(ctx, "alg", None), "x_short_return", False)):
+        out.extend(_short_return_plans(plan, ctx, n, tried))
+    if len(out) >= n:
+        return out[:n]
     ranked = []
     for s in _tails(plan):
         launch = plan.visits[s.launch_vid].truck
@@ -242,7 +457,6 @@ def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool)
                 ranked.append((score, s.sid, truck, c.customer_id, min_pos, existing))
     ranked.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
     from .evaluate import has_wait_cycle
-    out = []
     for _, sid, truck, customer, min_pos, existing in ranked:
         if len(out) >= n:
             break
