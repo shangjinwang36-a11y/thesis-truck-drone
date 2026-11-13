@@ -782,6 +782,8 @@ class EpisodeResult:
     segments: list[dict] = field(default_factory=list)
     replay: Any = None
     failed_sids: list[int] = field(default_factory=list)   # 每次失败对应的（被恢复的）航次号
+    ground_finish_cost: float | None = None
+    ground_finish_status: str | None = None
 
 
 def derive_rngs(base_seed: int, case_id: str, phase: str, replan_index: int) -> dict[str, random.Random]:
@@ -815,8 +817,9 @@ def initial_run_state(plan: Plan, inst: Instance, phys: PhysicalConfig) -> Start
 def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: float,
                 phys: PhysicalConfig, world, strategy: str, alg: AlgorithmConfig,
                 rngs: dict[str, random.Random], recovery_eval_budget: int | None = None,
-                recovery_wall_s: float | None = None, variant: str = "full",
-                max_replans: int = 8, cut_mode: str = "snapshot") -> EpisodeResult:
+                recovery_wall_s: float | None = None,                 variant: str = "full",
+                max_replans: int = 8, cut_mode: str = "snapshot",
+                ground_finish: bool = False) -> EpisodeResult:
     from .replay import verify_replay
     t_start = time.perf_counter()
     res = EpisodeResult(case_id=inst.case_id, strategy=strategy,
@@ -831,6 +834,15 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
     seg_start = state
     res.replans.append(ReplanRecord(0, 0.0, [], "NOMINAL", nominal_ev.cost, nominal_ev.z,
                                     {"n_eval_requests": 0}, 0.0, "NOMINAL"))
+
+    def _finish_stopped(plan_, state_) -> None:
+        if not ground_finish or plan_ is None or state_ is None:
+            return
+        from .ground_finish import ground_finish_cost
+        cost, status = ground_finish_cost(plan_, state_, inst, phys, H)
+        res.ground_finish_cost = cost
+        res.ground_finish_status = status
+
     while True:
         ev_now = evaluate_plan(plan, inst, phys, state, H, "SIMULATE")
         if not ev_now.feasible:
@@ -900,6 +912,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                              f"drone={a.drone},parcel={a.parcel}")
             res.notes.append("MAX_REPLANS")
             res.plan, res.evaluation = new_plan, None
+            _finish_stopped(new_plan, state2)
             break
         main_limit = (recovery_eval_budget if recovery_eval_budget is not None
                       else alg.deterministic_recovery_eval_budget)
@@ -937,6 +950,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                              f"drone={a.drone},parcel={a.parcel},n_candidate_reasons={len(reasons)}")
             res.notes.append("INITIAL_RECOVERY_FAILED:" + ",".join(reasons[:5]))
             res.plan, res.evaluation = new_plan, None
+            _finish_stopped(new_plan, state2)
             break
         rr = derive_rngs(alg.base_algorithm_seed, inst.case_id, "recovery", replan_index + 1)
         greq = set(ground_required)
@@ -1002,6 +1016,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             res.replans.append(ReplanRecord(replan_index + 1, a.time, [a.parcel], sol.status,
                                             None, None, dict(sol.stats.counts), t_cut))
             res.plan, res.evaluation = new_plan, None
+            _finish_stopped(new_plan, state2)
             break
         plan, state = sol.plan, state2
         seg_start = state2

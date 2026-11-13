@@ -200,7 +200,7 @@ def ep_one(args):
         try:
             ep = simulate.run_episode(inst, plan, nom_ev, H, phys, world, recovery_strategy, alg, rngs,
                                       recovery_eval_budget=budget, cut_mode="snapshot",
-                                      max_replans=max_replans)
+                                      max_replans=max_replans, ground_finish=True)
         except Exception as e:
             out[strat] = dict(status="ERROR", cost=None, error=repr(e)[:400], wall=time.perf_counter() - t0)
             continue
@@ -241,8 +241,46 @@ def ep_one(args):
                           init_sources=init_sources,
                           hit_cap=(ep.status == "STOPPED_MAX_REPLANS"),
                           n_obs_fail=n_obs_fail,
-                          max_replans=max_replans)
+                          max_replans=max_replans,
+                          ground_finish_cost=ep.ground_finish_cost,
+                          ground_finish_status=ep.ground_finish_status,
+                          cost_fair=(ep.evaluation.cost if (ok and ep.evaluation) else ep.ground_finish_cost))
     return out
+
+
+def replay_one(args):
+    """只重放一个已经停止的策略，用来在同一停点上做地面收尾。完成的回合不走这里。"""
+    pkg_path, preset, case, seed, budget, nom_root, failure_mode, p, max_replans_spec, strat = args
+    from tdr.data import load_instance
+    from tdr.evaluate import evaluate_plan
+    from tdr.experiment import load_case_nominal, nominal_and_recovery
+    from tdr.hidden_world import make_world
+    from tdr.schedule import initial_state
+    from tdr import simulate
+    pkg = json.load(open(pkg_path))
+    phys, alg, ad, ps = configs(pkg, preset)
+    inst = load_instance(pkg, case)
+    phys = phys.for_case(pkg.get("case_fleet"), case)
+    if alg.x_risk_price_air:
+        alg.failure_prob = float(p)
+    alg.recovery_eval_budget_override = budget
+    plan_s, _, Hs = load_case_nominal(inst, Path(nom_root) / "S" / case)
+    plan_x, _, _ = load_case_nominal(inst, Path(nom_root) / "X" / case)
+    plan, recovery_strategy = nominal_and_recovery(strat, plan_s, plan_x, bool(alg.x_adopt_s_if_cross))
+    nom_ev = evaluate_plan(plan, inst, phys, initial_state(inst, phys), Hs, "NOMINAL")
+    max_replans = _max_replans_value(max_replans_spec, len(inst.customers))
+    world = make_world(inst, case, seed, failure_mode, p)
+    rngs = simulate.derive_rngs(alg.base_algorithm_seed, case, "recovery", 0)
+    ep = simulate.run_episode(inst, plan, nom_ev, Hs, phys, world, recovery_strategy, alg, rngs,
+                              recovery_eval_budget=budget, cut_mode="snapshot",
+                              max_replans=max_replans, ground_finish=True)
+    return {
+        "case": case, "seed": seed, "strategy": strat,
+        "status": ep.status,
+        "notes": list(ep.notes or [])[:4],
+        "ground_finish_cost": ep.ground_finish_cost,
+        "ground_finish_status": ep.ground_finish_status,
+    }
 
 
 def mean_ci(xs):
@@ -336,6 +374,11 @@ def _same_truck_nominal(rs):
     return {name: pack(rows_) for name, rows_ in buckets.items()}
 
 
+def _fairness_report(rows):
+    from tdr.fairness import fairness_report
+    return fairness_report(rows)
+
+
 def summarize(rows):
     from collections import Counter, defaultdict
     by_case = defaultdict(list)
@@ -394,6 +437,7 @@ def summarize(rows):
             "S_to_R": _paired(rs, "S", "R"),
             "R_to_X": _paired(rs, "R", "X"),
             "same_truck_nominal": _same_truck_nominal(rs),
+            "fairness": _fairness_report(rs),
         }
     out = {"overall": agg(rows), "by_case": {c: agg(rs) for c, rs in sorted(by_case.items())}}
     return out

@@ -1,0 +1,2227 @@
+{
+ "preset": "R8",
+ "rule": "truck ground delivery from the stop state; overtime via soft_h; no per-customer penalty",
+ "n_replay": 26,
+ "n_mismatch": 0,
+ "mismatches": [],
+ "overall": {
+  "rates": {
+   "S": {
+    "complete": 48,
+    "n": 60,
+    "rate": 0.8
+   },
+   "R": {
+    "complete": 52,
+    "n": 60,
+    "rate": 0.8666666666666667
+   },
+   "X": {
+    "complete": 54,
+    "n": 60,
+    "rate": 0.9
+   }
+  },
+  "completion": {
+   "S_vs_R": {
+    "n": 60,
+    "complete_left": 48,
+    "complete_right": 52,
+    "rate_left": 0.8,
+    "rate_right": 0.8666666666666667,
+    "both": 44,
+    "only_left": 4,
+    "only_right": 8,
+    "neither": 4,
+    "mcnemar": {
+     "n_only_left": 4,
+     "n_only_right": 8,
+     "n_discordant": 12,
+     "p_two_sided": 0.3876953125
+    }
+   },
+   "S_vs_X": {
+    "n": 60,
+    "complete_left": 48,
+    "complete_right": 54,
+    "rate_left": 0.8,
+    "rate_right": 0.9,
+    "both": 44,
+    "only_left": 4,
+    "only_right": 10,
+    "neither": 2,
+    "mcnemar": {
+     "n_only_left": 4,
+     "n_only_right": 10,
+     "n_discordant": 14,
+     "p_two_sided": 0.1795654296875
+    }
+   },
+   "R_vs_X": {
+    "n": 60,
+    "complete_left": 52,
+    "complete_right": 54,
+    "rate_left": 0.8666666666666667,
+    "rate_right": 0.9,
+    "both": 50,
+    "only_left": 2,
+    "only_right": 4,
+    "neither": 4,
+    "mcnemar": {
+     "n_only_left": 2,
+     "n_only_right": 4,
+     "n_discordant": 6,
+     "p_two_sided": 0.6875
+    }
+   }
+  },
+  "all_pairs_ground_finish": {
+   "S_vs_R": {
+    "n": 60,
+    "missing": 0,
+    "delta_mean": -26.77437876468472,
+    "delta_ci95": [
+     -44.97860310211742,
+     -8.570154427252021
+    ],
+    "delta_over_CS_mean": -0.036260778997550445,
+    "delta_over_CS_ci95": [
+     -0.0699388573873346,
+     -0.002582700607766282
+    ],
+    "sign_right_better": 39,
+    "sign_left_better": 21,
+    "sign_tie": 0,
+    "sign_p_two_sided": 0.027340133868077935
+   },
+   "S_vs_X": {
+    "n": 60,
+    "missing": 0,
+    "delta_mean": -39.00223913138571,
+    "delta_ci95": [
+     -60.67318567414565,
+     -17.331292588625764
+    ],
+    "delta_over_CS_mean": -0.053223564538072345,
+    "delta_over_CS_ci95": [
+     -0.09034052314980136,
+     -0.01610660592634333
+    ],
+    "sign_right_better": 37,
+    "sign_left_better": 23,
+    "sign_tie": 0,
+    "sign_p_two_sided": 0.09246098107292373
+   },
+   "R_vs_X": {
+    "n": 60,
+    "missing": 0,
+    "delta_mean": -12.227860366700988,
+    "delta_ci95": [
+     -21.76546483483987,
+     -2.6902558985621035
+    ],
+    "delta_over_CS_mean": -0.016962785540521896,
+    "delta_over_CS_ci95": [
+     -0.02996984435051292,
+     -0.00395572673053087
+    ],
+    "sign_right_better": 20,
+    "sign_left_better": 8,
+    "sign_tie": 32,
+    "sign_p_two_sided": 0.03569813817739487
+   }
+  }
+ },
+ "by_case": {
+  "C100": {
+   "rates": {
+    "S": {
+     "complete": 10,
+     "n": 10,
+     "rate": 1.0
+    },
+    "R": {
+     "complete": 10,
+     "n": 10,
+     "rate": 1.0
+    },
+    "X": {
+     "complete": 10,
+     "n": 10,
+     "rate": 1.0
+    }
+   },
+   "completion": {
+    "S_vs_R": {
+     "n": 10,
+     "complete_left": 10,
+     "complete_right": 10,
+     "rate_left": 1.0,
+     "rate_right": 1.0,
+     "both": 10,
+     "only_left": 0,
+     "only_right": 0,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 0,
+      "n_only_right": 0,
+      "n_discordant": 0,
+      "p_two_sided": null
+     }
+    },
+    "S_vs_X": {
+     "n": 10,
+     "complete_left": 10,
+     "complete_right": 10,
+     "rate_left": 1.0,
+     "rate_right": 1.0,
+     "both": 10,
+     "only_left": 0,
+     "only_right": 0,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 0,
+      "n_only_right": 0,
+      "n_discordant": 0,
+      "p_two_sided": null
+     }
+    },
+    "R_vs_X": {
+     "n": 10,
+     "complete_left": 10,
+     "complete_right": 10,
+     "rate_left": 1.0,
+     "rate_right": 1.0,
+     "both": 10,
+     "only_left": 0,
+     "only_right": 0,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 0,
+      "n_only_right": 0,
+      "n_discordant": 0,
+      "p_two_sided": null
+     }
+    }
+   },
+   "all_pairs_ground_finish": {
+    "S_vs_R": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": -10.364931559055378,
+     "delta_ci95": [
+      -22.990078870394704,
+      2.260215752283946
+     ],
+     "delta_over_CS_mean": -0.02227708840804523,
+     "delta_over_CS_ci95": [
+      -0.04941200205574643,
+      0.004857825239655968
+     ],
+     "sign_right_better": 8,
+     "sign_left_better": 2,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.109375
+    },
+    "S_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": -14.357290869939504,
+     "delta_ci95": [
+      -29.118685483877652,
+      0.40410374399864324
+     ],
+     "delta_over_CS_mean": -0.030857766516580055,
+     "delta_over_CS_ci95": [
+      -0.06258406311266797,
+      0.0008685300795078614
+     ],
+     "sign_right_better": 6,
+     "sign_left_better": 4,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.75390625
+    },
+    "R_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": -3.992359310884126,
+     "delta_ci95": [
+      -15.80068475419584,
+      7.815966132427588
+     ],
+     "delta_over_CS_mean": -0.008580678108534825,
+     "delta_over_CS_ci95": [
+      -0.03396001692547138,
+      0.016798660708401733
+     ],
+     "sign_right_better": 4,
+     "sign_left_better": 4,
+     "sign_tie": 2,
+     "sign_p_two_sided": 1.0
+    }
+   }
+  },
+  "C50": {
+   "rates": {
+    "S": {
+     "complete": 10,
+     "n": 10,
+     "rate": 1.0
+    },
+    "R": {
+     "complete": 10,
+     "n": 10,
+     "rate": 1.0
+    },
+    "X": {
+     "complete": 10,
+     "n": 10,
+     "rate": 1.0
+    }
+   },
+   "completion": {
+    "S_vs_R": {
+     "n": 10,
+     "complete_left": 10,
+     "complete_right": 10,
+     "rate_left": 1.0,
+     "rate_right": 1.0,
+     "both": 10,
+     "only_left": 0,
+     "only_right": 0,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 0,
+      "n_only_right": 0,
+      "n_discordant": 0,
+      "p_two_sided": null
+     }
+    },
+    "S_vs_X": {
+     "n": 10,
+     "complete_left": 10,
+     "complete_right": 10,
+     "rate_left": 1.0,
+     "rate_right": 1.0,
+     "both": 10,
+     "only_left": 0,
+     "only_right": 0,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 0,
+      "n_only_right": 0,
+      "n_discordant": 0,
+      "p_two_sided": null
+     }
+    },
+    "R_vs_X": {
+     "n": 10,
+     "complete_left": 10,
+     "complete_right": 10,
+     "rate_left": 1.0,
+     "rate_right": 1.0,
+     "both": 10,
+     "only_left": 0,
+     "only_right": 0,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 0,
+      "n_only_right": 0,
+      "n_discordant": 0,
+      "p_two_sided": null
+     }
+    }
+   },
+   "all_pairs_ground_finish": {
+    "S_vs_R": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": 0.8423811758907902,
+     "delta_ci95": [
+      -3.8857262713881733,
+      5.570488623169754
+     ],
+     "delta_over_CS_mean": 0.004853161657248637,
+     "delta_over_CS_ci95": [
+      -0.022386608688071664,
+      0.03209293200256894
+     ],
+     "sign_right_better": 4,
+     "sign_left_better": 6,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.75390625
+    },
+    "S_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": 0.8423811758907902,
+     "delta_ci95": [
+      -3.8857262713881733,
+      5.570488623169754
+     ],
+     "delta_over_CS_mean": 0.004853161657248637,
+     "delta_over_CS_ci95": [
+      -0.022386608688071664,
+      0.03209293200256894
+     ],
+     "sign_right_better": 4,
+     "sign_left_better": 6,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.75390625
+    },
+    "R_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": 0.0,
+     "delta_ci95": [
+      0.0,
+      0.0
+     ],
+     "delta_over_CS_mean": 0.0,
+     "delta_over_CS_ci95": [
+      0.0,
+      0.0
+     ],
+     "sign_right_better": 0,
+     "sign_left_better": 0,
+     "sign_tie": 10,
+     "sign_p_two_sided": null
+    }
+   }
+  },
+  "R100": {
+   "rates": {
+    "S": {
+     "complete": 5,
+     "n": 10,
+     "rate": 0.5
+    },
+    "R": {
+     "complete": 7,
+     "n": 10,
+     "rate": 0.7
+    },
+    "X": {
+     "complete": 9,
+     "n": 10,
+     "rate": 0.9
+    }
+   },
+   "completion": {
+    "S_vs_R": {
+     "n": 10,
+     "complete_left": 5,
+     "complete_right": 7,
+     "rate_left": 0.5,
+     "rate_right": 0.7,
+     "both": 5,
+     "only_left": 0,
+     "only_right": 2,
+     "neither": 3,
+     "mcnemar": {
+      "n_only_left": 0,
+      "n_only_right": 2,
+      "n_discordant": 2,
+      "p_two_sided": 0.5
+     }
+    },
+    "S_vs_X": {
+     "n": 10,
+     "complete_left": 5,
+     "complete_right": 9,
+     "rate_left": 0.5,
+     "rate_right": 0.9,
+     "both": 5,
+     "only_left": 0,
+     "only_right": 4,
+     "neither": 1,
+     "mcnemar": {
+      "n_only_left": 0,
+      "n_only_right": 4,
+      "n_discordant": 4,
+      "p_two_sided": 0.125
+     }
+    },
+    "R_vs_X": {
+     "n": 10,
+     "complete_left": 7,
+     "complete_right": 9,
+     "rate_left": 0.7,
+     "rate_right": 0.9,
+     "both": 6,
+     "only_left": 1,
+     "only_right": 3,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 1,
+      "n_only_right": 3,
+      "n_discordant": 4,
+      "p_two_sided": 0.625
+     }
+    }
+   },
+   "all_pairs_ground_finish": {
+    "S_vs_R": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": -74.0809716250505,
+     "delta_ci95": [
+      -114.66319503963021,
+      -33.49874821047079
+     ],
+     "delta_over_CS_mean": -0.0963087182346173,
+     "delta_over_CS_ci95": [
+      -0.14906750142054695,
+      -0.04354993504868764
+     ],
+     "sign_right_better": 10,
+     "sign_left_better": 0,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.001953125
+    },
+    "S_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": -123.135285223866,
+     "delta_ci95": [
+      -183.881613034227,
+      -62.38895741350501
+     ],
+     "delta_over_CS_mean": -0.16008161379668545,
+     "delta_over_CS_ci95": [
+      -0.2390546731470226,
+      -0.0811085544463483
+     ],
+     "sign_right_better": 8,
+     "sign_left_better": 2,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.109375
+    },
+    "R_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": -49.05431359881552,
+     "delta_ci95": [
+      -95.16934347435888,
+      -2.9392837232721547
+     ],
+     "delta_over_CS_mean": -0.06377289556206815,
+     "delta_over_CS_ci95": [
+      -0.12372458519626356,
+      -0.003821205927872738
+     ],
+     "sign_right_better": 8,
+     "sign_left_better": 2,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.109375
+    }
+   }
+  },
+  "R50": {
+   "rates": {
+    "S": {
+     "complete": 8,
+     "n": 10,
+     "rate": 0.8
+    },
+    "R": {
+     "complete": 8,
+     "n": 10,
+     "rate": 0.8
+    },
+    "X": {
+     "complete": 8,
+     "n": 10,
+     "rate": 0.8
+    }
+   },
+   "completion": {
+    "S_vs_R": {
+     "n": 10,
+     "complete_left": 8,
+     "complete_right": 8,
+     "rate_left": 0.8,
+     "rate_right": 0.8,
+     "both": 6,
+     "only_left": 2,
+     "only_right": 2,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 2,
+      "n_only_right": 2,
+      "n_discordant": 4,
+      "p_two_sided": 1.0
+     }
+    },
+    "S_vs_X": {
+     "n": 10,
+     "complete_left": 8,
+     "complete_right": 8,
+     "rate_left": 0.8,
+     "rate_right": 0.8,
+     "both": 6,
+     "only_left": 2,
+     "only_right": 2,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 2,
+      "n_only_right": 2,
+      "n_discordant": 4,
+      "p_two_sided": 1.0
+     }
+    },
+    "R_vs_X": {
+     "n": 10,
+     "complete_left": 8,
+     "complete_right": 8,
+     "rate_left": 0.8,
+     "rate_right": 0.8,
+     "both": 8,
+     "only_left": 0,
+     "only_right": 0,
+     "neither": 2,
+     "mcnemar": {
+      "n_only_left": 0,
+      "n_only_right": 0,
+      "n_discordant": 0,
+      "p_two_sided": null
+     }
+    }
+   },
+   "all_pairs_ground_finish": {
+    "S_vs_R": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": 6.5879144958883105,
+     "delta_ci95": [
+      -52.86802657365845,
+      66.04385556543507
+     ],
+     "delta_over_CS_mean": 0.014331139139905694,
+     "delta_over_CS_ci95": [
+      -0.11500741932097108,
+      0.14366969760078246
+     ],
+     "sign_right_better": 4,
+     "sign_left_better": 6,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.75390625
+    },
+    "S_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": 6.5879144958883105,
+     "delta_ci95": [
+      -52.86802657365845,
+      66.04385556543507
+     ],
+     "delta_over_CS_mean": 0.014331139139905694,
+     "delta_over_CS_ci95": [
+      -0.11500741932097108,
+      0.14366969760078246
+     ],
+     "sign_right_better": 4,
+     "sign_left_better": 6,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.75390625
+    },
+    "R_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": 0.0,
+     "delta_ci95": [
+      0.0,
+      0.0
+     ],
+     "delta_over_CS_mean": 0.0,
+     "delta_over_CS_ci95": [
+      0.0,
+      0.0
+     ],
+     "sign_right_better": 0,
+     "sign_left_better": 0,
+     "sign_tie": 10,
+     "sign_p_two_sided": null
+    }
+   }
+  },
+  "RC100": {
+   "rates": {
+    "S": {
+     "complete": 8,
+     "n": 10,
+     "rate": 0.8
+    },
+    "R": {
+     "complete": 9,
+     "n": 10,
+     "rate": 0.9
+    },
+    "X": {
+     "complete": 9,
+     "n": 10,
+     "rate": 0.9
+    }
+   },
+   "completion": {
+    "S_vs_R": {
+     "n": 10,
+     "complete_left": 8,
+     "complete_right": 9,
+     "rate_left": 0.8,
+     "rate_right": 0.9,
+     "both": 7,
+     "only_left": 1,
+     "only_right": 2,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 1,
+      "n_only_right": 2,
+      "n_discordant": 3,
+      "p_two_sided": 1.0
+     }
+    },
+    "S_vs_X": {
+     "n": 10,
+     "complete_left": 8,
+     "complete_right": 9,
+     "rate_left": 0.8,
+     "rate_right": 0.9,
+     "both": 7,
+     "only_left": 1,
+     "only_right": 2,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 1,
+      "n_only_right": 2,
+      "n_discordant": 3,
+      "p_two_sided": 1.0
+     }
+    },
+    "R_vs_X": {
+     "n": 10,
+     "complete_left": 9,
+     "complete_right": 9,
+     "rate_left": 0.9,
+     "rate_right": 0.9,
+     "both": 8,
+     "only_left": 1,
+     "only_right": 1,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 1,
+      "n_only_right": 1,
+      "n_discordant": 2,
+      "p_two_sided": 1.0
+     }
+    }
+   },
+   "all_pairs_ground_finish": {
+    "S_vs_R": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": -85.82096230787477,
+     "delta_ci95": [
+      -136.5426885887183,
+      -35.09923602703124
+     ],
+     "delta_over_CS_mean": -0.12426483024761781,
+     "delta_over_CS_ci95": [
+      -0.19770757123604893,
+      -0.0508220892591867
+     ],
+     "sign_right_better": 8,
+     "sign_left_better": 2,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.109375
+    },
+    "S_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": -106.14145159838104,
+     "delta_ci95": [
+      -152.31055502515838,
+      -59.9723481716037
+     ],
+     "delta_over_CS_mean": -0.15368796982014624,
+     "delta_over_CS_ci95": [
+      -0.22053872103208833,
+      -0.08683721860820415
+     ],
+     "sign_right_better": 10,
+     "sign_left_better": 0,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.001953125
+    },
+    "R_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": -20.32048929050628,
+     "delta_ci95": [
+      -42.33657125218197,
+      1.6955926711694111
+     ],
+     "delta_over_CS_mean": -0.029423139572528408,
+     "delta_over_CS_ci95": [
+      -0.061301419821481476,
+      0.002455140676424661
+     ],
+     "sign_right_better": 8,
+     "sign_left_better": 2,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.109375
+    }
+   }
+  },
+  "RC50": {
+   "rates": {
+    "S": {
+     "complete": 7,
+     "n": 10,
+     "rate": 0.7
+    },
+    "R": {
+     "complete": 8,
+     "n": 10,
+     "rate": 0.8
+    },
+    "X": {
+     "complete": 8,
+     "n": 10,
+     "rate": 0.8
+    }
+   },
+   "completion": {
+    "S_vs_R": {
+     "n": 10,
+     "complete_left": 7,
+     "complete_right": 8,
+     "rate_left": 0.7,
+     "rate_right": 0.8,
+     "both": 6,
+     "only_left": 1,
+     "only_right": 2,
+     "neither": 1,
+     "mcnemar": {
+      "n_only_left": 1,
+      "n_only_right": 2,
+      "n_discordant": 3,
+      "p_two_sided": 1.0
+     }
+    },
+    "S_vs_X": {
+     "n": 10,
+     "complete_left": 7,
+     "complete_right": 8,
+     "rate_left": 0.7,
+     "rate_right": 0.8,
+     "both": 6,
+     "only_left": 1,
+     "only_right": 2,
+     "neither": 1,
+     "mcnemar": {
+      "n_only_left": 1,
+      "n_only_right": 2,
+      "n_discordant": 3,
+      "p_two_sided": 1.0
+     }
+    },
+    "R_vs_X": {
+     "n": 10,
+     "complete_left": 8,
+     "complete_right": 8,
+     "rate_left": 0.8,
+     "rate_right": 0.8,
+     "both": 8,
+     "only_left": 0,
+     "only_right": 0,
+     "neither": 2,
+     "mcnemar": {
+      "n_only_left": 0,
+      "n_only_right": 0,
+      "n_discordant": 0,
+      "p_two_sided": null
+     }
+    }
+   },
+   "all_pairs_ground_finish": {
+    "S_vs_R": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": 2.1902972320932292,
+     "delta_ci95": [
+      -34.97604582173328,
+      39.35664028591974
+     ],
+     "delta_over_CS_mean": 0.006101662107823327,
+     "delta_over_CS_ci95": [
+      -0.0974351838394135,
+      0.10963850805506016
+     ],
+     "sign_right_better": 5,
+     "sign_left_better": 5,
+     "sign_tie": 0,
+     "sign_p_two_sided": 1.0
+    },
+    "S_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": 2.1902972320932292,
+     "delta_ci95": [
+      -34.97604582173328,
+      39.35664028591974
+     ],
+     "delta_over_CS_mean": 0.006101662107823327,
+     "delta_over_CS_ci95": [
+      -0.0974351838394135,
+      0.10963850805506016
+     ],
+     "sign_right_better": 5,
+     "sign_left_better": 5,
+     "sign_tie": 0,
+     "sign_p_two_sided": 1.0
+    },
+    "R_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": 0.0,
+     "delta_ci95": [
+      0.0,
+      0.0
+     ],
+     "delta_over_CS_mean": 0.0,
+     "delta_over_CS_ci95": [
+      0.0,
+      0.0
+     ],
+     "sign_right_better": 0,
+     "sign_left_better": 0,
+     "sign_tie": 10,
+     "sign_p_two_sided": null
+    }
+   }
+  }
+ },
+ "rows": [
+  {
+   "case": "C50",
+   "seed": 4,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 178.90387032578963,
+    "cost_fair": 178.90387032578963,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 179.86739903968774,
+    "cost_fair": 179.86739903968774,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 179.86739903968774,
+    "cost_fair": 179.86739903968774,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 3,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 217.14741603801798,
+    "cost_fair": 217.14741603801798,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 227.6867235634493,
+    "cost_fair": 227.6867235634493,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 227.6867235634493,
+    "cost_fair": 227.6867235634493,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 1,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 214.1889581336775,
+    "cost_fair": 214.1889581336775,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 210.4888454222701,
+    "cost_fair": 210.4888454222701,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 210.4888454222701,
+    "cost_fair": 210.4888454222701,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 2,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 222.23361334080084,
+    "cost_fair": 222.23361334080084,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 213.71815141152544,
+    "cost_fair": 213.71815141152544,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 213.71815141152544,
+    "cost_fair": 213.71815141152544,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 5,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 187.39199503476448,
+    "cost_fair": 187.39199503476448,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 181.4523342091908,
+    "cost_fair": 181.4523342091908,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 181.4523342091908,
+    "cost_fair": 181.4523342091908,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 6,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 185.4768310053241,
+    "cost_fair": 185.4768310053241,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 188.72738625861095,
+    "cost_fair": 188.72738625861095,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 188.72738625861095,
+    "cost_fair": 188.72738625861095,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 7,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 186.48351899500952,
+    "cost_fair": 186.48351899500952,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 198.71148460069182,
+    "cost_fair": 198.71148460069182,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 198.71148460069182,
+    "cost_fair": 198.71148460069182,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 10,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 201.00021178596808,
+    "cost_fair": 201.00021178596808,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 201.5215765123081,
+    "cost_fair": 201.5215765123081,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 201.5215765123081,
+    "cost_fair": 201.5215765123081,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 1,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 480.0156589032751,
+    "cost_fair": 480.0156589032751,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 612.0359651082458,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 612.0359651082458,
+    "ground_finish_status": "FEASIBLE:truck"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 8,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 226.29853810620355,
+    "cost_fair": 226.29853810620355,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 217.5739347481116,
+    "cost_fair": 217.5739347481116,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 217.5739347481116,
+    "cost_fair": 217.5739347481116,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 9,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 225.38009081571343,
+    "cost_fair": 225.38009081571343,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 233.18101957433115,
+    "cost_fair": 233.18101957433115,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 233.18101957433115,
+    "cost_fair": 233.18101957433115,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 2,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 520.2408759424428,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 489.3992425335859,
+    "cost_fair": 489.3992425335859,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 489.3992425335859,
+    "cost_fair": 489.3992425335859,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 5,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 489.54733306508945,
+    "cost_fair": 489.54733306508945,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 443.9067908287981,
+    "cost_fair": 443.9067908287981,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 443.9067908287981,
+    "cost_fair": 443.9067908287981,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 4,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 511.34440731332126,
+    "cost_fair": 511.34440731332126,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 512.360888720387,
+    "cost_fair": 512.360888720387,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 512.360888720387,
+    "cost_fair": 512.360888720387,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 3,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 527.8333625639216,
+    "cost_fair": 527.8333625639216,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 534.8217273040767,
+    "cost_fair": 534.8217273040767,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 534.8217273040767,
+    "cost_fair": 534.8217273040767,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 8,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 516.2952231538189,
+    "cost_fair": 516.2952231538189,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 440.38295473141994,
+    "cost_fair": 440.38295473141994,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 440.38295473141994,
+    "cost_fair": 440.38295473141994,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 6,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 493.269544506314,
+    "cost_fair": 493.269544506314,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 513.0679614459046,
+    "cost_fair": 513.0679614459046,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 513.0679614459046,
+    "cost_fair": 513.0679614459046,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 7,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 500.86376307988655,
+    "cost_fair": 500.86376307988655,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 571.5695925001457,
+    "cost_fair": 571.5695925001457,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 571.5695925001457,
+    "cost_fair": 571.5695925001457,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 9,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 519.6182259446648,
+    "cost_fair": 519.6182259446648,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 673.9719509040181,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 673.9719509040181,
+    "ground_finish_status": "FEASIBLE:truck"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 1,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 401.0517093860438,
+    "cost_fair": 401.0517093860438,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 412.1521958493156,
+    "cost_fair": 412.1521958493156,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 412.1521958493156,
+    "cost_fair": 412.1521958493156,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 3,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 429.51795502665465,
+    "cost_fair": 429.51795502665465,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 455.28684719876685,
+    "cost_fair": 455.28684719876685,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 455.28684719876685,
+    "cost_fair": 455.28684719876685,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 10,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 686.2786936934251,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 519.6691590484608,
+    "cost_fair": 519.6691590484608,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 519.6691590484608,
+    "cost_fair": 519.6691590484608,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 2,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 363.6000521955585,
+    "cost_fair": 363.6000521955585,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 355.0233733171718,
+    "cost_fair": 355.0233733171718,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 355.0233733171718,
+    "cost_fair": 355.0233733171718,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 5,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 437.3929478907787,
+    "cost_fair": 437.3929478907787,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 420.45647127317477,
+    "cost_fair": 420.45647127317477,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 420.45647127317477,
+    "cost_fair": 420.45647127317477,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 4,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 484.88932820179673,
+    "ground_finish_status": "FEASIBLE:keep_inflight"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 424.17744490112733,
+    "cost_fair": 424.17744490112733,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 424.17744490112733,
+    "cost_fair": 424.17744490112733,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 6,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 432.3652436635392,
+    "cost_fair": 432.3652436635392,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 364.70975664570784,
+    "cost_fair": 364.70975664570784,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 364.70975664570784,
+    "cost_fair": 364.70975664570784,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 9,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 527.8908681443485,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "R": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 602.9085102383588,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 602.9085102383588,
+    "ground_finish_status": "FEASIBLE:truck"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 8,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 472.22442916285877,
+    "cost_fair": 472.22442916285877,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 578.4136361069092,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 578.4136361069092,
+    "ground_finish_status": "FEASIBLE:truck"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 7,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 438.9198341706947,
+    "cost_fair": 438.9198341706947,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 468.7665450281722,
+    "cost_fair": 468.7665450281722,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 468.7665450281722,
+    "cost_fair": 468.7665450281722,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 10,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 522.1714695996177,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 450.0320292041192,
+    "cost_fair": 450.0320292041192,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 450.0320292041192,
+    "cost_fair": 450.0320292041192,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 4,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 471.4739517694917,
+    "cost_fair": 471.4739517694917,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 468.7296320486422,
+    "cost_fair": 468.7296320486422,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 473.78725876681756,
+    "cost_fair": 473.78725876681756,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 3,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 498.6613692209913,
+    "cost_fair": 498.6613692209913,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 490.4309194886553,
+    "cost_fair": 490.4309194886553,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 499.2301153694613,
+    "cost_fair": 499.2301153694613,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 1,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 499.94339546411624,
+    "cost_fair": 499.94339546411624,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 475.75749391103494,
+    "cost_fair": 475.75749391103494,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 474.77807034925087,
+    "cost_fair": 474.77807034925087,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 5,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 487.39787590075207,
+    "cost_fair": 487.39787590075207,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 462.6613565028831,
+    "cost_fair": 462.6613565028831,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 462.6613565028831,
+    "cost_fair": 462.6613565028831,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 2,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 546.0600158263605,
+    "cost_fair": 546.0600158263605,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 504.35711472787045,
+    "cost_fair": 504.35711472787045,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 515.0861948717945,
+    "cost_fair": 515.0861948717945,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 6,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 483.4078295518236,
+    "cost_fair": 483.4078295518236,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 462.23652764177695,
+    "cost_fair": 462.23652764177695,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 462.23652764177695,
+    "cost_fair": 462.23652764177695,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 9,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 480.6890368208111,
+    "cost_fair": 480.6890368208111,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 496.2984921831289,
+    "cost_fair": 496.2984921831289,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 496.0720091700333,
+    "cost_fair": 496.0720091700333,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 7,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 466.63671763176825,
+    "cost_fair": 466.63671763176825,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 494.90163109526827,
+    "cost_fair": 494.90163109526827,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 475.5771081290242,
+    "cost_fair": 475.5771081290242,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 8,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 522.1051758724235,
+    "cost_fair": 522.1051758724235,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 509.42252691835796,
+    "cost_fair": 509.42252691835796,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 517.9815359498756,
+    "cost_fair": 517.9815359498756,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 2,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 911.5493344237857,
+    "cost_fair": 911.5493344237857,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 888.5696685949761,
+    "cost_fair": 888.5696685949761,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 847.1343584716694,
+    "cost_fair": 847.1343584716694,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 10,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 558.0391842565272,
+    "cost_fair": 558.0391842565272,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 545.9695422068936,
+    "cost_fair": 545.9695422068936,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 493.43146686475296,
+    "cost_fair": 493.43146686475296,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 1,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 963.7116464419313,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "R": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 928.3047971934697,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 820.0532775894469,
+    "cost_fair": 820.0532775894469,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 3,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 905.7639373652468,
+    "cost_fair": 905.7639373652468,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 856.5855969642406,
+    "cost_fair": 856.5855969642406,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 766.5374656998675,
+    "cost_fair": 766.5374656998675,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 5,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 1149.8387578520008,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "R": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 984.5204359172546,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 909.1505623309621,
+    "cost_fair": 909.1505623309621,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 7,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 913.7569365232264,
+    "cost_fair": 913.7569365232264,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 849.5613784239638,
+    "cost_fair": 849.5613784239638,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 933.6862018738524,
+    "cost_fair": 933.6862018738524,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 4,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 1160.2790710497268,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 980.3221135731109,
+    "cost_fair": 980.3221135731109,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 899.4560484624183,
+    "cost_fair": 899.4560484624183,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 6,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 1111.4673162972158,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 959.9365963431248,
+    "cost_fair": 959.9365963431248,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 928.50097204161,
+    "ground_finish_status": "FEASIBLE:truck"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 8,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 980.2146907718525,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "R": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 973.3812083602186,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 871.3921308408895,
+    "cost_fair": 871.3921308408895,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 9,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 961.2030650494783,
+    "cost_fair": 961.2030650494783,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 940.330738002176,
+    "cost_fair": 940.330738002176,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 816.1343281242579,
+    "cost_fair": 816.1343281242579,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 1,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 1028.2411340211943,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 811.5961494341414,
+    "cost_fair": 811.5961494341414,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 789.4328105920981,
+    "cost_fair": 789.4328105920981,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 10,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 909.2154811825383,
+    "cost_fair": 909.2154811825383,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 864.6779873339625,
+    "cost_fair": 864.6779873339625,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 943.6020392833683,
+    "cost_fair": 943.6020392833683,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 4,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 715.5880090750788,
+    "cost_fair": 715.5880090750788,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 729.5033413000565,
+    "cost_fair": 729.5033413000565,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 714.498294275003,
+    "cost_fair": 714.498294275003,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 2,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 889.5492979853659,
+    "cost_fair": 889.5492979853659,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 835.6620751689684,
+    "cost_fair": 835.6620751689684,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 747.8853528087618,
+    "cost_fair": 747.8853528087618,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 3,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 1035.035742473493,
+    "cost_fair": 1035.035742473493,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 855.057500054493,
+    "cost_fair": 855.057500054493,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 831.4502235416402,
+    "cost_fair": 831.4502235416402,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 7,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 785.9133011846908,
+    "cost_fair": 785.9133011846908,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 803.4984539490194,
+    "cost_fair": 803.4984539490194,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 744.0071590757277,
+    "cost_fair": 744.0071590757277,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 5,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 906.8762895291633,
+    "cost_fair": 906.8762895291633,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 842.8014667222674,
+    "cost_fair": 842.8014667222674,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 827.489826861153,
+    "ground_finish_status": "FEASIBLE:truck"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 6,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 963.9877483911481,
+    "cost_fair": 963.9877483911481,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 850.8911673158061,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 863.262679093683,
+    "cost_fair": 863.262679093683,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 8,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 928.8587421302011,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 756.2755124962512,
+    "cost_fair": 756.2755124962512,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 798.8861877974642,
+    "cost_fair": 798.8861877974642,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 10,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 751.6279618575815,
+    "cost_fair": 751.6279618575815,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 722.8623544936311,
+    "cost_fair": 722.8623544936311,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 714.3177821762488,
+    "cost_fair": 714.3177821762488,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 9,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 911.7460820707597,
+    "cost_fair": 911.7460820707597,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "R": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 851.0666647052944,
+    "cost_fair": 851.0666647052944,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 824.7794765130861,
+    "cost_fair": 824.7794765130861,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  }
+ ]
+}
