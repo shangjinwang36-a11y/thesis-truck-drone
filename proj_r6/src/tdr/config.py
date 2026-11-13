@@ -250,6 +250,18 @@ class AlgorithmConfig:
     # 第 7 轮：X 的阶段1 也允许跨车放飞/回收和跨车算子。S 的 cross_launch 为假，不读。
     # 默认关，第 6 轮的两阶段切分保持原样。总评价次数不另加。
     x_cross_from_start: bool = False
+    # 第 8 轮：名义搜索用「名义成本 + 少量固定伯努利情景上的期望失败后成本」接受候选。
+    # 每个情景的补救评价都计入同一份名义预算。S 与 X 同一套；S 的补救只能回到放飞车。
+    scenario_aware: bool = False
+    scenario_count: int = 2
+    scenario_p: float = 0.2
+    scenario_stream: int = 0
+    # 情景补救不可行时，这一情景的成本按名义成本再加这么多。不是在评价种子上拟合的。
+    scenario_infeasible_penalty: float = 400.0
+    # 第 8 轮：把 ALNS 见过的卡车路线和航次放进列池，定期做集合划分。
+    # 跨车航次是连接两辆车的列，必须同时选中两边的路线。S 不生成这种列。
+    set_partition: bool = False
+    set_partition_period: int = 5
     # X 专属：改回收车时尽量保留/改派后续航次，而不是整链丢掉
     x_preserve_cross_repair: bool = False
     # X 专属：同一残差上保留 S 资格可行恢复作为候选，使 X 恢复不差于该残差上的 S 恢复

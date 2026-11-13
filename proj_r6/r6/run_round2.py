@@ -48,6 +48,9 @@ PRESETS = {
     # 第七轮：在第 6 轮的检查之上，X 从阶段1 就开始跨车。S 的阶段1 仍是同车。
     "R7": {"label": "第6轮 + X 阶段1 也允许跨车",
            "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r6": True, "r7": True},
+    # 第八轮：S 与 X 都做情景估价和列池集合划分。X 仍然可以跨车，S 的列里没有跨车航次。
+    "R8": {"label": "情景估价 ALNS + 列池集合划分",
+           "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r6": True, "r7": True, "r8": True},
 }
 
 
@@ -88,6 +91,14 @@ def configs(pkg, preset: str):
     if ps.get("r7"):
         # 阶段1 也跨车。稳健检查和 τ 仍是第 6 轮那一组，不在评价种子上改。
         ad.update(x_cross_from_start=True)
+    if ps.get("r8"):
+        # S/X 同一套情景样本和同一套集合划分。S 不生成跨车列。
+        # 名义上比 S 贵不再整份退回：情景均值已经把失败后的代价算进接受准则。
+        # 完工时刻仍不得超过 S，评价用的 H 还是 H_S。
+        ad.update(scenario_aware=True, set_partition=True,
+                  scenario_count=2, scenario_p=0.2, scenario_stream=0,
+                  scenario_infeasible_penalty=400.0, set_partition_period=5,
+                  x_adopt_s_nominal=False)
     alg = AlgorithmConfig.from_dict(ad)
     alg.recovery_eval_budget_override = None
     alg.recovery_time_limit_override_s = None
@@ -127,7 +138,7 @@ def ep_one(args):
     pkg_path, preset, case, seed, budget, nom_root, failure_mode, p = args[:8]
     max_replans_spec = args[8] if len(args) > 8 else "n_cust"
     from tdr.data import load_instance
-    from tdr.experiment import load_case_nominal, episode_metrics, nominal_plan_for_run
+    from tdr.experiment import load_case_nominal, episode_metrics, nominal_and_recovery
     from tdr.evaluate import evaluate_plan, is_cross_sortie
     from tdr.hidden_world import make_world, bernoulli_failure_flags, HiddenWorld
     from tdr.schedule import initial_state
@@ -153,8 +164,13 @@ def ep_one(args):
     else:
         hidden = sorted(HiddenWorld(inst, case, seed).finish_episode().hidden_failure_parcels)
     out["hidden_failure_parcels"] = hidden
-    for strat in ("S", "X"):
-        plan = nominal_plan_for_run(noms["S"][0], noms[strat][0], strat, bool(alg.x_adopt_s_if_cross))
+    plan_s, plan_x = noms["S"][0], noms["X"][0]
+    # R 的克隆要在 S 的回合改写计划对象之前做好。三个策略共用同一个恢复评价上限。
+    prepared = {
+        strat: nominal_and_recovery(strat, plan_s, plan_x, bool(alg.x_adopt_s_if_cross))
+        for strat in ("S", "R", "X")
+    }
+    for strat, (plan, recovery_strategy) in prepared.items():
         nom_ev = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
         air = sorted({p for s in plan.sorties.values() for p in s.air})
         out[strat + "_nominal"] = dict(
@@ -164,7 +180,6 @@ def ep_one(args):
         if not nom_ev.feasible:
             out[strat] = dict(status="NOMINAL_INFEASIBLE_UNDER_H", cost=None, notes=nom_ev.violations[:2])
             continue
-        # 该计划空送且属于隐失败集合的票（CRN：同一隐集合，观测取决于空送集合）
         served_hidden = sorted(set(air) & set(hidden or []))
         out[strat + "_nominal"]["air_hidden"] = served_hidden
         max_replans = _max_replans_value(max_replans_spec, len(inst.customers))
@@ -173,7 +188,7 @@ def ep_one(args):
         world = make_world(inst, case, seed, failure_mode, p)
         rngs = simulate.derive_rngs(alg.base_algorithm_seed, case, "recovery", 0)
         try:
-            ep = simulate.run_episode(inst, plan, nom_ev, H, phys, world, strat, alg, rngs,
+            ep = simulate.run_episode(inst, plan, nom_ev, H, phys, world, recovery_strategy, alg, rngs,
                                       recovery_eval_budget=budget, cut_mode="snapshot",
                                       max_replans=max_replans)
         except Exception as e:
@@ -245,26 +260,95 @@ def _sign_p(n_x, n_s):
         return None
 
 
+def _paired(rs, left, right):
+    """Δ = C_right − C_left。负数表示 right 更便宜。分母仍是 S 的名义成本。"""
+    deltas, rels = [], []
+    for r in rs:
+        a = (r.get(left) or {}).get("cost")
+        b = (r.get(right) or {}).get("cost")
+        if a is None or b is None:
+            continue
+        deltas.append(b - a)
+        ns = (r.get("S_nominal") or {}).get("cost")
+        if ns:
+            rels.append((b - a) / ns)
+    md, lo, hi, n = mean_ci(deltas)
+    mr, rlo, rhi, _ = mean_ci(rels)
+    n_neg = sum(1 for d in deltas if d < -1e-9)
+    n_pos = sum(1 for d in deltas if d > 1e-9)
+    return {
+        "n": n, "delta_mean": md, "delta_ci95": [lo, hi],
+        "delta_over_CS_mean": mr, "delta_over_CS_ci95": [rlo, rhi],
+        "sign_right_better": n_neg, "sign_left_better": n_pos,
+        "sign_tie": len(deltas) - n_neg - n_pos,
+        "sign_p_two_sided": _sign_p(n_neg, n_pos),
+    }
+
+
+def _same_truck_nominal(rs):
+    """X 的增益里，有多少来自更便宜的同车名义，而不是名义跨车。
+
+    只统计 S、R、X 都完成的回合。同车更便宜：已发布的 X 名义没有跨车，且名义成本低于 S。
+    这一组的 R→X 用的是同一套 X 恢复规则，差别只在名义计划，所以它是同车名义的失败后贡献。
+    """
+    buckets = {"same_truck_cheaper": [], "nominal_cross": [], "same_nominal": []}
+    for r in rs:
+        s, rg, x = (r.get("S") or {}), (r.get("R") or {}), (r.get("X") or {})
+        if s.get("cost") is None or rg.get("cost") is None or x.get("cost") is None:
+            continue
+        nc = (r.get("X_nominal") or {}).get("n_cross") or 0
+        xs = (r.get("X_nominal") or {}).get("cost")
+        ss = (r.get("S_nominal") or {}).get("cost")
+        row = {
+            "sx": x["cost"] - s["cost"],
+            "sr": rg["cost"] - s["cost"],
+            "rx": x["cost"] - rg["cost"],
+            "nom_gap": (None if xs is None or ss is None else xs - ss),
+        }
+        if nc > 0:
+            buckets["nominal_cross"].append(row)
+        elif xs is not None and ss is not None and xs < ss - 1e-6:
+            buckets["same_truck_cheaper"].append(row)
+        else:
+            buckets["same_nominal"].append(row)
+
+    def pack(rows_):
+        def avg(key):
+            xs_ = [z[key] for z in rows_ if z[key] is not None]
+            return (sum(xs_) / len(xs_)) if xs_ else None
+        return {
+            "n": len(rows_),
+            "delta_S_to_X_mean": avg("sx"),
+            "delta_S_to_R_mean": avg("sr"),
+            "delta_R_to_X_mean": avg("rx"),
+            "nominal_gap_X_minus_S_mean": avg("nom_gap"),
+        }
+    return {name: pack(rows_) for name, rows_ in buckets.items()}
+
+
 def summarize(rows):
     from collections import Counter, defaultdict
     by_case = defaultdict(list)
     for r in rows:
         by_case[r["case"]].append(r)
+
     def agg(rs, tag=""):
         dcost, drel, incS, incX, nomS, nomX, nxs = [], [], [], [], [], [], []
-        stopS = stopX = done = 0
-        stS, stX = Counter(), Counter()
+        stopS = stopR = stopX = 0
+        stS, stR, stX = Counter(), Counter(), Counter()
         for r in rs:
-            s, x = r.get("S") or {}, r.get("X") or {}
+            s, rg, x = r.get("S") or {}, r.get("R") or {}, r.get("X") or {}
             stS[s.get("status") or "MISSING"] += 1
+            stR[rg.get("status") or "MISSING"] += 1
             stX[x.get("status") or "MISSING"] += 1
             if (s.get("status") or "").startswith("STOP"):
                 stopS += 1
+            if (rg.get("status") or "").startswith("STOP"):
+                stopR += 1
             if (x.get("status") or "").startswith("STOP"):
                 stopX += 1
             if s.get("cost") is None or x.get("cost") is None:
                 continue
-            done += 1
             dcost.append(x["cost"] - s["cost"])
             ns = (r.get("S_nominal") or {}).get("cost")
             if ns:
@@ -280,13 +364,13 @@ def summarize(rows):
             nxs.append((r.get("X_nominal") or {}).get("n_cross") or 0)
         md, lo, hi, n = mean_ci(dcost)
         mr, rlo, rhi, _ = mean_ci(drel)
-        # 符号检验：X 更好的次数（Δ<0）
         n_neg = sum(1 for d in dcost if d < -1e-9)
         n_pos = sum(1 for d in dcost if d > 1e-9)
         n_tie = len(dcost) - n_neg - n_pos
         return {
-            "n_rows": len(rs), "n_paired_cost": n, "STOPPED_S": stopS, "STOPPED_X": stopX,
-            "status_S": dict(stS), "status_X": dict(stX),
+            "n_rows": len(rs), "n_paired_cost": n, "STOPPED_S": stopS, "STOPPED_R": stopR,
+            "STOPPED_X": stopX,
+            "status_S": dict(stS), "status_R": dict(stR), "status_X": dict(stX),
             "delta_mean": md, "delta_ci95": [lo, hi],
             "delta_over_CS_mean": mr, "delta_over_CS_ci95": [rlo, rhi],
             "sign_X_better": n_neg, "sign_S_better": n_pos, "sign_tie": n_tie,
@@ -296,6 +380,10 @@ def summarize(rows):
             "nom_S_mean": (sum(nomS)/len(nomS) if nomS else None),
             "nom_X_mean": (sum(nomX)/len(nomX) if nomX else None),
             "n_cross_X_mean": (sum(nxs)/len(nxs) if nxs else None),
+            # Δ(S→R) = C_R − C_S，恢复共享；Δ(R→X) = C_X − C_R，名义计划。
+            "S_to_R": _paired(rs, "S", "R"),
+            "R_to_X": _paired(rs, "R", "X"),
+            "same_truck_nominal": _same_truck_nominal(rs),
         }
     out = {"overall": agg(rows), "by_case": {c: agg(rs) for c, rs in sorted(by_case.items())}}
     return out
@@ -328,7 +416,7 @@ def main():
 
     # 名义共享：A0 与 A1 共用 A0 名义；A2 与 A3 共用 A2 名义；A4 独立
     nom_src = {"A0": "A0", "A1": "A0", "A2": "A2", "A3": "A2", "A4": "A4",
-               "R3": "R3", "R4": "R3", "R5": "R3", "R6": "R6", "R7": "R7"}
+               "R3": "R3", "R4": "R3", "R5": "R3", "R6": "R6", "R7": "R7", "R8": "R8"}
 
     if args.phase in ("nominal", "all"):
         need = sorted({nom_src[p] for p in presets if p in nom_src})
@@ -370,15 +458,13 @@ def main():
                 rows.append(r)
                 with jsonl.open("a") as f:
                     f.write(json.dumps(r, ensure_ascii=False) + "\n")
-                s, x = r.get("S") or {}, r.get("X") or {}
-                sc, xc = s.get("cost"), x.get("cost")
+                s, rgt, x = r.get("S") or {}, r.get("R") or {}, r.get("X") or {}
+                sc, rc, xc = s.get("cost"), rgt.get("cost"), x.get("cost")
                 dlt = (xc - sc) if (sc is not None and xc is not None) else None
                 print(f"  [{i}/{n}] {r.get('preset')} {r.get('case')} seed={r.get('seed')} "
-                      f"S={s.get('status')}/{sc} X={x.get('status')}/{xc} "
-                      f"Δ={dlt} failS/X={s.get('n_fail_events')}/{x.get('n_fail_events')} "
-                      f"replS/X={s.get('n_replans')}/{x.get('n_replans')} "
-                      f"hit_cap={s.get('hit_cap')}/{x.get('hit_cap')} "
-                      f"wallS={s.get('wall')} wallX={x.get('wall')}", flush=True)
+                      f"S={s.get('status')}/{sc} R={rgt.get('status')}/{rc} X={x.get('status')}/{xc} "
+                      f"Δ={dlt} failS/R/X={s.get('n_fail_events')}/{rgt.get('n_fail_events')}/{x.get('n_fail_events')} "
+                      f"wallS={s.get('wall')} wallR={rgt.get('wall')} wallX={x.get('wall')}", flush=True)
         if args.workers <= 1:
             _consume((ep_one(j) for j in jobs), len(jobs))
         else:
@@ -395,10 +481,11 @@ def main():
         print(f"EPISODES done in {time.perf_counter()-t0:.1f}s", flush=True)
         for p, s in summ.items():
             o = s["overall"]
-            print(f"  {p}: n={o['n_paired_cost']} Δ={o['delta_mean']} Δ/CS={o['delta_over_CS_mean']} "
-                  f"CI={o['delta_ci95']} sign {o['sign_X_better']}/{o['sign_S_better']}/{o['sign_tie']} "
-                  f"STOP S/X={o['STOPPED_S']}/{o['STOPPED_X']} incS={o['inc_S_mean']} incX={o['inc_X_mean']}",
-                  flush=True)
+        print(f"  {p}: n={o['n_paired_cost']} Δ={o['delta_mean']} Δ/CS={o['delta_over_CS_mean']} "
+              f"CI={o['delta_ci95']} sign {o['sign_X_better']}/{o['sign_S_better']}/{o['sign_tie']} "
+              f"STOP S/R/X={o['STOPPED_S']}/{o.get('STOPPED_R')}/{o['STOPPED_X']} "
+              f"S→R={o.get('S_to_R', {}).get('delta_mean')} R→X={o.get('R_to_X', {}).get('delta_mean')}",
+              flush=True)
 
 
 if __name__ == "__main__":

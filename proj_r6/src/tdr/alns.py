@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import contextvars
 import math
 import random
 import time
@@ -157,6 +158,25 @@ def _better_air(ev: Evaluation | None, plan: Plan | None,
                 alg: AlgorithmConfig, ctx: "SolveContext") -> bool:
     if ev is None:
         return False
+    # scenario_on 只在阶段2打开。阶段1仍按真实成本下降，否则两个情景的噪声会把搜索带离
+    # 情景分本身更低的方案。阶段2从该方案出发，只有情景分变好才接受。
+    if (ctx.mode == "nominal" and getattr(alg, "scenario_aware", False)
+            and getattr(ctx, "scenario_on", False)
+            and plan is not None and ev.feasible):
+        from .hybrid import scenario_score
+        s_new = scenario_score(plan, ev, ctx)
+        if s_new is not None and (other is None or not other.feasible):
+            return True
+        if s_new is not None and other_plan is not None and other is not None and other.feasible:
+            s_old = scenario_score(other_plan, other, ctx)
+            if s_old is None:
+                return True
+            tol = alg.cost_tolerance_yuan
+            if s_new < s_old - tol:
+                return True
+            if abs(s_new - s_old) <= tol:
+                return _better(ev, other, alg)
+            return False
     left = _PenalizedEval(ev, _air_penalty(plan, ctx))
     right = None if other is None else _PenalizedEval(other, _air_penalty(other_plan, ctx))
     return _better(left, right, alg)
@@ -224,6 +244,9 @@ def _nominal_cross_intact(plan: Plan, ev: Evaluation | None, ctx: "SolveContext"
     return not cross_robust_violations(plan, ctx.inst, ctx.phys, ev.timeline, slack)
 
 
+_ACTIVE_CTX: contextvars.ContextVar = contextvars.ContextVar("tdr_active_ctx", default=None)
+
+
 def eval_counted(plan: Plan, inst: Instance, phys: PhysicalConfig, state: StartState,
                  H: float | None, reason: str, stats: SearchStats, budget: Budget,
                  allow_wait_repair: bool = True) -> Evaluation | None:
@@ -234,6 +257,14 @@ def eval_counted(plan: Plan, inst: Instance, phys: PhysicalConfig, state: StartS
         return None
     stats.eval_by_reason[reason] = stats.eval_by_reason.get(reason, 0) + 1
     stats.eval_requests = budget.used
+    holder = _ACTIVE_CTX.get()
+    if (holder is not None and ev.feasible and ev.cost is not None
+            and holder.mode == "nominal"
+            and reason not in ("SCENARIO_RECOURSE", "SET_PARTITION")
+            and getattr(holder.alg, "set_partition", False)):
+        from .hybrid import _pool
+        _pool(holder, bool(getattr(holder.state, "nominal_cross", False))).add_plan(
+            plan, holder.inst, holder.phys, False)
     stats.lp_calls += int(ev.counts.get("lp_calls", 0)) if ev.counts else 0
     if not ev.feasible:
         import re as _re
@@ -471,6 +502,16 @@ def prefix_fixed_cost(state, phys) -> float:
 
 def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full",
              stats: SearchStats | None = None, init_ev: Evaluation | None = None) -> SolveResult:
+    """绑定当前搜索，使评价入口把可行的名义方案写入列池。"""
+    token = _ACTIVE_CTX.set(ctx)
+    try:
+        return _optimize_loop(plan, ctx, budget, variant, stats, init_ev)
+    finally:
+        _ACTIVE_CTX.reset(token)
+
+
+def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full",
+                   stats: SearchStats | None = None, init_ev: Evaluation | None = None) -> SolveResult:
     """ALNS 主循环.
 
     init_ev：调用方已经完整评价过起始解时传入（恢复阶段由 initial_recovery 评价，
@@ -479,6 +520,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
     """
     inst, phys, alg = ctx.inst, ctx.phys, ctx.alg
     stats = stats or SearchStats()
+    ctx.live_budget = budget
+    ctx.live_stats = stats
     t_start = time.perf_counter()
     rng_op = ctx.rngs.get("operator", random.Random(1))
     rng_des = ctx.rngs.get("destroy", random.Random(2))
@@ -674,7 +717,13 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         else:
             # SA
             if cand_ev.feasible:
-                dc = (cand_ev.cost or 0.0) - (cur_ev.cost or 0.0)
+                from .hybrid import cached_scenario_cost
+                sn = cached_scenario_cost(cand_plan, ctx)
+                sc = cached_scenario_cost(cur_plan, ctx)
+                if sn is not None and sc is not None:
+                    dc = sn - sc
+                else:
+                    dc = (cand_ev.cost or 0.0) - (cur_ev.cost or 0.0)
                 if abs(dc) <= alg.cost_tolerance_yuan:
                     accepted = False
                 else:
@@ -772,13 +821,14 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 and budget.evals_left() > 0):
             from .cross_nominal import try_cross_convert
             p_x, e_x = try_cross_convert(cur_plan, ctx, budget, stats)
-            if (p_x is not None and e_x is not None and _better(e_x, cur_ev, alg)
+            if (p_x is not None and e_x is not None
+                    and _better_air(e_x, p_x, cur_ev, cur_plan, alg, ctx)
                     and _within_makespan_cap(e_x, ctx)
                     and _cross_energy_ok(p_x, cur_plan, e_x, ctx)
                     and _nominal_cross_intact(p_x, e_x, ctx)):
                 stats.aud("CROSS_CONVERT", "cur_improve")
                 cur_plan, cur_ev = p_x, e_x
-                if _better(e_x, best_ev, alg) and _within_makespan_cap(e_x, ctx):
+                if _better_air(e_x, p_x, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_x, ctx):
                     stats.aud("CROSS_CONVERT", "best")
                     stats.last_improvement_iter = stats.iterations
                     best_ev, best_plan = e_x, p_x.clone()
@@ -796,6 +846,19 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                     best_ev, best_plan = e3, p3.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg, variant)
+    # 集合划分不放进退火循环：插进去的评价会改变温度，即使不接受也会把真实成本搜索带离原轨迹。
+    # 只在阶段2结束时重组一次。阶段1的列已经进池，阶段2开始前还会再解一次。
+    if (getattr(alg, "set_partition", False) and ctx.mode == "nominal"
+            and getattr(ctx, "scenario_on", False) and budget.evals_left() > 0):
+        from .hybrid import try_set_partition
+        p_m, e_m = try_set_partition(best_plan, ctx, budget, stats)
+        if (p_m is not None and e_m is not None and e_m.feasible
+                and _better_air(e_m, p_m, best_ev, best_plan, alg, ctx)
+                and _within_makespan_cap(e_m, ctx)
+                and _nominal_cross_intact(p_m, e_m, ctx)):
+            stats.aud("SET_PARTITION", "adopted")
+            best_ev, best_plan = e_m, p_m.clone()
+            stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
     if sel is not None and pend is not None:
         sel.update(pend[0], pend[1], pend[2], None)
     if ctx.catalog is not None:
@@ -820,6 +883,18 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                     "audit": {k: (dict(v) if isinstance(v, dict) else v) for k, v in stats.audit.items()},
                     "reject": dict(stats.reject),
                     "best_trace": stats.best_trace}
+    from .hybrid import _pool
+    pool = _pool(ctx, bool(getattr(ctx.state, "nominal_cross", False))) if (
+        getattr(alg, "set_partition", False) and ctx.mode == "nominal") else None
+    if pool is not None:
+        if pool.allow_cross:
+            stats.counts["n_sync_columns"] = len(pool.sync)
+            stats.counts["n_route_columns"] = 0
+            stats.counts["n_link_columns"] = 0
+        else:
+            stats.counts["n_route_columns"] = len(pool.routes)
+            stats.counts["n_link_columns"] = 0
+            stats.counts["n_sync_columns"] = 0
     final_ev = best_ev
     status = "FEASIBLE_LIMIT"
     if stats.stop_reason in ("EVAL_LIMIT", "WALLCLOCK", "MAX_ROUNDS") and best_ev.feasible:

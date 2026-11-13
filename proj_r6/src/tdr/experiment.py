@@ -200,7 +200,6 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         from .alns import SearchStats, _nominal_cross_intact, _within_makespan_cap
         from .cross_nominal import EXCHANGE_EVALS, _exchange_worth, try_cross_exchange
         from .evaluate import is_cross_sortie as _isc_ex
-        already = any(_isc_ex(res.plan, s) for s in res.plan.sorties.values())
         state_ex = initial_state(inst, phys)
         state_ex.nominal_cross = True
         cap_ex = makespan_cap
@@ -210,6 +209,26 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
                               mode="nominal", makespan_cap=cap_ex)
         stats_ex = SearchStats()
         b_ex = Budget(EXCHANGE_EVALS, None)
+        # 情景目标下，S 的计划也是 X 的可行候选。只在 S 的情景分更低时改用它，
+        # 名义更贵但情景分更好的跨车方案会留下来。比较本身计入互换那 24 次评价。
+        if getattr(alg, "scenario_aware", False) and adopt_from and b_ex.evals_left() > 0:
+            if s_plan_cap is None:
+                s_plan_cap, _, _ = load_case_nominal(inst, adopt_from)
+                s_ev_cap = evaluate_plan(s_plan_cap, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+            if s_plan_cap is not None and s_ev_cap is not None and s_ev_cap.feasible:
+                from .hybrid import scenario_score
+                ctx_ex.live_budget = b_ex
+                ctx_ex.live_stats = stats_ex
+                ctx_ex.scenario_on = True
+                score_x = scenario_score(res.plan, ev, ctx_ex)
+                score_s = scenario_score(s_plan_cap, s_ev_cap, ctx_ex)
+                if (score_x is not None and score_s is not None
+                        and score_s < score_x - alg.cost_tolerance_yuan):
+                    res.plan, ev = s_plan_cap.clone(), s_ev_cap
+                    adopted_s = True
+                    adopt_reason = "scenario"
+                    stats_ex.aud("SCENARIO", "adopted_s")
+        already = any(_isc_ex(res.plan, s) for s in res.plan.sorties.values())
         if not already:
             from .cross_robust import cross_robust_violations
             p_e, e_e = try_cross_exchange(res.plan, ctx_ex, b_ex, stats_ex, n=EXCHANGE_EVALS)
@@ -217,9 +236,23 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
             robust_ok = False
             if (p_e is not None and e_e is not None and e_e.feasible and e_e.timeline is not None):
                 robust_ok = not cross_robust_violations(p_e, inst, phys, e_e.timeline, slack_s)
-            ok = (robust_ok and _exchange_worth(e_e, ev, alg)
-                  and _within_makespan_cap(e_e, ctx_ex)
+            ok = (robust_ok and _within_makespan_cap(e_e, ctx_ex)
                   and _nominal_cross_intact(p_e, e_e, ctx_ex))
+            scenario_decided = False
+            if ok and getattr(alg, "scenario_aware", False) and b_ex.evals_left() > 0:
+                from .hybrid import scenario_score
+                ctx_ex.live_budget = b_ex
+                ctx_ex.live_stats = stats_ex
+                ctx_ex.scenario_on = True
+                s_new = scenario_score(p_e, e_e, ctx_ex)
+                s_old = scenario_score(res.plan, ev, ctx_ex)
+                if s_new is not None and s_old is not None:
+                    scenario_decided = True
+                    if s_new >= s_old - alg.cost_tolerance_yuan:
+                        ok = False
+                        stats_ex.aud("CROSS_EXCHANGE", "rejected_scenario")
+            if ok and not scenario_decided:
+                ok = _exchange_worth(e_e, ev, alg)
             if ok:
                 res.plan, ev = p_e, e_e
                 stats_ex.aud("CROSS_EXCHANGE", "adopted")
@@ -301,6 +334,9 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         "two_phase_b": two_phase_b, "phase1_evals": res.stats.counts.get("phase1_evals"),
         "phase1_cost": res.stats.counts.get("phase1_cost"),
         "phase1_cross": res.stats.counts.get("phase1_cross"),
+        "n_route_columns": res.stats.counts.get("n_route_columns"),
+        "n_link_columns": res.stats.counts.get("n_link_columns"),
+        "n_sync_columns": res.stats.counts.get("n_sync_columns"),
         "adopted_s_nominal": adopted_s,
         "adopt_reason": adopt_reason,
         "n_cross_before_repair": n_cross_before_repair,
@@ -326,6 +362,21 @@ def nominal_plan_for_run(plan_s: Plan, plan: Plan, strategy: str, drop_cross: bo
     if any(is_cross_sortie(plan, s) for s in plan.sorties.values()):
         return plan_s.clone()
     return plan
+
+
+def nominal_and_recovery(strategy: str, plan_s: Plan, plan_x: Plan, drop_cross: bool):
+    """回合用的名义计划和恢复规则。
+
+    S：自己的名义，同车恢复。
+    R：冻结的 S 名义（克隆，恢复不会改写 S 的对象），恢复规则与 X 相同。
+    X：自己的名义，跨车恢复。
+    三者的恢复评价上限由调用方传入同一个数。
+    """
+    if strategy == "S":
+        return plan_s, "S"
+    if strategy == "R":
+        return plan_s.clone(), "X"
+    return nominal_plan_for_run(plan_s, plan_x, "X", drop_cross), "X"
 
 
 def load_case_nominal(inst: Instance, nominal_dir: str | Path) -> tuple[Plan, dict, float]:
