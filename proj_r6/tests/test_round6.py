@@ -192,3 +192,51 @@ def test_two_phase_phase1_identical_and_equal_budget(tmp_path):
     assert ms["S"]["n_cross_sorties"] == 0
     assert ms["S"]["verified"] and ms["X"]["verified"]
     assert ms["X"]["cost"] <= ms["X"]["phase1_cost"] + 1e-9 and ms["S"]["cost"] <= ms["S"]["phase1_cost"] + 1e-9
+
+
+def test_packed_unlaunched_cross_keeps_followon():
+    """P 已承诺完成、L 未开始时截断：不得取消该跨车航次而留下从回收车放飞的后续航次
+    （否则 “放飞车 t4 与起始承运车 t2 不符”，initial_recovery 直接 STOPPED）。
+
+    用例来源：R50 两阶段 X 名义方案，d4 航次 45(t2→t4) 装机中途遇他机失败，后续航次 52 从 t4 放飞。
+    """
+    from tdr.evaluate import evaluate_plan
+    from tdr.experiment import load_case_nominal
+    from tdr.schedule import initial_state
+    from tdr.simulate import truncate, compute_commit_times
+
+    inst, phys, alg = _setup("R50")
+    plan, _, H = load_case_nominal(inst, FIX6 / "X" / "R50_tp")
+    assert 45 in plan.sorties and 52 in plan.sorties
+    assert plan.sorties[45].drone == "d4" and plan.sorties[45].truck == "t2"
+    assert plan.visits[plan.sorties[45].rec_vid].truck == "t4"
+    assert plan.sorties[52].drone == "d4" and plan.sorties[52].truck == "t4"
+    nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "N")
+    assert nom.feasible
+    tl = nom.timeline
+    t_fail = 363.6755943200383
+    failed_sid, failed_drone, failed_parcel = 62, "d1", "p033"
+    t_cut, T_truck, T_drone = compute_commit_times(tl, t_fail, failed_drone)
+    residual, state, info = truncate(plan, tl, inst, phys, t_cut, t_fail, failed_sid,
+                                     failed_parcel, failed_drone, T_truck=T_truck, T_drone=T_drone)
+    # 跨车航次 45 必须保留，后续 52 仍从 t4 放飞，承运关系不断
+    assert 45 in residual.sorties, "P 完成但未放飞的跨车航次不应被取消"
+    assert 52 in residual.sorties
+    assert residual.drone_sorties.get("d4") == [45, 52]
+    assert state.drone_start["d4"].kind == "ON_TRUCK" and state.drone_start["d4"].truck == "t2"
+    ev = evaluate_plan(residual, inst, phys, state, H, "RECOVERY_INITIAL_BASE")
+    mismatch = [v for v in ev.violations if "不符" in v]
+    assert not mismatch, mismatch
+    # 失败票 p033 尚未安排地面交付是 residual 的正常缺口，由 initial_recovery 补上，不是结构链断裂
+    assert all("不符" not in v and "放飞车" not in v for v in ev.violations)
+    # 卸回只写入日志，包裹仍由该航次承运（不必进入 freed 池）
+    assert any(u.get("drone") == "d4" and "p034" in u.get("parcels", []) for u in info.get("unloaded", []))
+    assert "p034" not in set(info.get("freed") or [])
+    from tdr.alns import Budget
+    from tdr.recovery import initial_recovery
+    opt, reasons, catalog = initial_recovery(residual, state, inst, phys, "X",
+                                             ground_required={failed_parcel}, H=H,
+                                             extra_pool=list(info.get("freed") or []),
+                                             frag_sid=failed_sid,
+                                             budget=Budget(200, None), rescue_evals=200)
+    assert opt is not None and opt.ev is not None and opt.ev.feasible, reasons[:6]

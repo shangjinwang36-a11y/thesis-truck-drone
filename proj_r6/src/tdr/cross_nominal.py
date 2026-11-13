@@ -96,7 +96,7 @@ def propose_convert(plan, ctx, n: int, tried: set):
 
 
 def try_cross_convert(plan, ctx, budget, stats):
-    from .alns import _better, eval_counted
+    from .alns import _better, _cross_energy_ok, _within_makespan_cap, eval_counted
     best_p, best_ev = None, None
     if not hasattr(ctx, "cross_tried"):
         return None, None
@@ -109,6 +109,12 @@ def try_cross_convert(plan, ctx, budget, stats):
         stats.aud("CROSS_CONVERT", "calls")
         if ev.feasible:
             stats.aud("CROSS_CONVERT", "feasible")
+            if not _within_makespan_cap(ev, ctx):
+                stats.aud("HS_CAP", "rejected_convert")
+                continue
+            if not _cross_energy_ok(cand, plan, ev, ctx):
+                stats.aud("CROSS_ENERGY_MARGIN", "rejected_convert")
+                continue
             if best_ev is None or _better(ev, best_ev, ctx.alg):
                 best_p, best_ev = cand, ev
         else:

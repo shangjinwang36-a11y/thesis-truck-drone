@@ -545,9 +545,11 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
                 if ps_:
                     # 第二轮修复：装机(P)已完成、放飞(L)未开始即遇截断——机上票须经零时长 U 卸回原车，
                     # 否则回放仍认为票在无人机上(SEGk_HOLDER)而计划已把它记在车上。
+                    # 第六轮续修：U 只用于日志/保管对齐，不得取消该航次。若取消，依赖它把机体
+                    # 送到另一辆回收车的后续航次会变成“放飞车与起始承运车不符”，initial_recovery
+                    # 直接 STOPPED。卸回后后缀计划仍保留该航次，由调度在残段再执行一次 P 后放飞。
                     unloaded.append({"truck": s.truck, "drone": s.drone, "parcels": ps_, "t": tk(s.truck)})
-                freed.extend(ps_)
-                new.sorties.pop(sid, None)
+                keep.append(sid)
                 continue
             keep.append(sid)
         new.drone_sorties[d] = keep
@@ -568,6 +570,38 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
         new.drone_sorties[d] = [x for x in new.drone_sorties[d] if x in new.sorties]
         if not new.drone_sorties[d]:
             new.drone_sorties.pop(d)
+    # 若某机一尚未执行的航次因访问被裁掉等原因被丢弃，其后依赖该航次到达另一承运车的
+    # 后续航次必须一并取消（释放包裹给修复），否则结构校验报“放飞车与承运车不符”。
+    # 已完成航次的弹出不会走到这里：当前承运车应已更新为回收车，与下一航次放飞车一致。
+    for d, sids in list(new.drone_sorties.items()):
+        ds = st.drone_start.get(d)
+        carrier = st.drone_carrier.get(d) or (ds.truck if ds and ds.kind == "ON_TRUCK" else None)
+        keep_c: list[int] = []
+        drop_rest = False
+        for sid in sids:
+            s = new.sorties.get(sid)
+            if s is None:
+                continue
+            if drop_rest:
+                _drop(s)
+                new.remove_sortie(s.sid)
+                continue
+            if s.started:
+                keep_c.append(sid)
+                if s.rec_vid in new.visits:
+                    carrier = new.visits[s.rec_vid].truck
+                continue
+            if carrier is not None and s.truck != carrier:
+                _drop(s)
+                new.remove_sortie(s.sid)
+                drop_rest = True
+                continue
+            keep_c.append(sid)
+            if s.rec_vid in new.visits:
+                carrier = new.visits[s.rec_vid].truck
+        new.drone_sorties[d] = [x for x in keep_c if x in new.sorties]
+        if not new.drone_sorties[d]:
+            new.drone_sorties.pop(d, None)
     st.parcel_holder = _compute_holders(new, plan, inst, all_delivered, prev_state, inflight)
     info = {"unloaded": unloaded, "delivered": all_delivered, "prefix_dist": prefix_dist, "q_prefix": q_prefix,
             "t_cut": t_cut, "freed": sorted(set(freed)), "inflight": sorted(inflight)}
@@ -644,6 +678,7 @@ def collect_segment(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConf
                 if a.kind == "R":
                     rec["onboard"] = list(so0.air) + list(so0.handover)
                     rec["handover"] = list(so0.handover)
+                    rec["landed"] = bool(so0.landed)
             if a.kind == "U":
                 rec["parcels"] = list(a.info.get("parcels", []))
         elif a.kind == "L":
@@ -683,7 +718,7 @@ def collect_segment(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConf
             start = max(st.start, t0)
             frac = 0.0 if st.end - st.start < 1e-12 else (end - start) / (st.end - st.start)
             rec = {"kind": st.kind, "drone": d, "start": start, "end": end,
-                   "truck": st.truck, "mass": st.mass}
+                   "truck": st.truck, "mass": st.mass, "landed": bool(st.landed)}
             if end < st.end - 1e-9 and st.kind in ("R", "L"):
                 # 跨段截断的回收/放飞只记悬停能耗，不改变 custody/机位状态
                 rec["kind"] = "WAIT"
@@ -879,7 +914,14 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                                                  frag_sid=a.sid, stats=init_stats,
                                                  budget=init_budget, rescue_evals=main_limit,
                                                  info=init_info,
-                                                 use_milp=(alg.recovery_decision == "milp"))
+                                                 use_milp=(alg.recovery_decision == "milp"),
+                                                 joint=alg.joint_inflight_retarget,
+                                                 slot_aware=alg.slot_aware_recovery,
+                                                 unlaunched=alg.unlaunched_repair,
+                                                 preserve_cross=(strategy == "X" and alg.x_preserve_cross_repair),
+                                                 keep_s_recovery=(strategy == "X" and alg.x_keep_s_recovery),
+                                                 limit_new_air=(strategy == "X" and alg.x_limit_new_air),
+                                                 new_air_penalty=(alg.x_new_air_penalty if strategy == "X" else 0.0))
         if opt is None:
             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
             res.notes.append(f"STOP_CONTEXT:replan={replan_index + 1},t_fail={a.time:.1f},t_cut={t_cut:.1f},"
@@ -888,10 +930,19 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             res.plan, res.evaluation = new_plan, None
             break
         rr = derive_rngs(alg.base_algorithm_seed, inst.case_id, "recovery", replan_index + 1)
+        greq = set(ground_required)
+        ceiling = set()
+        for s in new_plan.sorties.values():
+            ceiling.update(s.air)
+        # 惩罚为 0 时，x_limit_new_air 仍是硬禁止新开空送；有惩罚时交给接受准则，允许很贵的地面绕路改回空送
+        if strategy == "X" and alg.x_limit_new_air and not (alg.x_new_air_penalty > 0):
+            greq.update(p for p in inst.parcel_mass if p not in ceiling and p not in state2.delivered)
+        air_ceiling = ceiling if (strategy == "X" and (alg.x_limit_new_air or alg.x_new_air_penalty > 0)) else None
         ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state2, H=H, mode="recovery",
                            affected_drones={a.drone}, affected_sorties={a.sid},
-                           ground_required=set(ground_required), replan_index=replan_index + 1,
-                           rngs=rr, catalog=catalog, frag_sid=a.sid, strategy=strategy)
+                           ground_required=greq, replan_index=replan_index + 1,
+                           rngs=rr, catalog=catalog, frag_sid=a.sid, strategy=strategy,
+                           air_ceiling=air_ceiling)
         t_r = time.perf_counter()
         budget = Budget(main_limit, recovery_wall_s, start=t_budget0)   # 主循环预算
         stats = SearchStats()

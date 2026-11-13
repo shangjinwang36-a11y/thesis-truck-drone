@@ -36,7 +36,9 @@ def plan_to_dict(plan: Plan, inst: Instance) -> dict:
                                  "handover": list(s.handover), "started": s.started,
                                  "start_time": s.start_time, "start_pos": s.start_pos,
                                  "rec_priority": s.rec_priority,
-                                 "launch_priority": s.launch_priority}
+                                 "launch_priority": s.launch_priority,
+                                 "launch_truck": s.launch_truck,
+                                 "landed": s.landed}
                           for s in plan.sorties.values()},
         "drone_sorties": {k: list(v) for k, v in plan.drone_sorties.items()},
         "next_vid": plan.next_vid,
@@ -57,7 +59,8 @@ def plan_from_dict(d: dict) -> Plan:
                                      v["lam"], list(v["air"]), v["rec_vid"], list(v["handover"]),
                                      v["started"], v["start_time"],
                                      tuple(v["start_pos"]) if v["start_pos"] else None,
-                                     v.get("rec_priority", 0), v.get("launch_priority", 0))
+                                     v.get("rec_priority", 0), v.get("launch_priority", 0),
+                                     v.get("launch_truck"), bool(v.get("landed", False)))
     p.drone_sorties = {k: list(v) for k, v in d["drone_sorties"].items()}
     return p
 
@@ -83,7 +86,8 @@ def _write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
 def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                        out_dir: str | Path, eval_budget: int | None = None,
                        variant: str = "full", cross_launch: bool = False,
-                       two_phase_b: int | None = None) -> dict:
+                       two_phase_b: int | None = None,
+                       adopt_from: str | Path | None = None) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     rngs = derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0)
@@ -96,10 +100,19 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
     phys_nom = phys
     if alg.nominal_reserve_margin > 0:
         phys_nom = dataclasses.replace(phys, reserve_fraction=phys.reserve_fraction + alg.nominal_reserve_margin)
+    makespan_cap = None
+    s_plan_cap = None
+    s_ev_cap = None
+    if (adopt_from and cross_launch and getattr(alg, "x_cross_hs_cap", False)):
+        s_plan_cap, _, _ = load_case_nominal(inst, adopt_from)
+        s_ev_cap = evaluate_plan(s_plan_cap, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+        if s_ev_cap.feasible and s_ev_cap.timeline and s_ev_cap.timeline.truck_finish:
+            makespan_cap = max(s_ev_cap.timeline.truck_finish.values())
     for ns in starts:
         r_ = build_nominal(inst, phys_nom, alg, derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0),
                            eval_budget=eval_budget, variant=variant, n_used=ns,
-                           cross_launch=cross_launch, two_phase_b=two_phase_b)
+                           cross_launch=cross_launch, two_phase_b=two_phase_b,
+                           makespan_cap=makespan_cap)
         c_ = r_.evaluation.cost if (r_.plan is not None and r_.evaluation is not None and r_.evaluation.feasible) else None
         start_costs[str(ns)] = c_
         if c_ is not None and (res is None or c_ < res.evaluation.cost):
@@ -117,6 +130,25 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         # 以真实储备重评价（抬高储备的可行解在真实参数下必可行），成本/H/核验均按真实参数
         ev = evaluate_plan(res.plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
         assert ev.feasible, ev.violations
+    adopted_s = False
+    adopt_reason = None
+    if (adopt_from and cross_launch and ev is not None and ev.feasible
+            and (getattr(alg, "x_adopt_s_nominal", False) or makespan_cap is not None)):
+        if s_plan_cap is None:
+            s_plan_cap, _, _ = load_case_nominal(inst, adopt_from)
+            s_ev_cap = evaluate_plan(s_plan_cap, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+        s_plan, s_ev = s_plan_cap, s_ev_cap
+        over_cap = False
+        # 搜索时上限抬到阶段1，避免阶段1本身越限导致跨车移动全灭。
+        # 最终对外的 X 方案仍必须 makespan ≤ S：否则评价用 H_S 时余量被吃掉（C50 只长 18s 也会在失败后变贵）。
+        if makespan_cap is not None and ev.timeline and ev.timeline.truck_finish:
+            over_cap = max(ev.timeline.truck_finish.values()) > makespan_cap + 1e-6
+        worse = (getattr(alg, "x_adopt_s_nominal", False) and s_ev is not None and s_ev.feasible
+                 and ev.cost is not None and s_ev.cost is not None and ev.cost > s_ev.cost + 1e-9)
+        if s_ev is not None and s_ev.feasible and (over_cap or worse):
+            res.plan, ev = s_plan, s_ev
+            adopted_s = True
+            adopt_reason = "makespan_cap" if over_cap and not worse else ("cost" if worse else "makespan_cap")
     H = max(ev.timeline.truck_finish.values()) + phys.shift_slack_s
     from .evaluate import is_cross_sortie as is_cross_sortie_
     if not cross_launch:   # S：名义阶段不得出现跨车航次
@@ -181,6 +213,11 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         "best_trace": res.stats.counts.get("best_trace"),
         "two_phase_b": two_phase_b, "phase1_evals": res.stats.counts.get("phase1_evals"),
         "phase1_cost": res.stats.counts.get("phase1_cost"),
+        "adopted_s_nominal": adopted_s,
+        "adopt_reason": adopt_reason,
+        "makespan_cap": makespan_cap,
+        "makespan_s": (max(ev.timeline.truck_finish.values())
+                       if ev.timeline and ev.timeline.truck_finish else None),
     }
     _write_json(out / "result.json", meta)
     return meta

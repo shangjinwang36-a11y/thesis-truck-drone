@@ -177,7 +177,9 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict], H:
                         v.append(f"R_TRUCK_NOT_THERE:{d}@{cust}")
                     if c is not None and d in drone_pos and _d((c.x, c.y), drone_pos[d]) > 50.0:
                         v.append(f"R_DRONE_NOT_THERE:{d}@{cust}")
-                    if energy.get(d, 0.0) < phys.e_min - phys.energy_tol:
+                    # 降落等待：落地后零能耗，回收不要求 E_min 备用电量（电量仍须 ≥ 0）
+                    emin = 0.0 if a.get("landed") else phys.e_min
+                    if energy.get(d, 0.0) < emin - phys.energy_tol:
                         v.append(f"R_RESERVE:{d}@{t:.1f} E={energy.get(d,0):.4f}")
                     reserved[a["actor"]] = reserved.get(a["actor"], 0) + 1
                     occupied = len(onboard.get(a["actor"], set())) + reserved[a["actor"]]
@@ -211,6 +213,8 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict], H:
                         v.append(f"CRUISE_MISMATCH:{d}@{s['start']:.1f} dist={dist:.1f} dur={dur:.1f}")
                     energy[d] = energy.get(d, phys.e_cap) - phys.fly_energy_kwh(dist, s.get("mass", 0.0))
                     drone_pos[d] = (s["x1"], s["y1"])
+                elif sk == "WAIT" and s.get("landed"):
+                    pass  # 降落等待：零能耗，与 schedule.stage_energy 一致
                 elif sk in ("SERVICE", "WAIT"):
                     energy[d] = energy.get(d, phys.e_cap) - phys.hover_energy_kwh(dur, s.get("mass", 0.0))
                     if sk == "SERVICE" and s.get("parcel"):
@@ -222,7 +226,8 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict], H:
                         holder[p] = "DELIVERED"
                         delivered.add(p)
                 elif sk == "R":
-                    energy[d] = energy.get(d, phys.e_cap) - phys.hover_energy_kwh(dur, s.get("mass", 0.0))
+                    if not s.get("landed"):
+                        energy[d] = energy.get(d, phys.e_cap) - phys.hover_energy_kwh(dur, s.get("mass", 0.0))
                 elif sk == "L":
                     energy[d] = energy.get(d, phys.e_cap) - phys.hover_energy_kwh(dur, s.get("mass", 0.0))
                 elif sk in ("ON_TRUCK", "READY"):

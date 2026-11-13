@@ -75,6 +75,9 @@ class PhysicalConfig:
     # 软 H(加班)变体(自 round5e 移植)：soft_h=True 时 H_EXCEEDED 不再是违规，超出 H 的每车时间按 overtime_mult×时薪计价
     # (基础工资已按 1× 计入，故附加 (mult-1)×)；默认 False。劳动法第44条(一)：不低于 150%。
     soft_h: bool = False
+    # 第五轮 v6 变体(a)：降落等待。回收阶段无法带备用电量抵达任何车的在飞/失败机，可降落在其下一个/当前客户点，
+    # 落地等待零能耗、回收不要求备用电量(E_min)，由合格车辆(S 仅原放飞车，X 任意车)到该点接回；默认关。
+    land_and_wait: bool = False
     overtime_mult: float = 1.5
 
     # ---- derived ----
@@ -221,6 +224,29 @@ class AlgorithmConfig:
     # False=旧行为（优于当前解即替换当前解，会丢弃已有进展）；True=仅当优于全局最优时才采用（S/X 对称）
     reassign_adopt_only_if_best: bool = False
     cross_n: int = 2
+    # 第五轮/v7 恢复算子（S/X 对称，默认关；打开后两边同一规则，仅资格随策略不同）
+    joint_inflight_retarget: bool = False
+    slot_aware_recovery: bool = False
+    unlaunched_repair: bool = False
+    # 第六轮续：X 专属（S 不触发）。改进才接受的跨车精炼；名义结束后若 X>S 则采用 S 解以保证 X≤S
+    x_improve_only_cross: bool = False
+    x_adopt_s_nominal: bool = False
+    # X 专属：改回收车时尽量保留/改派后续航次，而不是整链丢掉
+    x_preserve_cross_repair: bool = False
+    # X 专属：同一残差上保留 S 资格可行恢复作为候选，使 X 恢复不差于该残差上的 S 恢复
+    x_keep_s_recovery: bool = False
+    # X 专属：名义阶段2 只接受完工时刻不超过 S 名义 makespan 的移动（评价用的是 H_S，不能靠拉长工时换成本）
+    x_cross_hs_cap: bool = False
+    # X 专属：新出现/改回收点的跨车航次，回收后余电须 ≥ E_min + 该比例×E_cap，避免贴着换电下限
+    x_cross_energy_margin_frac: float = 0.0
+    # X 专属：恢复时不把残差里尚未空送的票新开成空中服务（已有空送可以改回收车）
+    x_limit_new_air: bool = False
+    # X 专属：每新开一票空送，在接受比较里加这么多元（0=不惩罚）。
+    # 与 x_limit_new_air 同时 >0 时用惩罚而不是一票否决，避免为了躲失败把很贵的地面绕路锁死。
+    # 报告成本仍是真实 C_res，惩罚只进入 X 的接受准则。
+    x_new_air_penalty: float = 0.0
+    # 两阶段名义：阶段2 预算 b（None=不启用；与 build 参数 two_phase_b 二选一，参数优先）
+    nominal_two_phase_b: int | None = None
     crn_per_iteration: bool = False          # 共同随机数：按(种子,算例,重规划,轮次)重置随机流（S/X 对称）
     cross_ops_gate: bool = True              # False=对照：同车情形也启用（S、X 同等）
     geometry_base_starts: int = 5

@@ -115,6 +115,75 @@ def _better(a: Evaluation, b: Evaluation | None, alg: AlgorithmConfig) -> bool:
     return False
 
 
+def _air_penalty(plan: Plan | None, ctx: "SolveContext") -> float:
+    """X 恢复接受准则里的新开空送惩罚。不影响写入结果的真实成本。"""
+    pen = float(getattr(ctx.alg, "x_new_air_penalty", 0.0) or 0.0)
+    ceiling = getattr(ctx, "air_ceiling", None)
+    if pen <= 0 or ceiling is None or plan is None or ctx.mode != "recovery" or ctx.strategy != "X":
+        return 0.0
+    from .recovery import _air_parcel_set
+    return pen * len(_air_parcel_set(plan) - set(ceiling))
+
+
+class _PenalizedEval:
+    """只在接受比较时把惩罚加到 cost 上，不改原评价对象。"""
+
+    def __init__(self, ev: Evaluation, extra: float):
+        self.feasible = ev.feasible
+        self.cost = None if ev.cost is None else ev.cost + extra
+        self.z = ev.z
+        self.timeline = ev.timeline
+
+
+def _better_air(ev: Evaluation | None, plan: Plan | None,
+                other: Evaluation | None, other_plan: Plan | None,
+                alg: AlgorithmConfig, ctx: "SolveContext") -> bool:
+    if ev is None:
+        return False
+    left = _PenalizedEval(ev, _air_penalty(plan, ctx))
+    right = None if other is None else _PenalizedEval(other, _air_penalty(other_plan, ctx))
+    return _better(left, right, alg)
+
+
+def _within_makespan_cap(ev: Evaluation | None, ctx: "SolveContext") -> bool:
+    """X 名义：候选完工时刻不得超过 S 的 makespan。无上限时恒真。"""
+    cap = getattr(ctx, "makespan_cap", None)
+    if cap is None or ctx.mode != "nominal" or ev is None or ev.timeline is None:
+        return True
+    fin = ev.timeline.truck_finish
+    if not fin:
+        return True
+    return max(fin.values()) <= cap + 1e-6
+
+
+def _cross_energy_ok(cand_plan: Plan, cur_plan: Plan, ev: Evaluation | None, ctx: "SolveContext") -> bool:
+    """新跨车或改了回收点的跨车航次，回收后余电要留出额外裕度。裕度为 0 时恒真。"""
+    frac = float(getattr(ctx.alg, "x_cross_energy_margin_frac", 0.0) or 0.0)
+    if frac <= 0 or ctx.mode != "nominal" or ev is None or ev.timeline is None:
+        return True
+    from .evaluate import is_cross_sortie
+    changed: set[int] = set()
+    for sid, so in cand_plan.sorties.items():
+        if not is_cross_sortie(cand_plan, so):
+            continue
+        old = cur_plan.sorties.get(sid)
+        if old is None or old.rec_vid != so.rec_vid or old.truck != so.truck:
+            changed.add(sid)
+    if not changed:
+        return True
+    need = ctx.phys.e_min + frac * ctx.phys.e_cap
+    tl = ev.timeline
+    for sid in changed:
+        so = cand_plan.sorties[sid]
+        stages = tl.drone_stages.get(so.drone, [])
+        energies = tl.drone_energy.get(so.drone, [])
+        for i, st in enumerate(stages):
+            if st.kind == "R" and not st.landed and st.sid == sid and i + 1 < len(energies):
+                if energies[i + 1] < need - ctx.phys.energy_tol:
+                    return False
+    return True
+
+
 def eval_counted(plan: Plan, inst: Instance, phys: PhysicalConfig, state: StartState,
                  H: float | None, reason: str, stats: SearchStats, budget: Budget,
                  allow_wait_repair: bool = True) -> Evaluation | None:
@@ -330,6 +399,10 @@ class SolveContext:
     strategy: str = "X"
     retarget_tried: set = field(default_factory=set)
     cross_tried: set = field(default_factory=set)
+    # X 名义阶段2：候选卡车完工时刻不得超过该值（通常 = S 名义 makespan）。None=不限制。
+    makespan_cap: float | None = None
+    # X 恢复：残差里已经会空送的票。新开的票按 x_new_air_penalty 计入接受比较。
+    air_ceiling: set | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -511,7 +584,18 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         stats.aud("R:" + rep, "feasible")
         if trial_cross:
             stats.aud("CROSS_REPAIR_TRIALS", "feasible")
-        if _better(cand_ev, best_ev, alg):
+        blocked = False
+        if not _within_makespan_cap(cand_ev, ctx):
+            blocked = True
+            stats.aud("HS_CAP", "rejected")
+        elif trial_cross and not _cross_energy_ok(cand_plan, cur_plan, cand_ev, ctx):
+            blocked = True
+            stats.aud("CROSS_ENERGY_MARGIN", "rejected")
+        if blocked:
+            reward = 0.0
+            stagnation += 1
+            accepted = False
+        elif _better_air(cand_ev, cand_plan, best_ev, best_plan, alg, ctx):
             stats.aud(op, "best")
             stats.aud("R:" + rep, "best")
             if trial_cross:
@@ -523,12 +607,24 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             stagnation = 0
             stats.last_improvement_eval = stats.eval_requests
             stats.best_trace.append((stats.eval_requests, best_ev.cost or 0.0, best_ev.z or 0.0))
-        elif _better(cand_ev, cur_ev, alg):
+        elif _better_air(cand_ev, cand_plan, cur_ev, cur_plan, alg, ctx):
             stats.aud(op, "cur_improve")
             stats.aud("R:" + rep, "cur_improve")
             reward = alg.score_current_improvement
             accepted = True
             stagnation = 0
+        elif trial_cross and getattr(alg, "x_improve_only_cross", False) and ctx.mode == "nominal":
+            # X 专属：跨车移动只接受严格改进（不用 SA），以保证相对当前解不退步
+            accepted = False
+            reward = 0.0
+            stagnation += 1
+            stats.aud("CROSS_REPAIR_TRIALS", "rejected_improve_only")
+        elif (ctx.mode == "recovery" and ctx.strategy == "X"
+              and float(getattr(alg, "x_new_air_penalty", 0.0) or 0.0) > 0):
+            # 惩罚后不优于当前解就不用 SA 把新空送接回来
+            accepted = False
+            reward = 0.0
+            stagnation += 1
         else:
             # SA
             if cand_ev.feasible:
@@ -570,23 +666,24 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                                            cap=alg.coordinate_light_cap)
             else:
                 p2, e2 = coordinate_polish(cur_plan, ctx, stats, budget)
-            if e2 is not None and _better(e2, cur_ev, alg):
+            if e2 is not None and _better_air(e2, p2, cur_ev, cur_plan, alg, ctx) and _within_makespan_cap(e2, ctx):
                 cur_plan, cur_ev = p2, e2
-                if _better(e2, best_ev, alg):
+                if _better_air(e2, p2, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e2, ctx):
                     best_ev, best_plan = e2, p2.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 恢复邻域：继续展开受影响残段的接机车/接机点/部分继续（预算允许时）
         if ctx.catalog is not None and stats.iterations % 10 == 0 and budget.evals_left() > 0:
             p_r, e_r = try_recovery_reassign(cur_plan, ctx, budget, stats)
             if (p_r is not None and e_r is not None
-                    and _better(e_r, best_ev if alg.reassign_adopt_only_if_best else cur_ev, alg)):
+                    and _better_air(e_r, p_r, best_ev if alg.reassign_adopt_only_if_best else cur_ev,
+                                    best_plan if alg.reassign_adopt_only_if_best else cur_plan, alg, ctx)):
                 # 第五轮修复(并入第六轮)：目录候选由名义残余计划重建、不含当前 ALNS 进展；
                 # flag=True 时只在优于全局最优时才替换当前解，避免丢弃进展。S/X 同一规则。
                 stats.audit['reassign:adopt_gap_max'] = max(stats.audit.get('reassign:adopt_gap_max', -1e9),
                                                             (e_r.cost or 0.0) - (best_ev.cost or 0.0))
                 stats.aud('REASSIGN', 'adopt')
                 cur_plan, cur_ev = p_r, e_r
-                if _better(e_r, best_ev, alg):
+                if _better_air(e_r, p_r, best_ev, best_plan, alg, ctx):
                     best_ev, best_plan = e_r, p_r.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 第四轮：恢复目标重定位（当前最优计划上；S/X 同算子同预算，资格不同）
@@ -594,9 +691,9 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 and stats.iterations % alg.retarget_period == alg.retarget_period // 2
                 and budget.evals_left() > 0):
             p_t, e_t = try_recovery_retarget(cur_plan, ctx, budget, stats)
-            if p_t is not None and e_t is not None and _better(e_t, cur_ev, alg):
+            if p_t is not None and e_t is not None and _better_air(e_t, p_t, cur_ev, cur_plan, alg, ctx):
                 cur_plan, cur_ev = p_t, e_t
-                if _better(e_t, best_ev, alg):
+                if _better_air(e_t, p_t, best_ev, best_plan, alg, ctx):
                     best_ev, best_plan = e_t, p_t.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 第四轮：X 专用跨车算子（仅当失败航次由≠原放飞车的车接回时有资格；S 恒不触发；消耗同一份预算）
@@ -604,9 +701,9 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 and stats.iterations % alg.cross_period == alg.cross_period // 2
                 and budget.evals_left() > 0):
             p_x, e_x = try_cross_truck_ops(cur_plan, ctx, budget, stats)
-            if p_x is not None and e_x is not None and _better(e_x, cur_ev, alg):
+            if p_x is not None and e_x is not None and _better_air(e_x, p_x, cur_ev, cur_plan, alg, ctx):
                 cur_plan, cur_ev = p_x, e_x
-                if _better(e_x, best_ev, alg):
+                if _better_air(e_x, p_x, best_ev, best_plan, alg, ctx):
                     best_ev, best_plan = e_x, p_x.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 第六轮：X 名义专用“同车航次改跨车回收”算子（S 的 state.nominal_cross=False，永不触发；同一份名义预算）
@@ -615,10 +712,12 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 and budget.evals_left() > 0):
             from .cross_nominal import try_cross_convert
             p_x, e_x = try_cross_convert(cur_plan, ctx, budget, stats)
-            if p_x is not None and e_x is not None and _better(e_x, cur_ev, alg):
+            if (p_x is not None and e_x is not None and _better(e_x, cur_ev, alg)
+                    and _within_makespan_cap(e_x, ctx)
+                    and _cross_energy_ok(p_x, cur_plan, e_x, ctx)):
                 stats.aud("CROSS_CONVERT", "cur_improve")
                 cur_plan, cur_ev = p_x, e_x
-                if _better(e_x, best_ev, alg):
+                if _better(e_x, best_ev, alg) and _within_makespan_cap(e_x, ctx):
                     stats.aud("CROSS_CONVERT", "best")
                     stats.last_improvement_iter = stats.iterations
                     best_ev, best_plan = e_x, p_x.clone()
@@ -631,7 +730,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 from .local_reorder import try_local_reorder
                 p3, e3 = try_local_reorder(best_plan, best_ev, ctx, stats, budget, window_cursor)
                 window_cursor += 1
-                if p3 is not None and e3 is not None and _better(e3, best_ev, alg):
+                if (p3 is not None and e3 is not None and _better_air(e3, p3, best_ev, best_plan, alg, ctx)
+                        and _within_makespan_cap(e3, ctx)):
                     best_ev, best_plan = e3, p3.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg, variant)
@@ -891,7 +991,7 @@ def try_recovery_retarget(plan: Plan, ctx: SolveContext, budget: Budget, stats: 
             f_ = plan.sorties[ctx.frag_sid]
             tag = "RETARGET_CROSS" if entry["truck"] != (f_.launch_truck or f_.truck) else "RETARGET_SAME"
             stats.destroy_used[tag] = stats.destroy_used.get(tag, 0) + 1
-            if ev.feasible and (best_ev is None or _better(ev, best_ev, ctx.alg)):
+            if ev.feasible and (best_ev is None or _better_air(ev, cand, best_ev, best_p, ctx.alg, ctx)):
                 best_p, best_ev = cand, ev
             break
     return best_p, best_ev
@@ -910,7 +1010,7 @@ def try_cross_truck_ops(plan: Plan, ctx: SolveContext, budget: Budget, stats: Se
         stats.destroy_used[tag] = stats.destroy_used.get(tag, 0) + 1
         if ev.feasible:
             stats.destroy_used[tag + "_FEAS"] = stats.destroy_used.get(tag + "_FEAS", 0) + 1
-            if best_ev is None or _better(ev, best_ev, ctx.alg):
+            if best_ev is None or _better_air(ev, cand, best_ev, best_p, ctx.alg, ctx):
                 best_p, best_ev = cand, ev
     return best_p, best_ev
 
@@ -949,7 +1049,7 @@ def try_recovery_reassign(plan: Plan, ctx: SolveContext, budget: Budget,
                               "RECOVERY_INITIAL_BASE", stats, budget)
             if ev is None:
                 break
-            if ev.feasible and (best_ev is None or _better(ev, best_ev, ctx.alg)):
+            if ev.feasible and (best_ev is None or _better_air(ev, cand, best_ev, best_p, ctx.alg, ctx)):
                 best_p, best_ev = cand, ev
             break
     return best_p, best_ev
