@@ -122,8 +122,8 @@ def _build(plan, state, inst, phys, mode: str, land: bool = False):
 
 
 def _evaluate(plan, state, inst, phys, H):
-    # 规划储备是搜索用的余量。应急收尾只拒绝电量真正为负的飞行，班次之外按加班计价。
-    priced = dataclasses.replace(phys, soft_h=True, reserve_fraction=0.0)
+    # T02-A：E_min 是硬约束，应急收尾同样遵守（不再把 reserve_fraction 置 0）。班次之外按加班计价。
+    priced = dataclasses.replace(phys, soft_h=True)
     return evaluate_plan(plan, inst, priced, state, H, "GROUND_FINISH")
 
 
@@ -143,7 +143,7 @@ def _attempt(plan, state, inst, phys, H, mode: str, land: bool) -> tuple[float |
 
 
 def _reachable_customers(plan, state, inst, phys, sortie, k: int) -> list[str]:
-    """在飞残段按当前电量、带当前机载质量能飞到（电量不为负）的客户点，按距离取前 k 个。
+    """在飞残段按当前电量、带当前机载质量能飞到（到达时电量不低于 E_min）的客户点，按距离取前 k 个。
 
     含无人机此刻所在的客户点（距离 0）。只看巡航电量；悬停、等待、回收由 _evaluate 复核。
     """
@@ -157,7 +157,7 @@ def _reachable_customers(plan, state, inst, phys, sortie, k: int) -> list[str]:
     out = []
     for c in inst.customers:
         d = math.hypot(c.x - pos[0], c.y - pos[1])
-        if d * per_m <= e0 + phys.energy_tol:
+        if d * per_m <= e0 - phys.e_min + phys.energy_tol:
             out.append((d, c.customer_id))
     out.sort()
     return [c for _, c in out[:k]]
@@ -214,4 +214,5 @@ def ground_finish_cost(plan, state, inst, phys, H, relocate: bool = True) -> tup
         if cost is not None:
             return cost, note
         notes.append(note)
-    return None, " | ".join(notes) or "NO_ATTEMPT"
+    # T02-A：所有收尾都不可行时明确标成未定价，调用方不会把 None 当成 0。
+    return None, "UNPRICED: " + (" | ".join(notes) or "NO_ATTEMPT")

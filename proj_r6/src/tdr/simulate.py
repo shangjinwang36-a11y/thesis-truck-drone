@@ -846,6 +846,8 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
         cost, status = ground_finish_cost(plan_, state_, inst, phys, H)
         res.ground_finish_cost = cost
         res.ground_finish_status = status
+        if cost is None:
+            res.notes.append("GROUND_FINISH_UNPRICED")
 
     while True:
         ev_now = evaluate_plan(plan, inst, phys, state, H, "SIMULATE")
