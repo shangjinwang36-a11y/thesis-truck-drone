@@ -96,7 +96,7 @@ def propose_convert(plan, ctx, n: int, tried: set):
 
 
 def try_cross_convert(plan, ctx, budget, stats):
-    from .alns import _better, _cross_energy_ok, _within_makespan_cap, eval_counted
+    from .alns import _better, _cross_energy_ok, _nominal_cross_intact, _within_makespan_cap, eval_counted
     best_p, best_ev = None, None
     if not hasattr(ctx, "cross_tried"):
         return None, None
@@ -115,8 +115,171 @@ def try_cross_convert(plan, ctx, budget, stats):
             if not _cross_energy_ok(cand, plan, ev, ctx):
                 stats.aud("CROSS_ENERGY_MARGIN", "rejected_convert")
                 continue
+            if not _nominal_cross_intact(cand, ev, ctx):
+                stats.aud("CROSS_ROBUST", "rejected_convert")
+                continue
             if best_ev is None or _better(ev, best_ev, ctx.alg):
                 best_p, best_ev = cand, ev
         else:
             stats.aud("CROSS_CONVERT", "infeasible")
+    return best_p, best_ev
+
+
+def _kept_air(plan, inst, air, receiver: str) -> tuple[list[str], list[str]]:
+    """接机车路线上的客户留在车上。返回（仍空送的票，改地面的票）。"""
+    owned = set()
+    for vid in plan.routes.get(receiver, []):
+        owned.add(plan.visits[vid].customer)
+    kept, moved = [], []
+    for p in air:
+        cust = inst.parcel_to_customer.get(p)
+        if cust in owned:
+            moved.append(p)
+        else:
+            kept.append(p)
+    return kept, moved
+
+
+def _place_on_truck(plan, inst, parcels, truck: str) -> None:
+    by_c = {}
+    for vid in plan.routes.get(truck, []):
+        by_c.setdefault(plan.visits[vid].customer, vid)
+    for p in parcels:
+        cust = inst.parcel_to_customer[p]
+        vid = by_c.get(cust)
+        if vid is None:
+            continue
+        ground = plan.visits[vid].ground
+        if p not in ground:
+            ground.append(p)
+
+
+def propose_exchange(plan, ctx, n: int, tried: set):
+    """X 名义：两架无人机互换回收车。
+
+    单向把客机留在对方车上直到收工，会在「每车 2 架、3 个机位」下把对方占满。
+    互换以后每车仍是走一架、来一架：离开的那架先起飞，进来的那架才落地，
+    落地之后在车的机体数不超过机位数减一。S 的 nominal_cross 为假，这里直接空。
+    """
+    if not getattr(ctx.state, "nominal_cross", False):
+        return []
+    if not getattr(ctx.alg, "x_cross_exchange", False):
+        return []
+    inst, phys = ctx.inst, ctx.phys
+    slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 0.0) or 0.0)
+    from .cross_robust import reserve_kwh, slack_floor_kwh
+    need = max(reserve_kwh(phys), slack_floor_kwh(phys, slack))
+    tails = []
+    for sids in plan.drone_sorties.values():
+        if not sids:
+            continue
+        s = plan.sorties[sids[-1]]
+        if s.started or not s.air or s.launch_vid not in plan.visits or s.rec_vid not in plan.visits:
+            continue
+        lt = plan.visits[s.launch_vid].truck
+        if plan.visits[s.rec_vid].truck != lt:
+            continue
+        route = plan.routes.get(lt, [])
+        if s.launch_vid not in route or s.rec_vid not in route:
+            continue
+        if route.index(s.launch_vid) >= route.index(s.rec_vid):
+            continue
+        tails.append(s)
+    ranked = []
+    for i, a in enumerate(tails):
+        ta = plan.visits[a.launch_vid].truck
+        for b in tails[i + 1:]:
+            tb = plan.visits[b.launch_vid].truck
+            if ta == tb:
+                continue
+            key = (min(a.sid, b.sid), max(a.sid, b.sid))
+            if key in tried:
+                continue
+            kept_a, _ = _kept_air(plan, inst, a.air, tb)
+            kept_b, _ = _kept_air(plan, inst, b.air, ta)
+            if not kept_a or not kept_b:
+                continue
+            try:
+                ea = air_energy(inst, phys, sortie_start(inst, plan, a), kept_a, _pos(inst, plan, b.rec_vid))
+                eb = air_energy(inst, phys, sortie_start(inst, plan, b), kept_b, _pos(inst, plan, a.rec_vid))
+            except KeyError:
+                continue
+            # 飞行电量已经吃掉裕度时，最终时刻表不可能合格，不必再送去完整评价。
+            if ea > phys.e_cap - need + phys.energy_tol or eb > phys.e_cap - need + phys.energy_tol:
+                continue
+            ranked.append((ea + eb, a.sid, b.sid))
+    ranked.sort()
+    out = []
+    from .evaluate import has_wait_cycle
+    for _, sa, sb in ranked:
+        if len(out) >= n:
+            break
+        key = (min(sa, sb), max(sa, sb))
+        tried.add(key)
+        cand = plan.clone()
+        a = cand.sorties[sa]
+        b = cand.sorties[sb]
+        ta = cand.visits[a.launch_vid].truck
+        tb = cand.visits[b.launch_vid].truck
+        rec_a, rec_b = a.rec_vid, b.rec_vid
+        kept_a, moved_a = _kept_air(cand, inst, a.air, tb)
+        kept_b, moved_b = _kept_air(cand, inst, b.air, ta)
+        _place_on_truck(cand, inst, moved_a, tb)
+        _place_on_truck(cand, inst, moved_b, ta)
+        a.air = kept_a
+        b.air = kept_b
+        a.rec_vid = rec_b
+        b.rec_vid = rec_a
+        if has_wait_cycle(cand):
+            continue
+        out.append(("CROSS_EXCHANGE", cand))
+    return out
+
+
+def _exchange_worth(ev, cur_ev, alg) -> bool:
+    """严格改进，或成本上升不超过 tau。tau=0 时只收改进，和主循环一样。"""
+    from .alns import _better
+    if cur_ev is None or ev is None or not ev.feasible:
+        return False
+    if _better(ev, cur_ev, alg):
+        return True
+    tau = float(getattr(alg, "x_exchange_cost_tau", 0.0) or 0.0)
+    if tau <= 0 or ev.cost is None or cur_ev.cost is None:
+        return False
+    return ev.cost <= cur_ev.cost + tau + 1e-9
+
+
+# 从同一份名义预算里留出的评价次数。按飞行电量排序时，C100/RC100 上成本最低的稳健互换排在第 14 位左右。
+EXCHANGE_EVALS = 24
+
+
+def try_cross_exchange(plan, ctx, budget, stats, n: int | None = None):
+    from .alns import _nominal_cross_intact, _within_makespan_cap, eval_counted
+    best_p, best_ev = None, None
+    if not hasattr(ctx, "cross_tried"):
+        return None, None
+    tried = getattr(ctx, "exchange_tried", None)
+    if tried is None:
+        tried = set()
+        ctx.exchange_tried = tried
+    limit = ctx.alg.cross_n if n is None else n
+    for tag, cand in propose_exchange(plan, ctx, limit, tried):
+        if budget.evals_left() <= 0:
+            break
+        ev = eval_counted(cand, ctx.inst, ctx.phys, ctx.state, ctx.H, "CROSS_EXCHANGE", stats, budget)
+        if ev is None:
+            break
+        stats.aud("CROSS_EXCHANGE", "calls")
+        if not ev.feasible:
+            stats.aud("CROSS_EXCHANGE", "infeasible")
+            continue
+        stats.aud("CROSS_EXCHANGE", "feasible")
+        if not _within_makespan_cap(ev, ctx):
+            stats.aud("CROSS_EXCHANGE", "rejected_makespan")
+            continue
+        if not _nominal_cross_intact(cand, ev, ctx):
+            stats.aud("CROSS_EXCHANGE", "rejected_robust")
+            continue
+        if best_ev is None or (ev.cost is not None and (best_ev.cost is None or ev.cost < best_ev.cost - 1e-9)):
+            best_p, best_ev = cand, ev
     return best_p, best_ev

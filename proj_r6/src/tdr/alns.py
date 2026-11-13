@@ -201,6 +201,29 @@ def _cross_energy_ok(cand_plan: Plan, cur_plan: Plan, ev: Evaluation | None, ctx
     return True
 
 
+def _nominal_cross_intact(plan: Plan, ev: Evaluation | None, ctx: "SolveContext") -> bool:
+    """X 名义：最终时刻表上每一条跨车航次都要过稳健性检查。
+
+    开关关掉时恒真，旧的「只在回收点改变时查 5%」仍然单独生效。
+    S 的 nominal_cross 为假，不进这条。后面的移动即使没有改回收点，
+    只要把飞行或等待拉长到门槛以下，这里也会拒绝。
+    """
+    if not getattr(ctx.alg, "x_cross_robust", False):
+        return True
+    if ctx.mode != "nominal" or not getattr(ctx.state, "nominal_cross", False):
+        return True
+    if plan is None:
+        return True
+    from .evaluate import is_cross_sortie
+    if not any(is_cross_sortie(plan, s) for s in plan.sorties.values()):
+        return True
+    if ev is None or not ev.feasible or ev.timeline is None:
+        return False
+    from .cross_robust import cross_robust_violations
+    slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 0.0) or 0.0)
+    return not cross_robust_violations(plan, ctx.inst, ctx.phys, ev.timeline, slack)
+
+
 def eval_counted(plan: Plan, inst: Instance, phys: PhysicalConfig, state: StartState,
                  H: float | None, reason: str, stats: SearchStats, budget: Budget,
                  allow_wait_repair: bool = True) -> Evaluation | None:
@@ -605,9 +628,13 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         if not _within_makespan_cap(cand_ev, ctx):
             blocked = True
             stats.aud("HS_CAP", "rejected")
-        elif trial_cross and not _cross_energy_ok(cand_plan, cur_plan, cand_ev, ctx):
+        elif (trial_cross and not getattr(alg, "x_cross_robust", False)
+              and not _cross_energy_ok(cand_plan, cur_plan, cand_ev, ctx)):
             blocked = True
             stats.aud("CROSS_ENERGY_MARGIN", "rejected")
+        elif not _nominal_cross_intact(cand_plan, cand_ev, ctx):
+            blocked = True
+            stats.aud("CROSS_ROBUST", "rejected")
         if blocked:
             reward = 0.0
             stagnation += 1
@@ -685,7 +712,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                                            cap=alg.coordinate_light_cap)
             else:
                 p2, e2 = coordinate_polish(cur_plan, ctx, stats, budget)
-            if e2 is not None and _better_air(e2, p2, cur_ev, cur_plan, alg, ctx) and _within_makespan_cap(e2, ctx):
+            if (e2 is not None and _better_air(e2, p2, cur_ev, cur_plan, alg, ctx)
+                    and _within_makespan_cap(e2, ctx) and _nominal_cross_intact(p2, e2, ctx)):
                 cur_plan, cur_ev = p2, e2
                 if _better_air(e2, p2, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e2, ctx):
                     best_ev, best_plan = e2, p2.clone()
@@ -746,7 +774,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             p_x, e_x = try_cross_convert(cur_plan, ctx, budget, stats)
             if (p_x is not None and e_x is not None and _better(e_x, cur_ev, alg)
                     and _within_makespan_cap(e_x, ctx)
-                    and _cross_energy_ok(p_x, cur_plan, e_x, ctx)):
+                    and _cross_energy_ok(p_x, cur_plan, e_x, ctx)
+                    and _nominal_cross_intact(p_x, e_x, ctx)):
                 stats.aud("CROSS_CONVERT", "cur_improve")
                 cur_plan, cur_ev = p_x, e_x
                 if _better(e_x, best_ev, alg) and _within_makespan_cap(e_x, ctx):
@@ -763,7 +792,7 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 p3, e3 = try_local_reorder(best_plan, best_ev, ctx, stats, budget, window_cursor)
                 window_cursor += 1
                 if (p3 is not None and e3 is not None and _better_air(e3, p3, best_ev, best_plan, alg, ctx)
-                        and _within_makespan_cap(e3, ctx)):
+                        and _within_makespan_cap(e3, ctx) and _nominal_cross_intact(p3, e3, ctx)):
                     best_ev, best_plan = e3, p3.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg, variant)

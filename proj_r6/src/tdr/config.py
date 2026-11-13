@@ -236,6 +236,17 @@ class AlgorithmConfig:
     # 第 5 轮用它在调参种子 101–110 和一次评价种子上量过“整份删掉”的代价，见 ROUND5_REPORT_CN.md。
     # 恢复阶段仍允许跨车。S 不读这个字段。默认关，第 4 轮预设也不打开。
     x_adopt_s_if_cross: bool = False
+    # 第 6 轮：X 名义跨车按最终时刻表逐条检查（5% 裕度、会合延迟、落地后留一个机位、
+    # 接机车自己的客户留在车上）。不合格的只修这一条，不整份退回 S。S 的 nominal_cross 为假，不读。
+    x_cross_robust: bool = False
+    # 会合还能再推迟这么多秒（空载悬停）而不低于 E_min。0 表示不另加延迟，只保留 5% 裕度。
+    # 具体秒数在调参种子 101–110 上选，不在评价种子上选。
+    x_rendezvous_slack_s: float = 90.0
+    # X 名义：两架无人机互换回收车。单向把客机留到收工会占满 3 个机位。S 不触发。
+    x_cross_exchange: bool = False
+    # 互换允许比当前解贵这么多，只要最终时刻表稳健。0 表示必须严格更便宜。
+    # 第 6 轮在调参种子上选这个数。S 不跑这个算子。
+    x_exchange_cost_tau: float = 0.0
     # X 专属：改回收车时尽量保留/改派后续航次，而不是整链丢掉
     x_preserve_cross_repair: bool = False
     # X 专属：同一残差上保留 S 资格可行恢复作为候选，使 X 恢复不差于该残差上的 S 恢复

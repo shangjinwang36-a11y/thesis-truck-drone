@@ -130,10 +130,20 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         # 以真实储备重评价（抬高储备的可行解在真实参数下必可行），成本/H/核验均按真实参数
         ev = evaluate_plan(res.plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
         assert ev.feasible, ev.violations
+    repair_actions: list[str] = []
+    n_cross_before_repair = None
+    if cross_launch and getattr(alg, "x_cross_robust", False) and ev is not None and ev.feasible:
+        from .cross_robust import repair_nominal_cross
+        from .evaluate import is_cross_sortie as _isc_before
+        n_cross_before_repair = sum(1 for s in res.plan.sorties.values() if _isc_before(res.plan, s))
+        slack_s = float(getattr(alg, "x_rendezvous_slack_s", 0.0) or 0.0)
+        res.plan, repair_actions = repair_nominal_cross(res.plan, inst, phys, slack_s)
+        ev = evaluate_plan(res.plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
     adopted_s = False
     adopt_reason = None
-    if (adopt_from and cross_launch and ev is not None and ev.feasible
-            and (getattr(alg, "x_adopt_s_nominal", False) or makespan_cap is not None)):
+    if (adopt_from and cross_launch and ev is not None
+            and (getattr(alg, "x_adopt_s_nominal", False) or makespan_cap is not None
+                 or not ev.feasible)):
         if s_plan_cap is None:
             s_plan_cap, _, _ = load_case_nominal(inst, adopt_from)
             s_ev_cap = evaluate_plan(s_plan_cap, inst, phys, initial_state(inst, phys), None, "NOMINAL")
@@ -141,14 +151,37 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         over_cap = False
         # 搜索时上限抬到阶段1，避免阶段1本身越限导致跨车移动全灭。
         # 最终对外的 X 方案仍必须 makespan ≤ S：否则评价用 H_S 时余量被吃掉（C50 只长 18s 也会在失败后变贵）。
-        if makespan_cap is not None and ev.timeline and ev.timeline.truck_finish:
+        if makespan_cap is not None and ev.feasible and ev.timeline and ev.timeline.truck_finish:
             over_cap = max(ev.timeline.truck_finish.values()) > makespan_cap + 1e-6
         worse = (getattr(alg, "x_adopt_s_nominal", False) and s_ev is not None and s_ev.feasible
-                 and ev.cost is not None and s_ev.cost is not None and ev.cost > s_ev.cost + 1e-9)
-        if s_ev is not None and s_ev.feasible and (over_cap or worse):
+                 and ev.feasible and ev.cost is not None and s_ev.cost is not None
+                 and ev.cost > s_ev.cost + 1e-9)
+        keep_robust = False
+        if (getattr(alg, "x_cross_robust", False) and ev.feasible and ev.timeline is not None
+                and not over_cap):
+            from .cross_robust import cross_robust_violations
+            from .evaluate import is_cross_sortie as _isc_keep
+            slack_s = float(getattr(alg, "x_rendezvous_slack_s", 0.0) or 0.0)
+            has_cross = any(_isc_keep(res.plan, s) for s in res.plan.sorties.values())
+            viol = cross_robust_violations(res.plan, inst, phys, ev.timeline, slack_s) if has_cross else {}
+            tau = float(getattr(alg, "x_exchange_cost_tau", 0.0) or 0.0)
+            within_tau = True
+            if (s_ev is not None and s_ev.cost is not None and ev.cost is not None):
+                within_tau = ev.cost <= s_ev.cost + tau + 1e-9
+            # 稳健跨车可以比 S 贵，但贵不过 tau。否则先回到 S，再在 S 上试一次互换。
+            keep_robust = has_cross and not viol and within_tau
+        if s_ev is not None and s_ev.feasible and (
+                not ev.feasible or over_cap or (worse and not keep_robust)):
+            if not ev.feasible:
+                adopt_reason = "repair_infeasible"
+            elif over_cap and worse:
+                adopt_reason = "makespan_cap+cost"
+            elif over_cap:
+                adopt_reason = "makespan_cap"
+            else:
+                adopt_reason = "cost"
             res.plan, ev = s_plan, s_ev
             adopted_s = True
-            adopt_reason = "makespan_cap" if over_cap and not worse else ("cost" if worse else "makespan_cap")
     # 诊断回退，默认关。打开后整份丢掉仍含跨车的 X 名义。正式设计要保留名义跨车，不走这里。
     if cross_launch and getattr(alg, "x_adopt_s_if_cross", False) and adopt_from:
         from .evaluate import is_cross_sortie as _is_cross
@@ -160,6 +193,48 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
                 res.plan, ev = s_plan_cap.clone(), s_ev_cap
                 adopted_s = True
                 adopt_reason = (adopt_reason + "+cross_nominal") if adopt_reason else "cross_nominal"
+    # 互换放在“是否退回 S”之后：阶段2没超过 S 时，基线就是 S，成本差是相对 S 的，
+    # 不是相对还贵着几元到十几元的阶段1解。已经有跨车航次就不再叠第二条互换。
+    if (cross_launch and getattr(alg, "x_cross_exchange", False) and ev is not None
+            and ev.feasible and res.plan is not None):
+        from .alns import SearchStats, _nominal_cross_intact, _within_makespan_cap
+        from .cross_nominal import EXCHANGE_EVALS, _exchange_worth, try_cross_exchange
+        from .evaluate import is_cross_sortie as _isc_ex
+        already = any(_isc_ex(res.plan, s) for s in res.plan.sorties.values())
+        state_ex = initial_state(inst, phys)
+        state_ex.nominal_cross = True
+        cap_ex = makespan_cap
+        if cap_ex is None and ev.timeline is not None and ev.timeline.truck_finish:
+            cap_ex = max(ev.timeline.truck_finish.values())
+        ctx_ex = SolveContext(inst=inst, phys=phys, alg=alg, state=state_ex, H=None,
+                              mode="nominal", makespan_cap=cap_ex)
+        stats_ex = SearchStats()
+        b_ex = Budget(EXCHANGE_EVALS, None)
+        if not already:
+            from .cross_robust import cross_robust_violations
+            p_e, e_e = try_cross_exchange(res.plan, ctx_ex, b_ex, stats_ex, n=EXCHANGE_EVALS)
+            slack_s = float(getattr(alg, "x_rendezvous_slack_s", 0.0) or 0.0)
+            robust_ok = False
+            if (p_e is not None and e_e is not None and e_e.feasible and e_e.timeline is not None):
+                robust_ok = not cross_robust_violations(p_e, inst, phys, e_e.timeline, slack_s)
+            ok = (robust_ok and _exchange_worth(e_e, ev, alg)
+                  and _within_makespan_cap(e_e, ctx_ex)
+                  and _nominal_cross_intact(p_e, e_e, ctx_ex))
+            if ok:
+                res.plan, ev = p_e, e_e
+                stats_ex.aud("CROSS_EXCHANGE", "adopted")
+            else:
+                stats_ex.aud("CROSS_EXCHANGE", "not_adopted")
+        else:
+            stats_ex.aud("CROSS_EXCHANGE", "skipped_existing")
+        res.stats.eval_requests = int(res.stats.eval_requests) + int(b_ex.used)
+        if res.stats.counts is None:
+            res.stats.counts = {}
+        audit = res.stats.counts.setdefault("audit", {})
+        for name, keys in stats_ex.audit.items():
+            bucket = audit.setdefault(name, {})
+            for k, v in keys.items():
+                bucket[k] = bucket.get(k, 0) + v
     H = max(ev.timeline.truck_finish.values()) + phys.shift_slack_s
     from .evaluate import is_cross_sortie as is_cross_sortie_
     if not cross_launch:   # S：名义阶段不得出现跨车航次
@@ -227,6 +302,8 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         "phase1_cost": res.stats.counts.get("phase1_cost"),
         "adopted_s_nominal": adopted_s,
         "adopt_reason": adopt_reason,
+        "n_cross_before_repair": n_cross_before_repair,
+        "cross_repair": repair_actions,
         "makespan_cap": makespan_cap,
         "makespan_s": (max(ev.timeline.truck_finish.values())
                        if ev.timeline and ev.timeline.truck_finish else None),

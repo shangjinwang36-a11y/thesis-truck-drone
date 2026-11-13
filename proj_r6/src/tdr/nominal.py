@@ -215,7 +215,6 @@ def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_
     阶段2（剩余预算 b'=B−阶段1实际用量）：从阶段1的最优解出发继续 ALNS，随机流接着阶段1的状态；
         S：照旧同车算子；X：打开跨车候选与 CROSS_CONVERT。总预算 S/X 相同(B)。
     X 的可行域包含 S 的；两者在 X 第一次选到跨车候选之前轨迹逐步相同。"""
-    from copy import deepcopy
     t0 = time.perf_counter()
     B = eval_budget if eval_budget is not None else alg.nominal_eval_budget
     r1 = build_nominal(inst, phys, alg, rngs, eval_budget=B - b, variant=variant, n_used=n_used,
@@ -226,7 +225,12 @@ def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_
     state = initial_state(inst, phys)
     state.nominal_cross = bool(cross_launch)
     stats2 = SearchStats()
-    budget2 = Budget(max(1, B - used1), None)
+    # 互换回收车的评价从阶段2的同一份预算里留出，发布时再花。S 不留。
+    hold = 0
+    if cross_launch and getattr(alg, "x_cross_exchange", False):
+        from .cross_nominal import EXCHANGE_EVALS
+        hold = EXCHANGE_EVALS
+    budget2 = Budget(max(1, B - used1 - hold), None)
     # 上限至少抬到阶段1完工时刻。S 的阶段2常常把 makespan 再压短，若直接用 S 的完工时刻，
     # 阶段1解本身已经越限，跨车移动会被全部拒绝。这里只禁止「比共享阶段1更长」。
     p1_finish = None
@@ -247,6 +251,7 @@ def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_
     stats2.eval_requests = used1 + stats2.eval_requests
     stats2.wall_s = time.perf_counter() - t0
     stats2.counts = dict(res.stats.counts)
+    stats2.counts["exchange_hold"] = hold
     stats2.counts["phase1_evals"] = used1
     stats2.counts["phase1_cost"] = r1.evaluation.cost
     stats2.counts["makespan_cap_effective"] = cap

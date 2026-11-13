@@ -42,6 +42,9 @@ PRESETS = {
     # 开关依据来自调参种子 101–110。恢复仍可跨车。
     "R5": {"label": "诊断：含跨车的名义整份退回 S（不作为最终设计）",
            "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r5": True},
+    # 第六轮：诊断回退保持关闭。名义跨车按航次做稳健性检查，并允许两机互换回收车。
+    "R6": {"label": "名义跨车按航次稳健 + 互换回收车",
+           "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r6": True},
 }
 
 
@@ -74,6 +77,11 @@ def configs(pkg, preset: str):
         ad.update(x_risk_price_air=True, failure_prob=0.2, x_new_air_penalty=0.0)
     if ps.get("r5"):
         ad.update(x_adopt_s_if_cross=True)
+    if ps.get("r6"):
+        # 整份退回同车保持关闭。slack 的秒数可以在调参种子上改这一处，不在评价种子上改。
+        ad.update(x_adopt_s_if_cross=False, x_cross_robust=True,
+                  x_rendezvous_slack_s=90.0, x_cross_exchange=True,
+                  x_exchange_cost_tau=2.0)
     alg = AlgorithmConfig.from_dict(ad)
     alg.recovery_eval_budget_override = None
     alg.recovery_time_limit_override_s = None
@@ -313,7 +321,8 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
 
     # 名义共享：A0 与 A1 共用 A0 名义；A2 与 A3 共用 A2 名义；A4 独立
-    nom_src = {"A0": "A0", "A1": "A0", "A2": "A2", "A3": "A2", "A4": "A4", "R3": "R3", "R4": "R3", "R5": "R3"}
+    nom_src = {"A0": "A0", "A1": "A0", "A2": "A2", "A3": "A2", "A4": "A4",
+               "R3": "R3", "R4": "R3", "R5": "R3", "R6": "R6"}
 
     if args.phase in ("nominal", "all"):
         need = sorted({nom_src[p] for p in presets if p in nom_src})
@@ -329,7 +338,10 @@ def main():
         print(f"NOMINAL done in {time.perf_counter()-t0:.1f}s", flush=True)
         for r in res:
             print(f"  {r['preset']} {r['case']} S={r['S'].get('cost')} X={r['X'].get('cost')} "
-                  f"Xcross={r['X'].get('n_cross_sorties')} adopted={r['X'].get('adopted_s_nominal')} wall={r['wall']:.1f}",
+                  f"Xcross={r['X'].get('n_cross_sorties')} "
+                  f"before_repair={r['X'].get('n_cross_before_repair')} "
+                  f"repair={r['X'].get('cross_repair')} adopted={r['X'].get('adopted_s_nominal')} "
+                  f"reason={r['X'].get('adopt_reason')} wall={r['wall']:.1f}",
                   flush=True)
 
     if args.phase in ("episodes", "all"):
