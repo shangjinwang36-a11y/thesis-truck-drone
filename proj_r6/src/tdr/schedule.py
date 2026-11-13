@@ -634,7 +634,9 @@ def _swap_pass(tl: Timeline, plan: Plan, phys: PhysicalConfig, state: StartState
                 sid = st.sid
                 s = plan.sorties.get(sid) if sid is not None else None
                 if s is None or s.started or sid in swaps:
-                    msg = f"SWAP_CANNOT_FIX:{d}@{st.start:.1f}:e={e:.6f}<{req:.6f}"
+                    # T01：@ 后仍是阶段开始时刻（recovery.py 的正则依赖它）；e 是该阶段结束时的电量。
+                    msg = (f"SWAP_CANNOT_FIX:{d}@{st.start:.1f}:e={e:.6f}<{req:.6f}"
+                           f":stage={st.kind}:end={st.end:.1f}")
                 else:
                     new.add(sid)
                 break

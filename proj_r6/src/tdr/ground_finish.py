@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import math
 
 from .evaluate import evaluate_plan
 from .moves import remove_sortie_closure, repair_ground_append, repair_ground_only
@@ -141,11 +142,65 @@ def _attempt(plan, state, inst, phys, H, mode: str, land: bool) -> tuple[float |
     return None, f"{tag}:{str(note)[:160]}"
 
 
-def ground_finish_cost(plan, state, inst, phys, H) -> tuple[float | None, str]:
+def _reachable_customers(plan, state, inst, phys, sortie, k: int) -> list[str]:
+    """在飞残段按当前电量、带当前机载质量能飞到（电量不为负）的客户点，按距离取前 k 个。
+
+    含无人机此刻所在的客户点（距离 0）。只看巡航电量；悬停、等待、回收由 _evaluate 复核。
+    """
+    ds = state.drone_start.get(sortie.drone)
+    pos = sortie.start_pos or (ds.pos if ds is not None else None)
+    if pos is None:
+        return []
+    e0 = state.drone_energy.get(sortie.drone, ds.energy if ds is not None else 0.0)
+    mass = sum(inst.parcel_mass[p] for p in list(sortie.air) + list(sortie.handover))
+    per_m = phys.fly_energy_kwh(1.0, mass)
+    out = []
+    for c in inst.customers:
+        d = math.hypot(c.x - pos[0], c.y - pos[1])
+        if d * per_m <= e0 + phys.energy_tol:
+            out.append((d, c.customer_id))
+    out.sort()
+    return [c for _, c in out[:k]]
+
+
+def _attempt_relocate(plan, state, inst, phys, H, k: int = 8) -> tuple[float | None, str]:
+    """T01：六种收尾都不可行时，把一个在飞残段的接机点改到它的放飞车上一个电量够得着的客户点。
+
+    只用放飞车，所以这是 S 资格的方案，对 R、X 同样合法；函数仍不接收策略。
+    原收尾只保留原接机点，在飞机飞不到原接机点时（如失败后带货回程）会漏掉合法收尾。
+    电量与班次规则与 _evaluate 相同；取最便宜的可行方案，结果确定。
+    """
+    best: tuple[float, str] | None = None
+    for s in sorted((x for x in plan.sorties.values() if x.started), key=lambda x: x.sid):
+        truck = s.launch_truck or s.truck
+        if truck not in plan.routes:
+            continue
+        lo = int((getattr(state, "truck_min_insert", {}) or {}).get(truck, 0))
+        for cust in _reachable_customers(plan, state, inst, phys, s, k):
+            for pos in range(lo, len(plan.routes[truck]) + 1):
+                for land in (True, False):
+                    for mode in ("truck", "keep_inflight", "overtime_only"):
+                        p = plan.clone()
+                        v = p.add_visit(truck, cust, pos=pos, ground=[])
+                        p.sorties[s.sid].rec_vid = v.vid
+                        cost, note = _attempt(p, state, inst, phys, H, mode, land)
+                        if cost is None:
+                            continue
+                        tag = f"FEASIBLE:relocate:{note.split(':', 1)[1]}:s{s.sid}->{cust}@{truck}#{pos}"
+                        if best is None or cost < best[0] - 1e-9:
+                            best = (cost, tag)
+    if best is None:
+        return None, "relocate:NONE"
+    return best
+
+
+def ground_finish_cost(plan, state, inst, phys, H, relocate: bool = True) -> tuple[float | None, str]:
     """返回 (真实成本, 状态)。成本含里程、工时、能耗和加班，不含每客户罚金。
 
     前三种收尾都不可行时，才允许已在飞的残段改成降落等待。这只去掉接机点上的悬停耗电，
     不改已经由前三种收尾定过价的回合，也不加每客户罚金。飞到接机点的电耗仍照计。
+    六种都不可行时（T01），再试把在飞残段的接机点挪到放飞车上够得着的客户点。
+    已经由前六种定过价的回合不受影响。relocate=False 复现旧行为。
     """
     notes = []
     for land in (False, True):
@@ -154,4 +209,9 @@ def ground_finish_cost(plan, state, inst, phys, H) -> tuple[float | None, str]:
             if cost is not None:
                 return cost, note
             notes.append(note)
+    if relocate:
+        cost, note = _attempt_relocate(plan, state, inst, phys, H)
+        if cost is not None:
+            return cost, note
+        notes.append(note)
     return None, " | ".join(notes) or "NO_ATTEMPT"
