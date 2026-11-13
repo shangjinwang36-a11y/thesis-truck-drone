@@ -65,12 +65,19 @@ def _fingerprint(plan) -> tuple:
     routes = tuple((t, tuple(plan.route_customers(t))) for t in sorted(plan.routes))
     ground = tuple(sorted(
         (v.truck, v.customer, tuple(v.ground)) for v in plan.visits.values()))
+    # T03/T08a：放飞点和接机点按（车, 路线位置, 客户）记入。以前只记接机车，
+    # 同一航次换到同车另一访问放飞/回收时指纹不变，会错用别的计划的情景分。
+    pos = {}
+    for t, route in plan.routes.items():
+        for i, vid in enumerate(route):
+            pos[vid] = (t, i, plan.visits[vid].customer)
     air = []
     for s in plan.sorties.values():
-        rec_truck = None
-        if s.rec_vid in plan.visits:
-            rec_truck = plan.visits[s.rec_vid].truck
-        air.append((s.drone, s.truck, rec_truck, tuple(s.air), s.mode, round(float(s.lam), 5)))
+        launch_pt = pos.get(s.launch_vid) if s.launch_vid is not None else ("DEPOT",)
+        rec_pt = pos.get(s.rec_vid)
+        air.append((s.drone, str(s.truck), str(s.launch_truck), repr(launch_pt), repr(rec_pt), tuple(s.air),
+                    tuple(s.handover), s.mode, round(float(s.lam), 5), int(s.launch_priority),
+                    int(s.rec_priority), bool(s.landed), bool(s.started)))
     return (routes, ground, tuple(sorted(air)))
 
 
