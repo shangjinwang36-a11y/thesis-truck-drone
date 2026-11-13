@@ -35,6 +35,21 @@ def is_cross_sortie(plan: Plan, s) -> bool:
     return plan.visits[s.launch_vid].truck != plan.visits[s.rec_vid].truck
 
 
+def recovery_is_cross(plan: Plan, s) -> bool:
+    """放飞车与回收车不同，含已起飞残段。
+
+    已起飞残段的 ``truck`` 在改派后会被写成接机车，原放飞车在 ``launch_truck``。
+    ``is_cross_sortie`` 故意不含残段，避免把已经发生的放飞再送进名义跨车图。
+    """
+    if s.rec_vid not in plan.visits:
+        return False
+    rec = plan.visits[s.rec_vid].truck
+    if s.started:
+        launch = s.launch_truck or s.truck
+        return bool(launch) and launch != rec
+    return is_cross_sortie(plan, s)
+
+
 def has_wait_cycle(plan: Plan) -> bool:
     """第六轮：名义跨车航次的等待成环（死锁）检测.
 
@@ -183,6 +198,32 @@ def channel_check(plan: Plan, phys: PhysicalConfig, tl: Timeline) -> list[str]:
     return errs
 
 
+
+def _structure_initial_carrier(state: StartState, plan: Plan) -> dict[str, str] | None:
+    """截断后结构校验用的起始承运车.
+
+    AIRBORNE 的 DroneStart.truck 恒为 None，旧逻辑 ``st.truck or home_truck(d)`` 会退回
+    出厂车。若残段的回收访问已不在后缀里、或机体链上未开始航次排在残段前面，就会把
+    后续航次（尤其是跨车后从回收车放飞的航次）误判为“放飞车与起始承运车不符”。
+    优先用 state.drone_carrier；空中残段再用该残段回收车；出厂车仅作最后兜底。
+    """
+    if state.t0 <= 0:
+        return None
+    out: dict[str, str] = {}
+    for d, st in state.drone_start.items():
+        if st.kind == "ON_TRUCK" and st.truck:
+            out[d] = st.truck
+            continue
+        rec_truck = None
+        for sid in plan.drone_sorties.get(d, []):
+            s = plan.sorties.get(sid)
+            if s is not None and s.started and s.rec_vid in plan.visits:
+                rec_truck = plan.visits[s.rec_vid].truck
+                break
+        out[d] = rec_truck or state.drone_carrier.get(d) or st.truck or home_truck(d)
+    return out
+
+
 def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
                   state: StartState | None = None, H: float | None = None,
                   reason: str = "", check_structure: bool = True,
@@ -196,9 +237,7 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
         return ev
     if check_structure:
         errs = plan.validate_structure(inst, phys,
-                                       initial_carrier={d: (st.truck or home_truck(d))
-                                                         for d, st in state.drone_start.items()}
-                                       if state.t0 > 0 else None,
+                                       initial_carrier=_structure_initial_carrier(state, plan),
                                        holders=state.parcel_holder or None)
         if errs:
             ev.status = "INVALID_STRUCTURE"
@@ -221,9 +260,11 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
         ev.violations = ["CROSS_WAIT_CYCLE"]
         return ev
     tl = schedule_plan(plan, inst, phys, state)
-    if not tl.converged and any(is_cross_sortie(plan, s) for s in plan.sorties.values()):
+    # 未收敛的时刻不是不动点：卡车与无人机互相等待的时间还在变。
+    # 只在存在跨车航次时拒绝，会把同车长链或振荡误记成 H_EXCEEDED 或一个并不成立的成本。
+    if not tl.converged:
         ev.status = "INFEASIBLE_RESOURCE"
-        ev.violations = ["SCHEDULE_NOT_CONVERGED(cross-truck cycle)"]
+        ev.violations = ["SCHEDULE_NOT_CONVERGED"]
         ev.timeline = tl
         return ev
     ok, msg, q = allocate_charging(tl, phys, state)
@@ -261,7 +302,7 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
     for d, stages in tl.drone_stages.items():
         e = tl.drone_energy.get(d, [])
         for i, st in enumerate(stages):
-            if st.kind == "R":
+            if st.kind == "R" and not st.landed:
                 if i + 1 < len(e) and e[i + 1] < phys.e_min - phys.energy_tol:
                     viol.append(f"E_MIN_AT_R:{d}@{st.start:.1f}")
     if viol:
@@ -338,7 +379,7 @@ def _plan_energy_waits(tl: Timeline, plan: Plan, phys: PhysicalConfig, state: St
         e = state.drone_energy.get(d, phys.e_cap)
         for i, st in enumerate(stages):
             e -= stage_energy(st, phys)
-            req = phys.e_min if st.kind == "R" else 0.0
+            req = phys.e_min if (st.kind == "R" and not st.landed) else 0.0
             if e - req < -phys.energy_tol:
                 bad_idx = i
                 break

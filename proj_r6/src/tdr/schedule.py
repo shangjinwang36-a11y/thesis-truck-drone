@@ -66,6 +66,10 @@ class StartState:
     drone_carrier: dict[str, str] = field(default_factory=dict)
     note: str = ""
     nominal_cross: bool = False     # 第六轮：X 的名义规划允许跨车航次（仅名义阶段使用）
+    allow_support: bool = False     # 第 9 轮：跨车新建航次可以在接机车上插入会合访问
+    # 第四轮：仅 X 恢复把已知失败概率和残差空送集合放在状态上，供修复代理计价。S 保持 0 / None。
+    x_failure_p: float = 0.0
+    air_ceiling: set[str] | None = None
 
 
 def initial_state(inst: Instance, phys: PhysicalConfig) -> StartState:
@@ -118,6 +122,7 @@ class DroneStage:
     y1: float = 0.0
     svc_done0: float = 0.0          # 第三轮：续飞残段的空中服务已完成时长（该 SERVICE 阶段只剩余下的部分）
     resumed: bool = False           # 第三轮：True=接续被截断的服务，不是新的到场(不产生新的到场观察)
+    landed: bool = False            # v6：降落等待阶段(WAIT/R)：零能耗，R 免备用电量
 
 
 @dataclass
@@ -536,10 +541,10 @@ def _schedule_drones(plan: Plan, inst: Instance, phys: PhysicalConfig, state: St
             tl.drone_arrival[sid] = t_arr
             r_start, r_end = tl.rec_times.get(sid, (t_arr, t_arr + phys.recovery_s))
             if r_start > t_arr + 1e-9:
-                stages.append(DroneStage("WAIT", t_arr, r_start, mass=mass_now, sid=sid))
+                stages.append(DroneStage("WAIT", t_arr, r_start, mass=mass_now, sid=sid, landed=s.landed))
                 tl.wait_by_sortie[sid] = r_start - t_arr
             stages.append(DroneStage("R", max(r_start, t_arr), max(r_start, t_arr) + phys.recovery_s,
-                                     mass=mass_now, sid=sid))
+                                     mass=mass_now, sid=sid, landed=s.landed))
             end = max(r_start, t_arr) + phys.recovery_s
             if s.handover:
                 stages.append(DroneStage("U", end, end + phys.handover_s, sid=sid))
@@ -591,6 +596,8 @@ def stage_energy(stage: DroneStage, phys: PhysicalConfig) -> float:
         return 0.0
     if stage.kind == "L":
         return phys.hover_energy_kwh(phys.launch_s, stage.mass)
+    if stage.landed and stage.kind in ("WAIT", "R"):
+        return 0.0
     if stage.kind == "R":
         return phys.hover_energy_kwh(phys.recovery_s, stage.mass)
     if stage.kind == "CRUISE":
@@ -622,7 +629,7 @@ def _swap_pass(tl: Timeline, plan: Plan, phys: PhysicalConfig, state: StartState
                 e = phys.e_cap
                 continue
             e -= stage_energy(st, phys)
-            req = phys.e_min if st.kind == "R" else 0.0
+            req = phys.e_min if (st.kind == "R" and not st.landed) else 0.0
             if e < req - phys.energy_tol:
                 sid = st.sid
                 s = plan.sorties.get(sid) if sid is not None else None
@@ -719,7 +726,7 @@ def allocate_charging(tl: Timeline, phys: PhysicalConfig, state: StartState):
                 b_rows.append(phys.e_cap + consumed - e0)
             else:
                 consumed += stage_energy(st, phys)
-                req = phys.e_min if st.kind == "R" else 0.0
+                req = phys.e_min if (st.kind == "R" and not st.landed) else 0.0
                 row = np.zeros(nvar)
                 for jj in range(charge_seen):
                     row[var_index[(d, jj)]] = -phys.slot_efficiency
@@ -751,7 +758,7 @@ def allocate_charging(tl: Timeline, phys: PhysicalConfig, state: StartState):
                 en = stage_energy(st, phys)
                 need += en
                 e -= en
-                req = phys.e_min if st.kind == "R" else 0.0
+                req = phys.e_min if (st.kind == "R" and not st.landed) else 0.0
                 worst = min(worst, e - req)
             tl.deficits[d] = max(0.0, -worst)
             diag.append(f"{d}:e0={e:.2f},need={need:.2f},worst={worst:.2f}")
@@ -797,7 +804,7 @@ def _check_energy_without_charge(tl: Timeline, phys: PhysicalConfig, state: Star
         e = _start_energy(state, d, phys)
         for st in stages:
             e -= stage_energy(st, phys)
-            if st.kind == "R" and e < phys.e_min - phys.energy_tol:
+            if st.kind == "R" and not st.landed and e < phys.e_min - phys.energy_tol:
                 return False, f"E_MIN_VIOLATION:{d}@{st.start:.1f}"
             if e < -phys.energy_tol:
                 return False, f"NEGATIVE_ENERGY:{d}@{st.start:.1f}"

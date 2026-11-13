@@ -1,0 +1,1342 @@
+{
+ "preset": "R7",
+ "rule": "truck ground delivery from the stop state; overtime via soft_h; no per-customer penalty",
+ "n_replay": 21,
+ "n_mismatch": 0,
+ "mismatches": [],
+ "overall": {
+  "rates": {
+   "S": {
+    "complete": 47,
+    "n": 60,
+    "rate": 0.7833333333333333
+   },
+   "X": {
+    "complete": 52,
+    "n": 60,
+    "rate": 0.8666666666666667
+   }
+  },
+  "completion": {
+   "S_vs_X": {
+    "n": 60,
+    "complete_left": 47,
+    "complete_right": 52,
+    "rate_left": 0.7833333333333333,
+    "rate_right": 0.8666666666666667,
+    "both": 44,
+    "only_left": 3,
+    "only_right": 8,
+    "neither": 5,
+    "mcnemar": {
+     "n_only_left": 3,
+     "n_only_right": 8,
+     "n_discordant": 11,
+     "p_two_sided": 0.2265625
+    }
+   }
+  },
+  "all_pairs_ground_finish": {
+   "S_vs_X": {
+    "n": 60,
+    "missing": 0,
+    "delta_mean": -23.005229873397035,
+    "delta_ci95": [
+     -36.9019652407787,
+     -9.10849450601537
+    ],
+    "delta_over_CS_mean": -0.037348206012129716,
+    "delta_over_CS_ci95": [
+     -0.06223455948787737,
+     -0.01246185253638206
+    ],
+    "sign_right_better": 37,
+    "sign_left_better": 23,
+    "sign_tie": 0,
+    "sign_p_two_sided": 0.09246098107292373
+   }
+  }
+ },
+ "by_case": {
+  "C100": {
+   "rates": {
+    "S": {
+     "complete": 10,
+     "n": 10,
+     "rate": 1.0
+    },
+    "X": {
+     "complete": 9,
+     "n": 10,
+     "rate": 0.9
+    }
+   },
+   "completion": {
+    "S_vs_X": {
+     "n": 10,
+     "complete_left": 10,
+     "complete_right": 9,
+     "rate_left": 1.0,
+     "rate_right": 0.9,
+     "both": 9,
+     "only_left": 1,
+     "only_right": 0,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 1,
+      "n_only_right": 0,
+      "n_discordant": 1,
+      "p_two_sided": 1.0
+     }
+    }
+   },
+   "all_pairs_ground_finish": {
+    "S_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": -21.853312566861717,
+     "delta_ci95": [
+      -43.95947930961036,
+      0.2528541758869274
+     ],
+     "delta_over_CS_mean": -0.04764356395417143,
+     "delta_over_CS_ci95": [
+      -0.09583838868691313,
+      0.0005512607785702825
+     ],
+     "sign_right_better": 6,
+     "sign_left_better": 4,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.75390625
+    }
+   }
+  },
+  "C50": {
+   "rates": {
+    "S": {
+     "complete": 10,
+     "n": 10,
+     "rate": 1.0
+    },
+    "X": {
+     "complete": 10,
+     "n": 10,
+     "rate": 1.0
+    }
+   },
+   "completion": {
+    "S_vs_X": {
+     "n": 10,
+     "complete_left": 10,
+     "complete_right": 10,
+     "rate_left": 1.0,
+     "rate_right": 1.0,
+     "both": 10,
+     "only_left": 0,
+     "only_right": 0,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 0,
+      "n_only_right": 0,
+      "n_discordant": 0,
+      "p_two_sided": null
+     }
+    }
+   },
+   "all_pairs_ground_finish": {
+    "S_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": 0.8028721806955588,
+     "delta_ci95": [
+      -6.857248212844633,
+      8.46299257423575
+     ],
+     "delta_over_CS_mean": 0.0045068245101552145,
+     "delta_over_CS_ci95": [
+      -0.03849232176794636,
+      0.047505970788256795
+     ],
+     "sign_right_better": 3,
+     "sign_left_better": 7,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.34375
+    }
+   }
+  },
+  "R100": {
+   "rates": {
+    "S": {
+     "complete": 5,
+     "n": 10,
+     "rate": 0.5
+    },
+    "X": {
+     "complete": 8,
+     "n": 10,
+     "rate": 0.8
+    }
+   },
+   "completion": {
+    "S_vs_X": {
+     "n": 10,
+     "complete_left": 5,
+     "complete_right": 8,
+     "rate_left": 0.5,
+     "rate_right": 0.8,
+     "both": 4,
+     "only_left": 1,
+     "only_right": 4,
+     "neither": 1,
+     "mcnemar": {
+      "n_only_left": 1,
+      "n_only_right": 4,
+      "n_discordant": 5,
+      "p_two_sided": 0.375
+     }
+    }
+   },
+   "all_pairs_ground_finish": {
+    "S_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": -90.43132479370061,
+     "delta_ci95": [
+      -132.88487808502381,
+      -47.977771502377415
+     ],
+     "delta_over_CS_mean": -0.1234801611946272,
+     "delta_over_CS_ci95": [
+      -0.1814486982657821,
+      -0.06551162412347228
+     ],
+     "sign_right_better": 9,
+     "sign_left_better": 1,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.021484375
+    }
+   }
+  },
+  "R50": {
+   "rates": {
+    "S": {
+     "complete": 5,
+     "n": 10,
+     "rate": 0.5
+    },
+    "X": {
+     "complete": 7,
+     "n": 10,
+     "rate": 0.7
+    }
+   },
+   "completion": {
+    "S_vs_X": {
+     "n": 10,
+     "complete_left": 5,
+     "complete_right": 7,
+     "rate_left": 0.5,
+     "rate_right": 0.7,
+     "both": 5,
+     "only_left": 0,
+     "only_right": 2,
+     "neither": 3,
+     "mcnemar": {
+      "n_only_left": 0,
+      "n_only_right": 2,
+      "n_discordant": 2,
+      "p_two_sided": 0.5
+     }
+    }
+   },
+   "all_pairs_ground_finish": {
+    "S_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": -32.07341184007508,
+     "delta_ci95": [
+      -70.9695627128189,
+      6.822739032668736
+     ],
+     "delta_over_CS_mean": -0.07069965111652218,
+     "delta_over_CS_ci95": [
+      -0.1564387146807732,
+      0.015039412447728814
+     ],
+     "sign_right_better": 7,
+     "sign_left_better": 3,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.34375
+    }
+   }
+  },
+  "RC100": {
+   "rates": {
+    "S": {
+     "complete": 8,
+     "n": 10,
+     "rate": 0.8
+    },
+    "X": {
+     "complete": 9,
+     "n": 10,
+     "rate": 0.9
+    }
+   },
+   "completion": {
+    "S_vs_X": {
+     "n": 10,
+     "complete_left": 8,
+     "complete_right": 9,
+     "rate_left": 0.8,
+     "rate_right": 0.9,
+     "both": 7,
+     "only_left": 1,
+     "only_right": 2,
+     "neither": 0,
+     "mcnemar": {
+      "n_only_left": 1,
+      "n_only_right": 2,
+      "n_discordant": 3,
+      "p_two_sided": 1.0
+     }
+    }
+   },
+   "all_pairs_ground_finish": {
+    "S_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": 1.755966024164809,
+     "delta_ci95": [
+      -25.066053795109113,
+      28.577985843438732
+     ],
+     "delta_over_CS_mean": 0.0025842405199861204,
+     "delta_over_CS_ci95": [
+      -0.036889501848011354,
+      0.04205798288798359
+     ],
+     "sign_right_better": 5,
+     "sign_left_better": 5,
+     "sign_tie": 0,
+     "sign_p_two_sided": 1.0
+    }
+   }
+  },
+  "RC50": {
+   "rates": {
+    "S": {
+     "complete": 9,
+     "n": 10,
+     "rate": 0.9
+    },
+    "X": {
+     "complete": 9,
+     "n": 10,
+     "rate": 0.9
+    }
+   },
+   "completion": {
+    "S_vs_X": {
+     "n": 10,
+     "complete_left": 9,
+     "complete_right": 9,
+     "rate_left": 0.9,
+     "rate_right": 0.9,
+     "both": 9,
+     "only_left": 0,
+     "only_right": 0,
+     "neither": 1,
+     "mcnemar": {
+      "n_only_left": 0,
+      "n_only_right": 0,
+      "n_discordant": 0,
+      "p_two_sided": null
+     }
+    }
+   },
+   "all_pairs_ground_finish": {
+    "S_vs_X": {
+     "n": 10,
+     "missing": 0,
+     "delta_mean": 3.767831755394826,
+     "delta_ci95": [
+      -11.338310397983587,
+      18.873973908773237
+     ],
+     "delta_over_CS_mean": 0.010643075162401148,
+     "delta_over_CS_ci95": [
+      -0.03202756853662337,
+      0.05331371886142567
+     ],
+     "sign_right_better": 7,
+     "sign_left_better": 3,
+     "sign_tie": 0,
+     "sign_p_two_sided": 0.34375
+    }
+   }
+  }
+ },
+ "rows": [
+  {
+   "case": "C50",
+   "seed": 4,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 192.6691875926403,
+    "cost_fair": 192.6691875926403,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 193.28675569787325,
+    "cost_fair": 193.28675569787325,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 1,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 210.90746357823176,
+    "cost_fair": 210.90746357823176,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 198.7023529656674,
+    "cost_fair": 198.7023529656674,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 5,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 191.57770048713073,
+    "cost_fair": 191.57770048713073,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 193.79731015597295,
+    "cost_fair": 193.79731015597295,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 6,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 180.92908545742856,
+    "cost_fair": 180.92908545742856,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 184.6767120540946,
+    "cost_fair": 184.6767120540946,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 3,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 213.81663752925687,
+    "cost_fair": 213.81663752925687,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 200.42753042510765,
+    "cost_fair": 200.42753042510765,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 2,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 199.0199605330973,
+    "cost_fair": 199.0199605330973,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 214.23230325888989,
+    "cost_fair": 214.23230325888989,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 7,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 189.11447358297735,
+    "cost_fair": 189.11447358297735,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 202.2507861263095,
+    "cost_fair": 202.2507861263095,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 10,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 203.74412761783844,
+    "cost_fair": 203.74412761783844,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 210.88339097042035,
+    "cost_fair": 210.88339097042035,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 8,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 228.32737504832377,
+    "cost_fair": 228.32737504832377,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 207.6268406616629,
+    "cost_fair": 207.6268406616629,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C50",
+   "seed": 9,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 217.5301701517012,
+    "cost_fair": 217.5301701517012,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 229.78092106958343,
+    "cost_fair": 229.78092106958343,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 1,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 695.8172223189605,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 558.1692272181771,
+    "cost_fair": 558.1692272181771,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 5,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 467.8924784379303,
+    "cost_fair": 467.8924784379303,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 466.9823573741456,
+    "cost_fair": 466.9823573741456,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 4,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 511.5972180797389,
+    "cost_fair": 511.5972180797389,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 513.8484610299527,
+    "cost_fair": 513.8484610299527,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 2,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 571.5676934539098,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 554.1686933909476,
+    "ground_finish_status": "FEASIBLE:truck"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 6,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 525.3672474042946,
+    "cost_fair": 525.3672474042946,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 475.525684805228,
+    "cost_fair": 475.525684805228,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 3,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 527.4693754954327,
+    "cost_fair": 527.4693754954327,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 549.244744509948,
+    "cost_fair": 549.244744509948,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 8,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 526.5816181002203,
+    "cost_fair": 526.5816181002203,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 444.69487421193116,
+    "cost_fair": 444.69487421193116,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 7,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 638.0072269899365,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 593.309661394628,
+    "ground_finish_status": "FEASIBLE:overtime_only"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 9,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 557.7845566817938,
+    "ground_finish_status": "FEASIBLE:keep_inflight"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 465.7549770403669,
+    "cost_fair": 465.7549770403669,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 1,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 399.75602950669395,
+    "cost_fair": 399.75602950669395,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 364.6820362594459,
+    "cost_fair": 364.6820362594459,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 3,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 438.6833321212098,
+    "cost_fair": 438.6833321212098,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 490.5861155619437,
+    "cost_fair": 490.5861155619437,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R50",
+   "seed": 10,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 700.4557429766519,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 780.1075805627935,
+    "ground_finish_status": "FEASIBLE:truck"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 2,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 398.1127807954546,
+    "cost_fair": 398.1127807954546,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 393.04510165725287,
+    "cost_fair": 393.04510165725287,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 5,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 473.5610954700668,
+    "cost_fair": 473.5610954700668,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 473.531809605321,
+    "cost_fair": 473.531809605321,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 4,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 437.372577010803,
+    "cost_fair": 437.372577010803,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 436.92891895454943,
+    "cost_fair": 436.92891895454943,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 8,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 534.0526014727892,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 520.9798220703527,
+    "ground_finish_status": "FEASIBLE:truck"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 7,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 433.68384372630834,
+    "cost_fair": 433.68384372630834,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 458.4637009688404,
+    "cost_fair": 458.4637009688404,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 9,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 465.1681381090007,
+    "cost_fair": 465.1681381090007,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 491.20971164966875,
+    "cost_fair": 491.20971164966875,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 6,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 436.75489542965863,
+    "cost_fair": 436.75489542965863,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 433.36666717840706,
+    "cost_fair": 433.36666717840706,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC50",
+   "seed": 10,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 440.33112890458057,
+    "cost_fair": 440.33112890458057,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 432.3608561947321,
+    "cost_fair": 432.3608561947321,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 4,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 506.4241353306591,
+    "cost_fair": 506.4241353306591,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 491.2988740714812,
+    "cost_fair": 491.2988740714812,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 1,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 509.7782372370588,
+    "cost_fair": 509.7782372370588,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 485.9172911450975,
+    "cost_fair": 485.9172911450975,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 3,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 517.090866345179,
+    "cost_fair": 517.090866345179,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 517.7315039221181,
+    "cost_fair": 517.7315039221181,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 2,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 548.6281696140986,
+    "cost_fair": 548.6281696140986,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 591.0665411490747,
+    "ground_finish_status": "FEASIBLE:truck"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 5,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 556.9102432700604,
+    "cost_fair": 556.9102432700604,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 507.56277062587503,
+    "cost_fair": 507.56277062587503,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 6,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 499.9649394453689,
+    "cost_fair": 499.9649394453689,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 505.7148742491352,
+    "cost_fair": 505.7148742491352,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 7,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 495.0073467299138,
+    "cost_fair": 495.0073467299138,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 497.136459944452,
+    "cost_fair": 497.136459944452,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 8,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 552.5571832801321,
+    "cost_fair": 552.5571832801321,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 495.2179631400117,
+    "cost_fair": 495.2179631400117,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 9,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 538.3207679912884,
+    "cost_fair": 538.3207679912884,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 486.3820653638038,
+    "cost_fair": 486.3820653638038,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 2,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 935.9555885800606,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 799.9518197838878,
+    "cost_fair": 799.9518197838878,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "C100",
+   "seed": 10,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 586.6494898241377,
+    "cost_fair": 586.6494898241377,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 514.7699097882305,
+    "cost_fair": 514.7699097882305,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 1,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 974.2829164774095,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 763.7596498576933,
+    "cost_fair": 763.7596498576933,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 3,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 785.8793578178928,
+    "cost_fair": 785.8793578178928,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 831.9243024699624,
+    "cost_fair": 831.9243024699624,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 5,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 1030.5578511498527,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 934.062551348834,
+    "cost_fair": 934.062551348834,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 4,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 943.7399403355515,
+    "cost_fair": 943.7399403355515,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 869.0956371265164,
+    "cost_fair": 869.0956371265164,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 6,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 951.1726275808334,
+    "cost_fair": 951.1726275808334,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 808.3953838145072,
+    "cost_fair": 808.3953838145072,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 7,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 947.6369327548621,
+    "cost_fair": 947.6369327548621,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 871.1098922952307,
+    "ground_finish_status": "FEASIBLE:truck"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 9,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 842.370102301349,
+    "cost_fair": 842.370102301349,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 804.0299609563087,
+    "cost_fair": 804.0299609563087,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 8,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 991.6767208196284,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 880.1803689558081,
+    "ground_finish_status": "FEASIBLE:keep_inflight"
+   }
+  },
+  {
+   "case": "R100",
+   "seed": 10,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 960.5581579029966,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 897.0073811746819,
+    "cost_fair": 897.0073811746819,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 1,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 842.8182968563247,
+    "cost_fair": 842.8182968563247,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 811.6442921720502,
+    "cost_fair": 811.6442921720502,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 2,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 870.8526663119728,
+    "cost_fair": 870.8526663119728,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 802.0547355165722,
+    "cost_fair": 802.0547355165722,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 4,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 684.7807710769271,
+    "cost_fair": 684.7807710769271,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 700.6199688477546,
+    "cost_fair": 700.6199688477546,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 3,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 897.6014778771187,
+    "cost_fair": 897.6014778771187,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 865.5581912594087,
+    "cost_fair": 865.5581912594087,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 7,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 747.1095716627157,
+    "cost_fair": 747.1095716627157,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 729.3923362510313,
+    "cost_fair": 729.3923362510313,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 5,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 836.983567755847,
+    "ground_finish_status": "FEASIBLE:overtime_only"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 906.1494696599194,
+    "cost_fair": 906.1494696599194,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 6,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 851.3781424649573,
+    "cost_fair": 851.3781424649573,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 848.7581577097269,
+    "cost_fair": 848.7581577097269,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 8,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 857.7708287595141,
+    "cost_fair": 857.7708287595141,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 874.6035490649722,
+    "cost_fair": 874.6035490649722,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 10,
+   "S": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 699.5336336597521,
+    "cost_fair": 699.5336336597521,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   },
+   "X": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 766.7183828922244,
+    "ground_finish_status": "FEASIBLE:truck"
+   }
+  },
+  {
+   "case": "RC100",
+   "seed": 9,
+   "S": {
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "cost": null,
+    "cost_fair": 997.5902355411092,
+    "ground_finish_status": "FEASIBLE:truck"
+   },
+   "X": {
+    "status": "COMPLETED_VERIFIED",
+    "cost": 998.4797688342267,
+    "cost_fair": 998.4797688342267,
+    "ground_finish_status": "LOGGED_COMPLETE"
+   }
+  }
+ ]
+}

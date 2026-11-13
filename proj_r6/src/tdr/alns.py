@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import contextvars
 import math
 import random
 import time
@@ -115,6 +116,179 @@ def _better(a: Evaluation, b: Evaluation | None, alg: AlgorithmConfig) -> bool:
     return False
 
 
+def _air_penalty(plan: Plan | None, ctx: "SolveContext") -> float:
+    """X 恢复接受准则里的新开空送惩罚。不影响写入结果的真实成本。
+
+    x_risk_price_air 时按每票的期望失败代价计价（已知 p × 地面插入代理 + 回收工资）；
+    否则沿用固定的 x_new_air_penalty（元/票）。两者都只在 X 的恢复阶段生效。
+    """
+    ceiling = getattr(ctx, "air_ceiling", None)
+    if ceiling is None or plan is None or ctx.mode != "recovery" or ctx.strategy != "X":
+        return 0.0
+    from .recovery import _air_parcel_set
+    extra = _air_parcel_set(plan) - set(ceiling)
+    if not extra:
+        return 0.0
+    if getattr(ctx.alg, "x_risk_price_air", False):
+        from .moves import new_air_risk_charge
+        mp = None
+        if ctx.state is not None:
+            mp = ctx.state.truck_min_insert or None
+        return new_air_risk_charge(plan, ctx.inst, ctx.phys, extra,
+                                   float(getattr(ctx.alg, "failure_prob", 0.0) or 0.0),
+                                   ctx.state, mp)
+    pen = float(getattr(ctx.alg, "x_new_air_penalty", 0.0) or 0.0)
+    if pen <= 0:
+        return 0.0
+    return pen * len(extra)
+
+
+class _PenalizedEval:
+    """只在接受比较时把惩罚加到 cost 上，不改原评价对象。"""
+
+    def __init__(self, ev: Evaluation, extra: float):
+        self.feasible = ev.feasible
+        self.cost = None if ev.cost is None else ev.cost + extra
+        self.z = ev.z
+        self.timeline = ev.timeline
+
+
+def _better_air(ev: Evaluation | None, plan: Plan | None,
+                other: Evaluation | None, other_plan: Plan | None,
+                alg: AlgorithmConfig, ctx: "SolveContext") -> bool:
+    if ev is None:
+        return False
+    # scenario_on 只在阶段2打开。阶段1仍按真实成本下降，否则两个情景的噪声会把搜索带离
+    # 情景分本身更低的方案。阶段2从该方案出发，只有情景分变好才接受。
+    if (ctx.mode == "nominal" and getattr(alg, "expected_accept", False)
+            and plan is not None and ev.feasible and ev.cost is not None):
+        from .expected_cost import expected_j, failure_prob
+        p = failure_prob(alg)
+        j_new = expected_j(ev.cost, plan, ctx.inst, ctx.phys, p)
+        j_old = None
+        if other is not None and other.feasible and other.cost is not None and other_plan is not None:
+            j_old = expected_j(other.cost, other_plan, ctx.inst, ctx.phys, p)
+        if j_new is not None and (j_old is None or j_new < j_old - alg.cost_tolerance_yuan):
+            return True
+        if j_new is not None and j_old is not None and abs(j_new - j_old) <= alg.cost_tolerance_yuan:
+            return _better(ev, other, alg)
+        # 情景评价仍是最终判据。期望值变差很多时才跳过，名义变贵本身不再跳过。
+        if (getattr(alg, "scenario_aware", False) and getattr(ctx, "scenario_on", False)
+                and other_plan is not None and other is not None and other.feasible):
+            from .scenario_eval import screen_skips_scenario
+            screen = float(getattr(alg, "scenario_screen_yuan", 0.0) or 0.0)
+            if not screen_skips_scenario(j_new, j_old, screen):
+                from .hybrid import scenario_score
+                s_new = scenario_score(plan, ev, ctx)
+                s_old = scenario_score(other_plan, other, ctx)
+                if s_new is not None and s_old is not None and s_new < s_old - alg.cost_tolerance_yuan:
+                    return True
+        return False
+    if (ctx.mode == "nominal" and getattr(alg, "scenario_aware", False)
+            and getattr(ctx, "scenario_on", False)
+            and plan is not None and ev.feasible):
+        from .scenario_eval import screen_skips_scenario
+        screen = float(getattr(alg, "scenario_screen_yuan", 0.0) or 0.0)
+        old_cost = None if other is None else other.cost
+        if not screen_skips_scenario(ev.cost, old_cost, screen):
+            from .hybrid import scenario_score
+            s_new = scenario_score(plan, ev, ctx)
+        else:
+            s_new = None
+            if getattr(ctx, "live_stats", None) is not None:
+                ctx.live_stats.aud("SCENARIO", "screened")
+        if s_new is not None and (other is None or not other.feasible):
+            return True
+        if s_new is not None and other_plan is not None and other is not None and other.feasible:
+            s_old = scenario_score(other_plan, other, ctx)
+            if s_old is None:
+                return True
+            tol = alg.cost_tolerance_yuan
+            if s_new < s_old - tol:
+                return True
+            if abs(s_new - s_old) <= tol:
+                return _better(ev, other, alg)
+            return False
+    left = _PenalizedEval(ev, _air_penalty(plan, ctx))
+    right = None if other is None else _PenalizedEval(other, _air_penalty(other_plan, ctx))
+    return _better(left, right, alg)
+
+
+def _incubate_cross(cand_plan, cur_plan, cand_ev, cur_ev, inst, phys, alg) -> bool:
+    """新跨车组件可以先留在当前解里，升高不超过它自己的期望补救。不改全局最优。"""
+    from .expected_cost import expected_j, failure_prob, insurance_room
+    p_fail = failure_prob(alg)
+    j_new = expected_j(cand_ev.cost, cand_plan, inst, phys, p_fail)
+    j_cur = expected_j(cur_ev.cost, cur_plan, inst, phys, p_fail)
+    if j_new is None or j_cur is None:
+        return False
+    return j_new <= j_cur + insurance_room(cand_plan, cur_plan, inst, phys, p_fail) + alg.cost_tolerance_yuan
+
+
+def _within_makespan_cap(ev: Evaluation | None, ctx: "SolveContext") -> bool:
+    """X 名义：候选完工时刻不得超过 S 的 makespan。无上限时恒真。"""
+    cap = getattr(ctx, "makespan_cap", None)
+    if cap is None or ctx.mode != "nominal" or ev is None or ev.timeline is None:
+        return True
+    fin = ev.timeline.truck_finish
+    if not fin:
+        return True
+    return max(fin.values()) <= cap + 1e-6
+
+
+def _cross_energy_ok(cand_plan: Plan, cur_plan: Plan, ev: Evaluation | None, ctx: "SolveContext") -> bool:
+    """每一条跨车航次在最终时刻表上的回收余电都要留出裕度。裕度为 0 时恒真。
+
+    以前只在回收点改变时检查。后面的移动可以拉长飞行或等待、却不改回收客户，
+    薄余电就会漏过去。cur_plan 仍保留在签名里，调用处不用改。
+    """
+    del cur_plan
+    frac = float(getattr(ctx.alg, "x_cross_energy_margin_frac", 0.0) or 0.0)
+    if frac <= 0 or ctx.mode != "nominal" or ev is None or ev.timeline is None:
+        return True
+    from .evaluate import is_cross_sortie
+    cross_ids = [sid for sid, so in cand_plan.sorties.items() if is_cross_sortie(cand_plan, so)]
+    if not cross_ids:
+        return True
+    need = ctx.phys.e_min + frac * ctx.phys.e_cap
+    tl = ev.timeline
+    for sid in cross_ids:
+        so = cand_plan.sorties[sid]
+        stages = tl.drone_stages.get(so.drone, [])
+        energies = tl.drone_energy.get(so.drone, [])
+        for i, st in enumerate(stages):
+            if st.kind == "R" and not st.landed and st.sid == sid and i + 1 < len(energies):
+                if energies[i + 1] < need - ctx.phys.energy_tol:
+                    return False
+    return True
+
+
+def _nominal_cross_intact(plan: Plan, ev: Evaluation | None, ctx: "SolveContext") -> bool:
+    """X 名义：最终时刻表上每一条跨车航次都要过稳健性检查。
+
+    开关关掉时恒真，旧的「只在回收点改变时查 5%」仍然单独生效。
+    S 的 nominal_cross 为假，不进这条。后面的移动即使没有改回收点，
+    只要把飞行或等待拉长到门槛以下，这里也会拒绝。
+    """
+    if not getattr(ctx.alg, "x_cross_robust", False):
+        return True
+    if ctx.mode != "nominal" or not getattr(ctx.state, "nominal_cross", False):
+        return True
+    if plan is None:
+        return True
+    from .evaluate import is_cross_sortie
+    if not any(is_cross_sortie(plan, s) for s in plan.sorties.values()):
+        return True
+    if ev is None or not ev.feasible or ev.timeline is None:
+        return False
+    from .cross_robust import cross_robust_violations
+    slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 0.0) or 0.0)
+    return not cross_robust_violations(plan, ctx.inst, ctx.phys, ev.timeline, slack)
+
+
+_ACTIVE_CTX: contextvars.ContextVar = contextvars.ContextVar("tdr_active_ctx", default=None)
+
+
 def eval_counted(plan: Plan, inst: Instance, phys: PhysicalConfig, state: StartState,
                  H: float | None, reason: str, stats: SearchStats, budget: Budget,
                  allow_wait_repair: bool = True) -> Evaluation | None:
@@ -124,7 +298,20 @@ def eval_counted(plan: Plan, inst: Instance, phys: PhysicalConfig, state: StartS
     if ev.status == "BUDGET_EXHAUSTED":
         return None
     stats.eval_by_reason[reason] = stats.eval_by_reason.get(reason, 0) + 1
-    stats.eval_requests = budget.used
+    if getattr(budget, "scenario_ledger", False):
+        stats.n_scenario_eval = budget.used
+    else:
+        stats.eval_requests = budget.used
+        if reason == "SCENARIO_RECOURSE":
+            stats.n_scenario_eval = int(getattr(stats, "n_scenario_eval", 0)) + 1
+    holder = _ACTIVE_CTX.get()
+    if (holder is not None and ev.feasible and ev.cost is not None
+            and holder.mode == "nominal"
+            and reason not in ("SCENARIO_RECOURSE", "SET_PARTITION")
+            and getattr(holder.alg, "set_partition", False)):
+        from .hybrid import _pool
+        _pool(holder, bool(getattr(holder.state, "nominal_cross", False))).add_plan(
+            plan, holder.inst, holder.phys, False)
     stats.lp_calls += int(ev.counts.get("lp_calls", 0)) if ev.counts else 0
     if not ev.feasible:
         import re as _re
@@ -245,6 +432,11 @@ def destroy(plan: Plan, op: str, q: int, rng: random.Random, inst: Instance,
             seeds += [p for v in plan.visits.values() if v.truck == s.truck for p in v.ground][:2]
         else:
             used = "RANDOM_DEPENDENCY"
+    elif op == "JOINT_NEAR":
+        from .support_nominal import joint_near_seeds
+        seeds = joint_near_seeds(plan, inst, bool(getattr(ctx.state, "nominal_cross", False)))
+        if not seeds:
+            used = "RANDOM_DEPENDENCY"
     seeds = [p for p in seeds if p not in frozen]
     if not seeds:
         used = "RANDOM_DEPENDENCY"
@@ -330,6 +522,10 @@ class SolveContext:
     strategy: str = "X"
     retarget_tried: set = field(default_factory=set)
     cross_tried: set = field(default_factory=set)
+    # X 名义阶段2：候选卡车完工时刻不得超过该值（通常 = S 名义 makespan）。None=不限制。
+    makespan_cap: float | None = None
+    # X 恢复：残差里已经会空送的票。新开的票按 x_new_air_penalty 计入接受比较。
+    air_ceiling: set | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +554,16 @@ def prefix_fixed_cost(state, phys) -> float:
 
 def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full",
              stats: SearchStats | None = None, init_ev: Evaluation | None = None) -> SolveResult:
+    """绑定当前搜索，使评价入口把可行的名义方案写入列池。"""
+    token = _ACTIVE_CTX.set(ctx)
+    try:
+        return _optimize_loop(plan, ctx, budget, variant, stats, init_ev)
+    finally:
+        _ACTIVE_CTX.reset(token)
+
+
+def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full",
+                   stats: SearchStats | None = None, init_ev: Evaluation | None = None) -> SolveResult:
     """ALNS 主循环.
 
     init_ev：调用方已经完整评价过起始解时传入（恢复阶段由 initial_recovery 评价，
@@ -366,6 +572,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
     """
     inst, phys, alg = ctx.inst, ctx.phys, ctx.alg
     stats = stats or SearchStats()
+    ctx.live_budget = budget
+    ctx.live_stats = stats
     t_start = time.perf_counter()
     rng_op = ctx.rngs.get("operator", random.Random(1))
     rng_des = ctx.rngs.get("destroy", random.Random(2))
@@ -399,6 +607,9 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
     if alg.air_promote_ops and alg.operator_selector != "qlearn":
         destroy_ops.append("GROUND_TO_AIR")
         repair_ops.append("AIR_FIRST")
+    if (getattr(alg, "joint_near_destroy", False) and ctx.mode == "nominal"
+            and (getattr(ctx.state, "nominal_cross", False) or getattr(ctx, "scenario_on", False))):
+        destroy_ops.append("JOINT_NEAR")
     w_d = {k: 1.0 for k in destroy_ops}
     w_r = {k: 1.0 for k in repair_ops}
     n_d = {k: 0 for k in destroy_ops}
@@ -489,6 +700,7 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         trial_cross = any(_isx(trial, so) for so in trial.sorties.values() if so.sid >= cur_plan.next_sid)
         if trial_cross:
             stats.aud("CROSS_REPAIR_TRIALS", "gen")
+            stats.aud("FUNNEL_CROSS", "generated")
         cand_ev, cand_plan = _geometry_evaluate(
             trial, ctx, stats, "ALNS_BASE", budget,
             multistart=(new_sortie or not alg.geometry_new_sortie_only))
@@ -496,6 +708,8 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             _cp = any(_isx(cur_plan, so) for so in cur_plan.sorties.values())
             stats.aud("PLAN_HAS_CROSS" if _cp else "PLAN_NO_CROSS", ("TC_" if trial_cross else "TN_") + ("infeasible" if cand_ev is None else "feasible"))
         if cand_ev is None:
+            if trial_cross:
+                stats.aud("FUNNEL_CROSS", "schedule")
             stats.aud(op, "infeasible")
             stats.aud("R:" + rep, "infeasible")
             _reward(s_d, op, 0.0)
@@ -511,7 +725,27 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
         stats.aud("R:" + rep, "feasible")
         if trial_cross:
             stats.aud("CROSS_REPAIR_TRIALS", "feasible")
-        if _better(cand_ev, best_ev, alg):
+        blocked = False
+        if not _within_makespan_cap(cand_ev, ctx):
+            blocked = True
+            stats.aud("HS_CAP", "rejected")
+            if trial_cross:
+                stats.aud("FUNNEL_CROSS", "cap")
+        elif (trial_cross and not getattr(alg, "x_cross_robust", False)
+              and not _cross_energy_ok(cand_plan, cur_plan, cand_ev, ctx)):
+            blocked = True
+            stats.aud("CROSS_ENERGY_MARGIN", "rejected")
+            stats.aud("FUNNEL_CROSS", "energy")
+        elif not _nominal_cross_intact(cand_plan, cand_ev, ctx):
+            blocked = True
+            stats.aud("CROSS_ROBUST", "rejected")
+            if trial_cross:
+                stats.aud("FUNNEL_CROSS", "margin")
+        if blocked:
+            reward = 0.0
+            stagnation += 1
+            accepted = False
+        elif _better_air(cand_ev, cand_plan, best_ev, best_plan, alg, ctx):
             stats.aud(op, "best")
             stats.aud("R:" + rep, "best")
             if trial_cross:
@@ -523,16 +757,51 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             stagnation = 0
             stats.last_improvement_eval = stats.eval_requests
             stats.best_trace.append((stats.eval_requests, best_ev.cost or 0.0, best_ev.z or 0.0))
-        elif _better(cand_ev, cur_ev, alg):
+        elif _better_air(cand_ev, cand_plan, cur_ev, cur_plan, alg, ctx):
             stats.aud(op, "cur_improve")
             stats.aud("R:" + rep, "cur_improve")
             reward = alg.score_current_improvement
             accepted = True
             stagnation = 0
+        elif (trial_cross and ctx.mode == "nominal" and getattr(alg, "expected_accept", False)
+              and cand_ev is not None and cand_ev.feasible and cur_ev is not None and cur_ev.feasible
+              and _incubate_cross(cand_plan, cur_plan, cand_ev, cur_ev, inst, phys, alg)):
+            accepted = True
+            reward = alg.score_current_improvement
+            stagnation = 0
+            stats.aud("EXPECTED", "incubated")
+        elif trial_cross and getattr(alg, "x_improve_only_cross", False) and ctx.mode == "nominal" \
+                and not getattr(alg, "expected_accept", False):
+            # X 专属：跨车移动只接受严格改进（不用 SA），以保证相对当前解不退步
+            accepted = False
+            reward = 0.0
+            stagnation += 1
+            stats.aud("CROSS_REPAIR_TRIALS", "rejected_improve_only")
+        elif (ctx.mode == "recovery" and ctx.strategy == "X"
+              and (float(getattr(alg, "x_new_air_penalty", 0.0) or 0.0) > 0
+                   or getattr(alg, "x_risk_price_air", False))
+              and _air_penalty(cand_plan, ctx) > _air_penalty(cur_plan, ctx) + 1e-9):
+            # 只有“比当前解多开空送”的移动才禁止 SA。其它移动与第三轮一样可以退火。
+            accepted = False
+            reward = 0.0
+            stagnation += 1
         else:
             # SA
             if cand_ev.feasible:
-                dc = (cand_ev.cost or 0.0) - (cur_ev.cost or 0.0)
+                if ctx.mode == "nominal" and getattr(alg, "expected_accept", False):
+                    from .expected_cost import expected_j, failure_prob
+                    p_fail = failure_prob(alg)
+                    j_new = expected_j(cand_ev.cost, cand_plan, inst, phys, p_fail)
+                    j_cur = expected_j(cur_ev.cost, cur_plan, inst, phys, p_fail) if cur_ev is not None else None
+                    dc = 0.0 if j_new is None or j_cur is None else j_new - j_cur
+                else:
+                    from .hybrid import cached_scenario_cost
+                    sn = cached_scenario_cost(cand_plan, ctx)
+                    sc = cached_scenario_cost(cur_plan, ctx)
+                    if sn is not None and sc is not None:
+                        dc = sn - sc
+                    else:
+                        dc = (cand_ev.cost or 0.0) - (cur_ev.cost or 0.0)
                 if abs(dc) <= alg.cost_tolerance_yuan:
                     accepted = False
                 else:
@@ -556,6 +825,7 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
             stats.aud("R:" + rep, "accepted")
             if trial_cross:
                 stats.aud("CROSS_REPAIR_TRIALS", "accepted")
+                stats.aud("FUNNEL_CROSS", "accepted")
             cur_plan, cur_ev = cand_plan.clone(), cand_ev
         _reward(s_d, op, reward)
         _reward(s_r, rep, reward)
@@ -570,23 +840,25 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                                            cap=alg.coordinate_light_cap)
             else:
                 p2, e2 = coordinate_polish(cur_plan, ctx, stats, budget)
-            if e2 is not None and _better(e2, cur_ev, alg):
+            if (e2 is not None and _better_air(e2, p2, cur_ev, cur_plan, alg, ctx)
+                    and _within_makespan_cap(e2, ctx) and _nominal_cross_intact(p2, e2, ctx)):
                 cur_plan, cur_ev = p2, e2
-                if _better(e2, best_ev, alg):
+                if _better_air(e2, p2, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e2, ctx):
                     best_ev, best_plan = e2, p2.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 恢复邻域：继续展开受影响残段的接机车/接机点/部分继续（预算允许时）
         if ctx.catalog is not None and stats.iterations % 10 == 0 and budget.evals_left() > 0:
             p_r, e_r = try_recovery_reassign(cur_plan, ctx, budget, stats)
             if (p_r is not None and e_r is not None
-                    and _better(e_r, best_ev if alg.reassign_adopt_only_if_best else cur_ev, alg)):
+                    and _better_air(e_r, p_r, best_ev if alg.reassign_adopt_only_if_best else cur_ev,
+                                    best_plan if alg.reassign_adopt_only_if_best else cur_plan, alg, ctx)):
                 # 第五轮修复(并入第六轮)：目录候选由名义残余计划重建、不含当前 ALNS 进展；
                 # flag=True 时只在优于全局最优时才替换当前解，避免丢弃进展。S/X 同一规则。
                 stats.audit['reassign:adopt_gap_max'] = max(stats.audit.get('reassign:adopt_gap_max', -1e9),
                                                             (e_r.cost or 0.0) - (best_ev.cost or 0.0))
                 stats.aud('REASSIGN', 'adopt')
                 cur_plan, cur_ev = p_r, e_r
-                if _better(e_r, best_ev, alg):
+                if _better_air(e_r, p_r, best_ev, best_plan, alg, ctx):
                     best_ev, best_plan = e_r, p_r.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 第四轮：恢复目标重定位（当前最优计划上；S/X 同算子同预算，资格不同）
@@ -594,9 +866,9 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 and stats.iterations % alg.retarget_period == alg.retarget_period // 2
                 and budget.evals_left() > 0):
             p_t, e_t = try_recovery_retarget(cur_plan, ctx, budget, stats)
-            if p_t is not None and e_t is not None and _better(e_t, cur_ev, alg):
+            if p_t is not None and e_t is not None and _better_air(e_t, p_t, cur_ev, cur_plan, alg, ctx):
                 cur_plan, cur_ev = p_t, e_t
-                if _better(e_t, best_ev, alg):
+                if _better_air(e_t, p_t, best_ev, best_plan, alg, ctx):
                     best_ev, best_plan = e_t, p_t.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 第四轮：X 专用跨车算子（仅当失败航次由≠原放飞车的车接回时有资格；S 恒不触发；消耗同一份预算）
@@ -604,10 +876,92 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 and stats.iterations % alg.cross_period == alg.cross_period // 2
                 and budget.evals_left() > 0):
             p_x, e_x = try_cross_truck_ops(cur_plan, ctx, budget, stats)
-            if p_x is not None and e_x is not None and _better(e_x, cur_ev, alg):
+            if p_x is not None and e_x is not None and _better_air(e_x, p_x, cur_ev, cur_plan, alg, ctx):
                 cur_plan, cur_ev = p_x, e_x
-                if _better(e_x, best_ev, alg):
+                if _better_air(e_x, p_x, best_ev, best_plan, alg, ctx):
                     best_ev, best_plan = e_x, p_x.clone()
+                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+        # 第四轮：X 专属。把最贵的纯地面绕路和从任一合格卡车再飞一趟做一次真实评价，
+        # 接受准则含风险价。S 的 propose 恒为空，不消耗评价。
+        if (getattr(alg, "x_risk_price_air", False) and ctx.strategy == "X" and ctx.mode == "recovery"
+                and stats.iterations % alg.cross_period == 1
+                and budget.evals_left() > 0):
+            p_f, e_f = try_refly(cur_plan, ctx, budget, stats)
+            if p_f is not None and e_f is not None and _better_air(e_f, p_f, cur_ev, cur_plan, alg, ctx):
+                stats.aud("REFLY", "cur_improve")
+                cur_plan, cur_ev = p_f, e_f
+                if _better_air(e_f, p_f, best_ev, best_plan, alg, ctx):
+                    stats.aud("REFLY", "best")
+                    best_ev, best_plan = e_f, p_f.clone()
+                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+        if (getattr(alg, "expected_accept", False) and ctx.mode == "nominal"
+                and getattr(alg, "scenario_aware", False) and best_plan is not None
+                and best_ev is not None and best_ev.feasible):
+            every = int(getattr(alg, "expected_reeval_every", 80) or 80)
+            mark = stats.eval_requests // every if every > 0 else 0
+            if mark > getattr(ctx, "_expected_reeval_mark", 0):
+                ctx._expected_reeval_mark = mark
+                from .hybrid import scenario_score
+                scenario_score(best_plan, best_ev, ctx)
+                stats.aud("EXPECTED", "true_reeval")
+        # 第 11 轮：只动离电量上限不到 0.05 kWh 的跨车航次。没有这种航次就不评价。
+        if (getattr(alg, "x_energy_retarget", False) and getattr(ctx.state, "nominal_cross", False)
+                and ctx.mode == "nominal"
+                and stats.iterations % alg.cross_period == 3
+                and budget.evals_left() > 0):
+            from .support_nominal import try_energy_retarget
+            p_e, e_e = try_energy_retarget(cur_plan, ctx, budget, stats)
+            if (p_e is not None and e_e is not None
+                    and _better_air(e_e, p_e, cur_ev, cur_plan, alg, ctx)
+                    and _within_makespan_cap(e_e, ctx)
+                    and _nominal_cross_intact(p_e, e_e, ctx)):
+                stats.aud("ENERGY_RETARGET", "cur_improve")
+                cur_plan, cur_ev = p_e, e_e
+                if _better_air(e_e, p_e, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_e, ctx):
+                    stats.aud("ENERGY_RETARGET", "best")
+                    best_ev, best_plan = e_e, p_e.clone()
+                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+        # 第 9 轮：插入会合访问。X 插到另一辆车，S 只插到放飞车。两边同一频率、同一评价上限。
+        if (getattr(alg, "support_rendezvous", False) and ctx.mode == "nominal"
+                and (getattr(ctx.state, "nominal_cross", False) or getattr(ctx, "scenario_on", False))
+                and stats.iterations % alg.cross_period == 0
+                and budget.evals_left() > 0):
+            from .support_nominal import try_support_rendezvous
+            p_s, e_s = try_support_rendezvous(cur_plan, ctx, budget, stats)
+            if (p_s is not None and e_s is not None
+                    and _better_air(e_s, p_s, cur_ev, cur_plan, alg, ctx)
+                    and _within_makespan_cap(e_s, ctx)
+                    and _nominal_cross_intact(p_s, e_s, ctx)):
+                stats.aud("FUNNEL_SUPPORT", "accepted")
+                if getattr(ctx.state, "nominal_cross", False):
+                    stats.aud("FUNNEL_CROSS", "accepted")
+                from .hybrid import cached_scenario_cost
+                sn = cached_scenario_cost(p_s, ctx)
+                sc = cached_scenario_cost(cur_plan, ctx)
+                if sn is not None and sc is not None and sn < sc - alg.cost_tolerance_yuan:
+                    stats.aud("FUNNEL_SUPPORT", "scenario")
+                stats.aud("SUPPORT_RENDEZVOUS", "cur_improve")
+                cur_plan, cur_ev = p_s, e_s
+                if _better_air(e_s, p_s, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_s, ctx):
+                    stats.aud("SUPPORT_RENDEZVOUS", "best")
+                    stats.last_improvement_iter = stats.iterations
+                    best_ev, best_plan = e_s, p_s.clone()
+                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+        if (getattr(alg, "pair_handoff", False) and getattr(ctx.state, "nominal_cross", False)
+                and ctx.mode == "nominal"
+                and stats.iterations % alg.cross_period == 1
+                and budget.evals_left() > 0):
+            from .support_nominal import try_pair_handoff
+            p_h, e_h = try_pair_handoff(cur_plan, ctx, budget, stats)
+            if (p_h is not None and e_h is not None
+                    and _better_air(e_h, p_h, cur_ev, cur_plan, alg, ctx)
+                    and _within_makespan_cap(e_h, ctx)
+                    and _nominal_cross_intact(p_h, e_h, ctx)):
+                stats.aud("FUNNEL_HANDOFF", "accepted")
+                stats.aud("FUNNEL_CROSS", "accepted")
+                cur_plan, cur_ev = p_h, e_h
+                if _better_air(e_h, p_h, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_h, ctx):
+                    best_ev, best_plan = e_h, p_h.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 第六轮：X 名义专用“同车航次改跨车回收”算子（S 的 state.nominal_cross=False，永不触发；同一份名义预算）
         if (getattr(ctx.state, "nominal_cross", False) and ctx.mode == "nominal"
@@ -615,10 +969,15 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 and budget.evals_left() > 0):
             from .cross_nominal import try_cross_convert
             p_x, e_x = try_cross_convert(cur_plan, ctx, budget, stats)
-            if p_x is not None and e_x is not None and _better(e_x, cur_ev, alg):
+            if (p_x is not None and e_x is not None
+                    and _better_air(e_x, p_x, cur_ev, cur_plan, alg, ctx)
+                    and _within_makespan_cap(e_x, ctx)
+                    and _cross_energy_ok(p_x, cur_plan, e_x, ctx)
+                    and _nominal_cross_intact(p_x, e_x, ctx)):
                 stats.aud("CROSS_CONVERT", "cur_improve")
+                stats.aud("FUNNEL_CROSS", "accepted")
                 cur_plan, cur_ev = p_x, e_x
-                if _better(e_x, best_ev, alg):
+                if _better_air(e_x, p_x, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_x, ctx):
                     stats.aud("CROSS_CONVERT", "best")
                     stats.last_improvement_iter = stats.iterations
                     best_ev, best_plan = e_x, p_x.clone()
@@ -631,10 +990,32 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                 from .local_reorder import try_local_reorder
                 p3, e3 = try_local_reorder(best_plan, best_ev, ctx, stats, budget, window_cursor)
                 window_cursor += 1
-                if p3 is not None and e3 is not None and _better(e3, best_ev, alg):
+                if (p3 is not None and e3 is not None and _better_air(e3, p3, best_ev, best_plan, alg, ctx)
+                        and _within_makespan_cap(e3, ctx) and _nominal_cross_intact(p3, e3, ctx)):
                     best_ev, best_plan = e3, p3.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+        if (getattr(alg, "scenario_elite_refill", False) and ctx.mode == "nominal"
+                and getattr(ctx, "scenario_on", False)
+                and stats.iterations % 10 == 0
+                and best_ev is not None and best_ev.feasible):
+            from .hybrid import cached_scenario_cost, scenario_score
+            if cached_scenario_cost(best_plan, ctx) is None:
+                scenario_score(best_plan, best_ev, ctx)
+                stats.aud("SCENARIO", "elite_refill")
         _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg, variant)
+    # 集合划分不放进退火循环：插进去的评价会改变温度，即使不接受也会把真实成本搜索带离原轨迹。
+    # 只在阶段2结束时重组一次。阶段1的列已经进池，阶段2开始前还会再解一次。
+    if (getattr(alg, "set_partition", False) and ctx.mode == "nominal"
+            and getattr(ctx, "scenario_on", False) and budget.evals_left() > 0):
+        from .hybrid import try_set_partition
+        p_m, e_m = try_set_partition(best_plan, ctx, budget, stats)
+        if (p_m is not None and e_m is not None and e_m.feasible
+                and _better_air(e_m, p_m, best_ev, best_plan, alg, ctx)
+                and _within_makespan_cap(e_m, ctx)
+                and _nominal_cross_intact(p_m, e_m, ctx)):
+            stats.aud("SET_PARTITION", "adopted")
+            best_ev, best_plan = e_m, p_m.clone()
+            stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
     if sel is not None and pend is not None:
         sel.update(pend[0], pend[1], pend[2], None)
     if ctx.catalog is not None:
@@ -659,6 +1040,22 @@ def optimize(plan: Plan, ctx: SolveContext, budget: Budget, variant: str = "full
                     "audit": {k: (dict(v) if isinstance(v, dict) else v) for k, v in stats.audit.items()},
                     "reject": dict(stats.reject),
                     "best_trace": stats.best_trace}
+    n_sc = int(getattr(stats, "n_scenario_eval", 0) or 0)
+    shared_scenario = int(getattr(alg, "scenario_eval_cap", 0) or 0) <= 0
+    stats.counts["n_scenario_eval"] = n_sc
+    stats.counts["n_phys_eval"] = int(stats.eval_requests) - (n_sc if shared_scenario else 0)
+    from .hybrid import _pool
+    pool = _pool(ctx, bool(getattr(ctx.state, "nominal_cross", False))) if (
+        getattr(alg, "set_partition", False) and ctx.mode == "nominal") else None
+    if pool is not None:
+        if pool.allow_cross:
+            stats.counts["n_sync_columns"] = len(pool.sync)
+            stats.counts["n_route_columns"] = 0
+            stats.counts["n_link_columns"] = 0
+        else:
+            stats.counts["n_route_columns"] = len(pool.routes)
+            stats.counts["n_link_columns"] = 0
+            stats.counts["n_sync_columns"] = 0
     final_ev = best_ev
     status = "FEASIBLE_LIMIT"
     if stats.stop_reason in ("EVAL_LIMIT", "WALLCLOCK", "MAX_ROUNDS") and best_ev.feasible:
@@ -891,9 +1288,25 @@ def try_recovery_retarget(plan: Plan, ctx: SolveContext, budget: Budget, stats: 
             f_ = plan.sorties[ctx.frag_sid]
             tag = "RETARGET_CROSS" if entry["truck"] != (f_.launch_truck or f_.truck) else "RETARGET_SAME"
             stats.destroy_used[tag] = stats.destroy_used.get(tag, 0) + 1
-            if ev.feasible and (best_ev is None or _better(ev, best_ev, ctx.alg)):
+            if ev.feasible and (best_ev is None or _better_air(ev, cand, best_ev, best_p, ctx.alg, ctx)):
                 best_p, best_ev = cand, ev
             break
+    return best_p, best_ev
+
+
+def try_refly(plan: Plan, ctx: SolveContext, budget: Budget, stats: SearchStats):
+    """X 专属：地面绕路 vs 跨车再飞，至多评价 1 个候选（计入同一份恢复预算）。"""
+    from .refly import propose
+    best_p, best_ev = None, None
+    for tag, cand in propose(plan, ctx, 1):
+        if budget.evals_left() <= 0:
+            break
+        ev = eval_counted(cand, ctx.inst, ctx.phys, ctx.state, ctx.H, "REFLY", stats, budget)
+        if ev is None:
+            break
+        stats.destroy_used[tag] = stats.destroy_used.get(tag, 0) + 1
+        if ev.feasible and (best_ev is None or _better_air(ev, cand, best_ev, best_p, ctx.alg, ctx)):
+            best_p, best_ev = cand, ev
     return best_p, best_ev
 
 
@@ -910,7 +1323,7 @@ def try_cross_truck_ops(plan: Plan, ctx: SolveContext, budget: Budget, stats: Se
         stats.destroy_used[tag] = stats.destroy_used.get(tag, 0) + 1
         if ev.feasible:
             stats.destroy_used[tag + "_FEAS"] = stats.destroy_used.get(tag + "_FEAS", 0) + 1
-            if best_ev is None or _better(ev, best_ev, ctx.alg):
+            if best_ev is None or _better_air(ev, cand, best_ev, best_p, ctx.alg, ctx):
                 best_p, best_ev = cand, ev
     return best_p, best_ev
 
@@ -949,7 +1362,7 @@ def try_recovery_reassign(plan: Plan, ctx: SolveContext, budget: Budget,
                               "RECOVERY_INITIAL_BASE", stats, budget)
             if ev is None:
                 break
-            if ev.feasible and (best_ev is None or _better(ev, best_ev, ctx.alg)):
+            if ev.feasible and (best_ev is None or _better_air(ev, cand, best_ev, best_p, ctx.alg, ctx)):
                 best_p, best_ev = cand, ev
             break
     return best_p, best_ev

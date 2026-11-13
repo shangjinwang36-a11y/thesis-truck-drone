@@ -40,12 +40,13 @@ class Sortie:
     rec_priority: int = 0      # 同一访问的回收顺序（局部事件重排）
     launch_priority: int = 0   # 同一访问的放飞顺序
     launch_truck: str | None = None  # 原放飞车（跨车回收统计用，不随承运车改写）
+    landed: bool = False       # 降落等待：回收访问处落地等待(零能耗、免 E_min 备用电量)，v6 变体 a
 
     def clone(self) -> "Sortie":
         return Sortie(self.sid, self.drone, self.truck, self.launch_vid, self.mode, self.lam,
                       list(self.air), self.rec_vid, list(self.handover), self.started,
                       self.start_time, self.start_pos, self.rec_priority, self.launch_priority,
-                      self.launch_truck)
+                      self.launch_truck, self.landed)
 
     @property
     def payload_ids(self) -> list[str]:
@@ -189,6 +190,13 @@ class Plan:
                 pass
             if s.started and s.start_pos is None:
                 errs.append(f"sortie {s.sid}: 空中残段缺少起始坐标")
+            if (not s.started and s.launch_vid is not None and s.launch_vid in self.visits
+                    and s.rec_vid in self.visits
+                    and self.visits[s.launch_vid].truck == self.visits[s.rec_vid].truck):
+                route = self.routes.get(self.visits[s.launch_vid].truck, [])
+                if (s.launch_vid in route and s.rec_vid in route
+                        and route.index(s.launch_vid) >= route.index(s.rec_vid)):
+                    errs.append(f"sortie {s.sid}: 同车放飞访问不早于回收访问(时刻成环)")
             if len(s.payload_ids) == 0 and not s.started:
                 errs.append(f"sortie {s.sid}: 空载航次")
             m = sum(inst.parcel_mass[p] for p in s.payload_ids if p in inst.parcel_mass)

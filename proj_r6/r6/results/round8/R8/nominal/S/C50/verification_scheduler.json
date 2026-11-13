@@ -1,0 +1,100 @@
+{
+ "ok": false,
+ "violations": [
+  "TERMINAL_CARRIER:d5",
+  "TERMINAL_CARRIER:d6"
+ ],
+ "cost": 173.57368976832197,
+ "cost_breakdown": {
+  "c_km": 68.17037462819634,
+  "c_driver": 103.26355817051939,
+  "c_vehicle": 0.0,
+  "c_depot": 2.139756969606251,
+  "c_overtime": 0.0,
+  "overtime_s": 0.0,
+  "distance_km": 40.651890435615286,
+  "driver_s": 7324.408489244359,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "refill_kwh": 2.6344044593599367
+ },
+ "distance_km": 40.651890435615286,
+ "energy_kwh": {
+  "d1": 0.323850965314601,
+  "d2": 0.3141064970604877,
+  "d3": 0.14578234424837822,
+  "d4": 0.4773571555976102,
+  "d5": 0.0,
+  "d6": 0.0,
+  "d7": 0.37681622875770787,
+  "d8": 0.4766105496734587,
+  "d9": 0.24318309007923347,
+  "d10": 0.2766976286284594
+ },
+ "charging_kwh": 0.0,
+ "terminal": {
+  "d1": {
+   "final_carrier": "t1",
+   "t_return_s": 1752.843940526396,
+   "E_return_kwh": 0.17614903468539894,
+   "return_mode": "ON_TRUCK"
+  },
+  "d2": {
+   "final_carrier": "t1",
+   "t_return_s": 1752.843940526396,
+   "E_return_kwh": 0.18589350293951223,
+   "return_mode": "ON_TRUCK"
+  },
+  "d3": {
+   "final_carrier": "t2",
+   "t_return_s": 2218.3152330056473,
+   "E_return_kwh": 0.3542176557516218,
+   "return_mode": "ON_TRUCK"
+  },
+  "d4": {
+   "final_carrier": "t2",
+   "t_return_s": 2218.3152330056473,
+   "E_return_kwh": 0.206430513531891,
+   "return_mode": "ON_TRUCK"
+  },
+  "d5": {
+   "final_carrier": "t3",
+   "t_return_s": 0.0,
+   "E_return_kwh": 0.5,
+   "return_mode": "NOT_DISPATCHED"
+  },
+  "d6": {
+   "final_carrier": "t3",
+   "t_return_s": 0.0,
+   "E_return_kwh": 0.5,
+   "return_mode": "NOT_DISPATCHED"
+  },
+  "d7": {
+   "final_carrier": "t4",
+   "t_return_s": 2102.8991634530744,
+   "E_return_kwh": 0.12318377124229211,
+   "return_mode": "ON_TRUCK"
+  },
+  "d8": {
+   "final_carrier": "t4",
+   "t_return_s": 2102.8991634530744,
+   "E_return_kwh": 0.3545339867469328,
+   "return_mode": "ON_TRUCK"
+  },
+  "d9": {
+   "final_carrier": "t5",
+   "t_return_s": 1250.350152259241,
+   "E_return_kwh": 0.2568169099207665,
+   "return_mode": "ON_TRUCK"
+  },
+  "d10": {
+   "final_carrier": "t5",
+   "t_return_s": 1250.350152259241,
+   "E_return_kwh": 0.2233023713715406,
+   "return_mode": "ON_TRUCK"
+  }
+ },
+ "notes": [
+  "energy_consumed=2.6344"
+ ]
+}

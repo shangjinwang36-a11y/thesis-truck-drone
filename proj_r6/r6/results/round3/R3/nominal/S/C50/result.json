@@ -1,0 +1,129 @@
+{
+ "case_id": "C50",
+ "status": "FEASIBLE",
+ "plan_id": "C50-nominal-1.0.0",
+ "H_s": 4010.4247648446785,
+ "cost": 178.14587164120755,
+ "z_s": 2210.4247648446785,
+ "n_sorties": 12,
+ "n_air_parcels": 36,
+ "n_visits": 19,
+ "eval_requests": 1000,
+ "wall_s": 3.05063224599985,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 178.14587164120755
+ },
+ "distance_km": 41.956039467308855,
+ "cost_breakdown": {
+  "truck_km": 41.956039467308855,
+  "c_km": 70.35734126391424,
+  "driver_s": 7506.018585087271,
+  "c_driver": 105.82399765501391,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 2.4186736333349677,
+  "c_depot": 1.9645327222794013,
+  "swaps": 0.0,
+  "overtime_s": 0.0,
+  "c_overtime": 0.0
+ },
+ "n_cross_sorties": 0,
+ "cross_launch": false,
+ "audit": {
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 10,
+   "feasible": 10,
+   "accepted": 2,
+   "cur_improve": 1
+  },
+  "R:AIR_FIRST": {
+   "calls": 16,
+   "feasible": 15,
+   "accepted": 5,
+   "cur_improve": 1,
+   "best": 2,
+   "infeasible": 1
+  },
+  "ENERGY_CHAIN": {
+   "calls": 5,
+   "feasible": 5
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 8,
+   "feasible": 8,
+   "cur_improve": 1,
+   "accepted": 1
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 17,
+   "feasible": 17,
+   "accepted": 5,
+   "cur_improve": 1
+  },
+  "SUPPORT_VISIT": {
+   "calls": 7,
+   "feasible": 7,
+   "accepted": 5,
+   "best": 2
+  },
+  "GROUND_TO_AIR": {
+   "calls": 3,
+   "feasible": 3,
+   "accepted": 1
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 7,
+   "feasible": 7,
+   "cur_improve": 2,
+   "accepted": 2
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 4,
+   "feasible": 3,
+   "infeasible": 1
+  },
+  "SORTIE_REGROUP": {
+   "calls": 5,
+   "feasible": 5,
+   "accepted": 1
+  }
+ },
+ "reject": {
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 29
+ },
+ "last_improvement_iter": 37,
+ "n_iterations": 41,
+ "best_trace": [
+  [
+   0,
+   178.37419241325833,
+   2265.3516370602665
+  ],
+  [
+   70,
+   178.1733889970647,
+   2295.9140817960792
+  ],
+  [
+   82,
+   178.14810669959778,
+   2295.9140817960792
+  ],
+  [
+   208,
+   178.14587164120755,
+   2210.4247648446785
+  ]
+ ],
+ "two_phase_b": 200,
+ "phase1_evals": 748,
+ "phase1_cost": 178.37419241325833,
+ "adopted_s_nominal": false,
+ "adopt_reason": null,
+ "makespan_cap": null,
+ "makespan_s": 2210.4247648446785
+}

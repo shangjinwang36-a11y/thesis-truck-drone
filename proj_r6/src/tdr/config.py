@@ -75,6 +75,9 @@ class PhysicalConfig:
     # 软 H(加班)变体(自 round5e 移植)：soft_h=True 时 H_EXCEEDED 不再是违规，超出 H 的每车时间按 overtime_mult×时薪计价
     # (基础工资已按 1× 计入，故附加 (mult-1)×)；默认 False。劳动法第44条(一)：不低于 150%。
     soft_h: bool = False
+    # 第五轮 v6 变体(a)：降落等待。回收阶段无法带备用电量抵达任何车的在飞/失败机，可降落在其下一个/当前客户点，
+    # 落地等待零能耗、回收不要求备用电量(E_min)，由合格车辆(S 仅原放飞车，X 任意车)到该点接回；默认关。
+    land_and_wait: bool = False
     overtime_mult: float = 1.5
 
     # ---- derived ----
@@ -221,6 +224,106 @@ class AlgorithmConfig:
     # False=旧行为（优于当前解即替换当前解，会丢弃已有进展）；True=仅当优于全局最优时才采用（S/X 对称）
     reassign_adopt_only_if_best: bool = False
     cross_n: int = 2
+    # 第五轮/v7 恢复算子（S/X 对称，默认关；打开后两边同一规则，仅资格随策略不同）
+    joint_inflight_retarget: bool = False
+    slot_aware_recovery: bool = False
+    unlaunched_repair: bool = False
+    # 第六轮续：X 专属（S 不触发）。改进才接受的跨车精炼；名义结束后若 X>S 则采用 S 解以保证 X≤S
+    x_improve_only_cross: bool = False
+    x_adopt_s_nominal: bool = False
+    # 诊断用回退，不是最终设计。为真时，已搜到的 X 名义若仍含跨车航次，发布时改用 S 的名义。
+    # 这会把失败前的跨车从名义方案里拿掉。论文要的是名义阶段也使用跨车，所以正式设计不打开它。
+    # 第 5 轮用它在调参种子 101–110 和一次评价种子上量过“整份删掉”的代价，见 ROUND5_REPORT_CN.md。
+    # 恢复阶段仍允许跨车。S 不读这个字段。默认关，第 4 轮预设也不打开。
+    x_adopt_s_if_cross: bool = False
+    # 第 6 轮：X 名义跨车按最终时刻表逐条检查（5% 裕度、会合延迟、落地后留一个机位、
+    # 接机车自己的客户留在车上）。不合格的只修这一条，不整份退回 S。S 的 nominal_cross 为假，不读。
+    x_cross_robust: bool = False
+    # 会合还能再推迟这么多秒（空载悬停）而不低于 E_min。0 表示不另加延迟，只保留 5% 裕度。
+    # 具体秒数在调参种子 101–110 上选，不在评价种子上选。
+    x_rendezvous_slack_s: float = 90.0
+    # X 名义：两架无人机互换回收车。单向把客机留到收工会占满 3 个机位。S 不触发。
+    x_cross_exchange: bool = False
+    # 互换允许比当前解贵这么多，只要最终时刻表稳健。0 表示必须严格更便宜。
+    # 第 6 轮在调参种子上选这个数。S 不跑这个算子。
+    x_exchange_cost_tau: float = 0.0
+    # 第 7 轮：X 的阶段1 也允许跨车放飞/回收和跨车算子。S 的 cross_launch 为假，不读。
+    # 默认关，第 6 轮的两阶段切分保持原样。总评价次数不另加。
+    x_cross_from_start: bool = False
+    # 第 8 轮：名义搜索用「名义成本 + 少量固定伯努利情景上的期望失败后成本」接受候选。
+    # 每个情景的补救评价都计入同一份名义预算。S 与 X 同一套；S 的补救只能回到放飞车。
+    scenario_aware: bool = False
+    scenario_count: int = 2
+    scenario_p: float = 0.2
+    scenario_stream: int = 0
+    # 情景补救不可行时，这一情景的成本按名义成本再加这么多。不是在评价种子上拟合的。
+    scenario_infeasible_penalty: float = 400.0
+    # 第 8 轮：把 ALNS 见过的卡车路线和航次放进列池，定期做集合划分。
+    # 跨车航次是连接两辆车的列，必须同时选中两边的路线。S 不生成这种列。
+    set_partition: bool = False
+    set_partition_period: int = 5
+    # 第 9 轮：接受准则用 J = C0 + 期望补救，不再用固定的 2 元 τ。S 和 X 同一套。
+    # 新出现的跨车组件可以在自己的期望补救额度内先留在当前解，全局最优仍比真实情景分。
+    expected_accept: bool = False
+    expected_reeval_every: int = 80
+    # 第 9 轮：接机车可以插入一个只用于会合的访问。X 插在另一辆车上，S 只插在放飞车上。
+    # 评价次数仍在同一份名义预算里。默认关，第 8 轮的搜索轨迹不变。
+    support_rendezvous: bool = False
+    # 近邻成对破坏。X 拆两辆靠近的车，S 拆同一辆车上相邻的两站。两边都进算子列表才算公平。
+    joint_near_destroy: bool = False
+    # X 名义：修复后试一次两机互换回收。S 不触发。
+    pair_handoff: bool = False
+    # S 的情景阶段不得发布比阶段 1 真实成本更贵的计划。X 不读：跨车可以贵在名义上。
+    s_keep_true_cost: bool = False
+    # 采用 S 的名义之后，用 X 自己的预算补若干次同车改跨车。0 表示不补。
+    convert_polish_n: int = 0
+    # X 的阶段 2 把 S 的名义当作第二个起点，预算对半，不另加次数。
+    x_s_second_start: bool = False
+    # 情景补救的单独上限。0 表示仍从 1000 次物理评价里扣（第 8 轮）。
+    scenario_eval_cap: int = 0
+    # 真实成本变差超过这么多，就不再做情景评价。0 表示每个可行候选都评。
+    scenario_screen_yuan: float = 0.0
+    # 每 10 轮把当前最优再送进情景账本一次。只在还没评过时花钱。
+    scenario_elite_refill: bool = False
+    # X 专属：改回收车时尽量保留/改派后续航次，而不是整链丢掉
+    x_preserve_cross_repair: bool = False
+    # X 专属：同一残差上保留 S 资格可行恢复作为候选，使 X 恢复不差于该残差上的 S 恢复
+    x_keep_s_recovery: bool = False
+    # X 专属：名义阶段2 只接受完工时刻不超过 S 名义 makespan 的移动（评价用的是 H_S，不能靠拉长工时换成本）
+    x_cross_hs_cap: bool = False
+    # 为真时，搜索和发布上限改成评价班次 H = Cmax(S) + shift_slack，而不是 Cmax(S)。
+    # 工时工资仍按卡车完工时刻计入，所以拉长完工不是免费的。默认关，保持第 8 轮的上限。
+    x_cap_is_shift: bool = False
+    # 第 10 轮，只在 X 的跨车会合里用：换更近的放飞点，或把航段拆到接机车的弧上。
+    # 电量和 90 秒裕度不改。S 的会合仍只在放飞车上，不读这个开关。
+    x_short_return: bool = False
+    # 第 10 轮，只在发布 X 时用：没有跨车、J 又比 S 差，就发布 S。
+    # 有跨车航次的方案不经过这道门。默认关，第 9 轮的发布结果不变。
+    x_same_truck_j_gate: bool = False
+    # 第 11 轮，只在 X 选会合客户时用：先丢掉飞不到 e_cap−e_min 的点，再沿接机车的弧往外找。
+    # 电池和 90 秒不变。S 仍用原来的距离列表。
+    x_energy_rendezvous: bool = False
+    # 第 11 轮，只在 X 的名义阶段用：跨车航次贴近电量上限时，改到更早的访问或另一辆车。
+    x_energy_retarget: bool = False
+    # 第 11 轮，只在发布 X 时用：有跨车航次，且 J 不严格低于同车基线，就发布同车基线。
+    x_cross_j_gate: bool = False
+    # 第 11 轮，只在 X 的恢复目录里用：S 的前若干个候选保持原顺序，其后的能量不可行条目不再占用评价。
+    x_recovery_wider: bool = False
+    # X 专属：新出现/改回收点的跨车航次，回收后余电须 ≥ E_min + 该比例×E_cap，避免贴着换电下限
+    x_cross_energy_margin_frac: float = 0.0
+    # X 专属：恢复时不把残差里尚未空送的票新开成空中服务（已有空送可以改回收车）
+    x_limit_new_air: bool = False
+    # X 专属：每新开一票空送，在接受比较里加这么多元（0=不惩罚）。
+    # 与 x_limit_new_air 同时 >0 时用惩罚而不是一票否决，避免为了躲失败把很贵的地面绕路锁死。
+    # 报告成本仍是真实 C_res，惩罚只进入 X 的接受准则。
+    x_new_air_penalty: float = 0.0
+    # X 专属：新开空送按已知失败概率计价，而不是一票否决，也不是按算例规模调出来的固定元/票。
+    # 期望失败代价 = failure_prob × (该票最便宜地面插入代理 + 一次回收的工资)。
+    # 只进入 X 的修复代理和接受准则；写入结果的仍是真实 C_res。S 不读这两个字段。
+    x_risk_price_air: bool = False
+    failure_prob: float = 0.0
+    # 两阶段名义：阶段2 预算 b（None=不启用；与 build 参数 two_phase_b 二选一，参数优先）
+    nominal_two_phase_b: int | None = None
     crn_per_iteration: bool = False          # 共同随机数：按(种子,算例,重规划,轮次)重置随机流（S/X 对称）
     cross_ops_gate: bool = True              # False=对照：同车情形也启用（S、X 同等）
     geometry_base_starts: int = 5

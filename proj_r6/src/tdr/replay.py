@@ -43,7 +43,8 @@ def _overlap(a0: float, a1: float, b0: float, b1: float) -> bool:
     return a0 < b1 - 1e-9 and b0 < a1 - 1e-9
 
 
-def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict], H: float | None = None) -> ReplayReport:
+def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict], H: float | None = None,
+                  strategy: str | None = None) -> ReplayReport:
     rep = ReplayReport(n_segments=len(segments))
     if not segments:
         rep.violations.append("NO_SEGMENTS")
@@ -72,6 +73,7 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict], H:
     manual_iv: dict[str, list[tuple[float, float, str]]] = {k: [] for k in start_pos}
     channel_iv: dict[str, list[tuple[float, float, str]]] = {k: [] for k in start_pos}
     pos_tl: dict[str, list[tuple[float, tuple[float, float]]]] = {k: [] for k in start_pos}
+    stage_iv: dict[str, list[tuple[float, float, str]]] = {}
 
     def pos_at(truck: str, t: float):
         last = start_pos.get(truck, (0.0, 0.0))
@@ -177,8 +179,14 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict], H:
                         v.append(f"R_TRUCK_NOT_THERE:{d}@{cust}")
                     if c is not None and d in drone_pos and _d((c.x, c.y), drone_pos[d]) > 50.0:
                         v.append(f"R_DRONE_NOT_THERE:{d}@{cust}")
-                    if energy.get(d, 0.0) < phys.e_min - phys.energy_tol:
+                    # 降落等待：落地后零能耗，回收不要求 E_min 备用电量（电量仍须 ≥ 0）
+                    emin = 0.0 if a.get("landed") else phys.e_min
+                    if energy.get(d, 0.0) < emin - phys.energy_tol:
                         v.append(f"R_RESERVE:{d}@{t:.1f} E={energy.get(d,0):.4f}")
+                    if strategy == "S":
+                        launch_truck = a.get("launch_truck")
+                        if launch_truck and launch_truck != a["actor"]:
+                            v.append(f"S_CROSS_RECOVERY:{d}:{launch_truck}->{a['actor']}@{t:.1f}")
                     reserved[a["actor"]] = reserved.get(a["actor"], 0) + 1
                     occupied = len(onboard.get(a["actor"], set())) + reserved[a["actor"]]
                     if occupied > phys.truck_drone_slots:
@@ -205,16 +213,24 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict], H:
                 sk = s["kind"]
                 d = s.get("drone")
                 dur = s["end"] - s["start"]
+                if dur > 1e-9:
+                    stage_iv.setdefault(d, []).append((s["start"], s["end"], sk))
                 if sk == "CRUISE":
                     dist = s["dist"]
                     if dur > 0 and abs(dist - phys.drone_speed_m_s * dur) > max(1e-4, 1e-6 * dist):
                         v.append(f"CRUISE_MISMATCH:{d}@{s['start']:.1f} dist={dist:.1f} dur={dur:.1f}")
                     energy[d] = energy.get(d, phys.e_cap) - phys.fly_energy_kwh(dist, s.get("mass", 0.0))
                     drone_pos[d] = (s["x1"], s["y1"])
+                elif sk == "SWAP":
+                    energy[d] = phys.e_cap
+                elif sk == "WAIT" and s.get("landed"):
+                    pass  # 降落等待：零能耗，与 schedule.stage_energy 一致
                 elif sk in ("SERVICE", "WAIT"):
                     energy[d] = energy.get(d, phys.e_cap) - phys.hover_energy_kwh(dur, s.get("mass", 0.0))
                     if sk == "SERVICE" and s.get("parcel"):
                         p = s["parcel"]
+                        if p in delivered:
+                            v.append(f"DOUBLE_AIR:{p}@{s['start']:.1f}")
                         if holder.get(p) != f"DRONE:{d}":
                             v.append(f"SERVICE_CUSTODY:{p} holder={holder.get(p)} drone={d}")
                         if s.get("customer") != inst.parcel_to_customer.get(p):
@@ -222,7 +238,10 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict], H:
                         holder[p] = "DELIVERED"
                         delivered.add(p)
                 elif sk == "R":
-                    energy[d] = energy.get(d, phys.e_cap) - phys.hover_energy_kwh(dur, s.get("mass", 0.0))
+                    if not s.get("landed"):
+                        energy[d] = energy.get(d, phys.e_cap) - phys.hover_energy_kwh(dur, s.get("mass", 0.0))
+                        if energy.get(d, 0.0) < phys.e_min - phys.energy_tol:
+                            v.append(f"R_END_RESERVE:{d}@{s['start']:.1f}:{energy.get(d, 0):.4f}")
                 elif sk == "L":
                     energy[d] = energy.get(d, phys.e_cap) - phys.hover_energy_kwh(dur, s.get("mass", 0.0))
                 elif sk in ("ON_TRUCK", "READY"):
@@ -239,15 +258,23 @@ def verify_replay(inst: Instance, phys: PhysicalConfig, segments: list[dict], H:
                             v.append(f"AC_BUDGET:{k}@{s['start']:.1f} left={ac_left[k]:.4f}")
                     if energy.get(d, 0.0) > phys.e_cap + phys.energy_tol:
                         v.append(f"OVERCHARGE:{d}@{s['start']:.1f}")
+                if sk in ("CRUISE", "SERVICE", "WAIT", "R", "L", "SWAP") and energy.get(d, 0.0) < -phys.energy_tol:
+                    v.append(f"NEGATIVE_SOC:{d}@{s['start']:.1f}:{sk}:{energy.get(d, 0):.4f}")
             if len(v) > 300:
                 break
         # 段内通道全区间检查：同一车 L/R 不得重叠
         for k, ivs in channel_iv.items():
-            for (a0, a1, ka), (b0, b1, kb) in zip(ivs, ivs[1:]):
+            ordered = sorted(ivs, key=lambda x: (x[0], x[1], x[2]))
+            for (a0, a1, ka), (b0, b1, kb) in zip(ordered, ordered[1:]):
                 if _overlap(a0, a1, b0, b1):
                     v.append(f"CHANNEL_OVERLAP:{k}:{ka}@{a0:.1f}/{kb}@{b0:.1f}")
         if len(v) > 300:
             break
+    for d, ivs in stage_iv.items():
+        ordered = sorted(ivs, key=lambda x: (x[0], x[1], x[2]))
+        for (a0, a1, ka), (b0, b1, kb) in zip(ordered, ordered[1:]):
+            if b0 < a1 - 1e-6:
+                v.append(f"DRONE_OVERLAP:{d}:{ka}@{a0:.1f}/{kb}@{b0:.1f}")
     missing = [c.parcel_id for c in inst.customers if c.parcel_id not in delivered]
     if missing:
         v.append(f"UNDELIVERED_FINAL:{len(missing)}:{missing[:5]}")

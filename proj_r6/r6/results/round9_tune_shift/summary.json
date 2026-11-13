@@ -1,0 +1,732 @@
+{
+  "R9H": {
+    "overall": {
+      "n_rows": 60,
+      "n_paired_cost": 0,
+      "STOPPED_S": 0,
+      "STOPPED_R": 0,
+      "STOPPED_X": 6,
+      "status_S": {
+        "MISSING": 60
+      },
+      "status_R": {
+        "MISSING": 60
+      },
+      "status_X": {
+        "COMPLETED_VERIFIED": 54,
+        "STOPPED_NO_FEASIBLE_SUFFIX": 6
+      },
+      "delta_mean": null,
+      "delta_ci95": [
+        null,
+        null
+      ],
+      "delta_over_CS_mean": null,
+      "delta_over_CS_ci95": [
+        null,
+        null
+      ],
+      "sign_X_better": 0,
+      "sign_S_better": 0,
+      "sign_tie": 0,
+      "sign_p_two_sided": null,
+      "inc_S_mean": null,
+      "inc_X_mean": null,
+      "nom_S_mean": null,
+      "nom_X_mean": null,
+      "n_cross_X_mean": null,
+      "S_to_R": {
+        "n": 0,
+        "delta_mean": null,
+        "delta_ci95": [
+          null,
+          null
+        ],
+        "delta_over_CS_mean": null,
+        "delta_over_CS_ci95": [
+          null,
+          null
+        ],
+        "sign_right_better": 0,
+        "sign_left_better": 0,
+        "sign_tie": 0,
+        "sign_p_two_sided": null
+      },
+      "R_to_X": {
+        "n": 0,
+        "delta_mean": null,
+        "delta_ci95": [
+          null,
+          null
+        ],
+        "delta_over_CS_mean": null,
+        "delta_over_CS_ci95": [
+          null,
+          null
+        ],
+        "sign_right_better": 0,
+        "sign_left_better": 0,
+        "sign_tie": 0,
+        "sign_p_two_sided": null
+      },
+      "same_truck_nominal": {
+        "same_truck_cheaper": {
+          "n": 0,
+          "delta_S_to_X_mean": null,
+          "delta_S_to_R_mean": null,
+          "delta_R_to_X_mean": null,
+          "nominal_gap_X_minus_S_mean": null
+        },
+        "nominal_cross": {
+          "n": 0,
+          "delta_S_to_X_mean": null,
+          "delta_S_to_R_mean": null,
+          "delta_R_to_X_mean": null,
+          "nominal_gap_X_minus_S_mean": null
+        },
+        "same_nominal": {
+          "n": 0,
+          "delta_S_to_X_mean": null,
+          "delta_S_to_R_mean": null,
+          "delta_R_to_X_mean": null,
+          "nominal_gap_X_minus_S_mean": null
+        }
+      },
+      "fairness": {
+        "rates": {
+          "X": {
+            "complete": 54,
+            "n": 60,
+            "rate": 0.9
+          }
+        },
+        "completion": {},
+        "all_pairs_ground_finish": {}
+      }
+    },
+    "by_case": {
+      "C100": {
+        "n_rows": 10,
+        "n_paired_cost": 0,
+        "STOPPED_S": 0,
+        "STOPPED_R": 0,
+        "STOPPED_X": 1,
+        "status_S": {
+          "MISSING": 10
+        },
+        "status_R": {
+          "MISSING": 10
+        },
+        "status_X": {
+          "COMPLETED_VERIFIED": 9,
+          "STOPPED_NO_FEASIBLE_SUFFIX": 1
+        },
+        "delta_mean": null,
+        "delta_ci95": [
+          null,
+          null
+        ],
+        "delta_over_CS_mean": null,
+        "delta_over_CS_ci95": [
+          null,
+          null
+        ],
+        "sign_X_better": 0,
+        "sign_S_better": 0,
+        "sign_tie": 0,
+        "sign_p_two_sided": null,
+        "inc_S_mean": null,
+        "inc_X_mean": null,
+        "nom_S_mean": null,
+        "nom_X_mean": null,
+        "n_cross_X_mean": null,
+        "S_to_R": {
+          "n": 0,
+          "delta_mean": null,
+          "delta_ci95": [
+            null,
+            null
+          ],
+          "delta_over_CS_mean": null,
+          "delta_over_CS_ci95": [
+            null,
+            null
+          ],
+          "sign_right_better": 0,
+          "sign_left_better": 0,
+          "sign_tie": 0,
+          "sign_p_two_sided": null
+        },
+        "R_to_X": {
+          "n": 0,
+          "delta_mean": null,
+          "delta_ci95": [
+            null,
+            null
+          ],
+          "delta_over_CS_mean": null,
+          "delta_over_CS_ci95": [
+            null,
+            null
+          ],
+          "sign_right_better": 0,
+          "sign_left_better": 0,
+          "sign_tie": 0,
+          "sign_p_two_sided": null
+        },
+        "same_truck_nominal": {
+          "same_truck_cheaper": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          },
+          "nominal_cross": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          },
+          "same_nominal": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          }
+        },
+        "fairness": {
+          "rates": {
+            "X": {
+              "complete": 9,
+              "n": 10,
+              "rate": 0.9
+            }
+          },
+          "completion": {},
+          "all_pairs_ground_finish": {}
+        }
+      },
+      "C50": {
+        "n_rows": 10,
+        "n_paired_cost": 0,
+        "STOPPED_S": 0,
+        "STOPPED_R": 0,
+        "STOPPED_X": 0,
+        "status_S": {
+          "MISSING": 10
+        },
+        "status_R": {
+          "MISSING": 10
+        },
+        "status_X": {
+          "COMPLETED_VERIFIED": 10
+        },
+        "delta_mean": null,
+        "delta_ci95": [
+          null,
+          null
+        ],
+        "delta_over_CS_mean": null,
+        "delta_over_CS_ci95": [
+          null,
+          null
+        ],
+        "sign_X_better": 0,
+        "sign_S_better": 0,
+        "sign_tie": 0,
+        "sign_p_two_sided": null,
+        "inc_S_mean": null,
+        "inc_X_mean": null,
+        "nom_S_mean": null,
+        "nom_X_mean": null,
+        "n_cross_X_mean": null,
+        "S_to_R": {
+          "n": 0,
+          "delta_mean": null,
+          "delta_ci95": [
+            null,
+            null
+          ],
+          "delta_over_CS_mean": null,
+          "delta_over_CS_ci95": [
+            null,
+            null
+          ],
+          "sign_right_better": 0,
+          "sign_left_better": 0,
+          "sign_tie": 0,
+          "sign_p_two_sided": null
+        },
+        "R_to_X": {
+          "n": 0,
+          "delta_mean": null,
+          "delta_ci95": [
+            null,
+            null
+          ],
+          "delta_over_CS_mean": null,
+          "delta_over_CS_ci95": [
+            null,
+            null
+          ],
+          "sign_right_better": 0,
+          "sign_left_better": 0,
+          "sign_tie": 0,
+          "sign_p_two_sided": null
+        },
+        "same_truck_nominal": {
+          "same_truck_cheaper": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          },
+          "nominal_cross": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          },
+          "same_nominal": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          }
+        },
+        "fairness": {
+          "rates": {
+            "X": {
+              "complete": 10,
+              "n": 10,
+              "rate": 1.0
+            }
+          },
+          "completion": {},
+          "all_pairs_ground_finish": {}
+        }
+      },
+      "R100": {
+        "n_rows": 10,
+        "n_paired_cost": 0,
+        "STOPPED_S": 0,
+        "STOPPED_R": 0,
+        "STOPPED_X": 1,
+        "status_S": {
+          "MISSING": 10
+        },
+        "status_R": {
+          "MISSING": 10
+        },
+        "status_X": {
+          "COMPLETED_VERIFIED": 9,
+          "STOPPED_NO_FEASIBLE_SUFFIX": 1
+        },
+        "delta_mean": null,
+        "delta_ci95": [
+          null,
+          null
+        ],
+        "delta_over_CS_mean": null,
+        "delta_over_CS_ci95": [
+          null,
+          null
+        ],
+        "sign_X_better": 0,
+        "sign_S_better": 0,
+        "sign_tie": 0,
+        "sign_p_two_sided": null,
+        "inc_S_mean": null,
+        "inc_X_mean": null,
+        "nom_S_mean": null,
+        "nom_X_mean": null,
+        "n_cross_X_mean": null,
+        "S_to_R": {
+          "n": 0,
+          "delta_mean": null,
+          "delta_ci95": [
+            null,
+            null
+          ],
+          "delta_over_CS_mean": null,
+          "delta_over_CS_ci95": [
+            null,
+            null
+          ],
+          "sign_right_better": 0,
+          "sign_left_better": 0,
+          "sign_tie": 0,
+          "sign_p_two_sided": null
+        },
+        "R_to_X": {
+          "n": 0,
+          "delta_mean": null,
+          "delta_ci95": [
+            null,
+            null
+          ],
+          "delta_over_CS_mean": null,
+          "delta_over_CS_ci95": [
+            null,
+            null
+          ],
+          "sign_right_better": 0,
+          "sign_left_better": 0,
+          "sign_tie": 0,
+          "sign_p_two_sided": null
+        },
+        "same_truck_nominal": {
+          "same_truck_cheaper": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          },
+          "nominal_cross": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          },
+          "same_nominal": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          }
+        },
+        "fairness": {
+          "rates": {
+            "X": {
+              "complete": 9,
+              "n": 10,
+              "rate": 0.9
+            }
+          },
+          "completion": {},
+          "all_pairs_ground_finish": {}
+        }
+      },
+      "R50": {
+        "n_rows": 10,
+        "n_paired_cost": 0,
+        "STOPPED_S": 0,
+        "STOPPED_R": 0,
+        "STOPPED_X": 0,
+        "status_S": {
+          "MISSING": 10
+        },
+        "status_R": {
+          "MISSING": 10
+        },
+        "status_X": {
+          "COMPLETED_VERIFIED": 10
+        },
+        "delta_mean": null,
+        "delta_ci95": [
+          null,
+          null
+        ],
+        "delta_over_CS_mean": null,
+        "delta_over_CS_ci95": [
+          null,
+          null
+        ],
+        "sign_X_better": 0,
+        "sign_S_better": 0,
+        "sign_tie": 0,
+        "sign_p_two_sided": null,
+        "inc_S_mean": null,
+        "inc_X_mean": null,
+        "nom_S_mean": null,
+        "nom_X_mean": null,
+        "n_cross_X_mean": null,
+        "S_to_R": {
+          "n": 0,
+          "delta_mean": null,
+          "delta_ci95": [
+            null,
+            null
+          ],
+          "delta_over_CS_mean": null,
+          "delta_over_CS_ci95": [
+            null,
+            null
+          ],
+          "sign_right_better": 0,
+          "sign_left_better": 0,
+          "sign_tie": 0,
+          "sign_p_two_sided": null
+        },
+        "R_to_X": {
+          "n": 0,
+          "delta_mean": null,
+          "delta_ci95": [
+            null,
+            null
+          ],
+          "delta_over_CS_mean": null,
+          "delta_over_CS_ci95": [
+            null,
+            null
+          ],
+          "sign_right_better": 0,
+          "sign_left_better": 0,
+          "sign_tie": 0,
+          "sign_p_two_sided": null
+        },
+        "same_truck_nominal": {
+          "same_truck_cheaper": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          },
+          "nominal_cross": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          },
+          "same_nominal": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          }
+        },
+        "fairness": {
+          "rates": {
+            "X": {
+              "complete": 10,
+              "n": 10,
+              "rate": 1.0
+            }
+          },
+          "completion": {},
+          "all_pairs_ground_finish": {}
+        }
+      },
+      "RC100": {
+        "n_rows": 10,
+        "n_paired_cost": 0,
+        "STOPPED_S": 0,
+        "STOPPED_R": 0,
+        "STOPPED_X": 2,
+        "status_S": {
+          "MISSING": 10
+        },
+        "status_R": {
+          "MISSING": 10
+        },
+        "status_X": {
+          "COMPLETED_VERIFIED": 8,
+          "STOPPED_NO_FEASIBLE_SUFFIX": 2
+        },
+        "delta_mean": null,
+        "delta_ci95": [
+          null,
+          null
+        ],
+        "delta_over_CS_mean": null,
+        "delta_over_CS_ci95": [
+          null,
+          null
+        ],
+        "sign_X_better": 0,
+        "sign_S_better": 0,
+        "sign_tie": 0,
+        "sign_p_two_sided": null,
+        "inc_S_mean": null,
+        "inc_X_mean": null,
+        "nom_S_mean": null,
+        "nom_X_mean": null,
+        "n_cross_X_mean": null,
+        "S_to_R": {
+          "n": 0,
+          "delta_mean": null,
+          "delta_ci95": [
+            null,
+            null
+          ],
+          "delta_over_CS_mean": null,
+          "delta_over_CS_ci95": [
+            null,
+            null
+          ],
+          "sign_right_better": 0,
+          "sign_left_better": 0,
+          "sign_tie": 0,
+          "sign_p_two_sided": null
+        },
+        "R_to_X": {
+          "n": 0,
+          "delta_mean": null,
+          "delta_ci95": [
+            null,
+            null
+          ],
+          "delta_over_CS_mean": null,
+          "delta_over_CS_ci95": [
+            null,
+            null
+          ],
+          "sign_right_better": 0,
+          "sign_left_better": 0,
+          "sign_tie": 0,
+          "sign_p_two_sided": null
+        },
+        "same_truck_nominal": {
+          "same_truck_cheaper": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          },
+          "nominal_cross": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          },
+          "same_nominal": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          }
+        },
+        "fairness": {
+          "rates": {
+            "X": {
+              "complete": 8,
+              "n": 10,
+              "rate": 0.8
+            }
+          },
+          "completion": {},
+          "all_pairs_ground_finish": {}
+        }
+      },
+      "RC50": {
+        "n_rows": 10,
+        "n_paired_cost": 0,
+        "STOPPED_S": 0,
+        "STOPPED_R": 0,
+        "STOPPED_X": 2,
+        "status_S": {
+          "MISSING": 10
+        },
+        "status_R": {
+          "MISSING": 10
+        },
+        "status_X": {
+          "COMPLETED_VERIFIED": 8,
+          "STOPPED_NO_FEASIBLE_SUFFIX": 2
+        },
+        "delta_mean": null,
+        "delta_ci95": [
+          null,
+          null
+        ],
+        "delta_over_CS_mean": null,
+        "delta_over_CS_ci95": [
+          null,
+          null
+        ],
+        "sign_X_better": 0,
+        "sign_S_better": 0,
+        "sign_tie": 0,
+        "sign_p_two_sided": null,
+        "inc_S_mean": null,
+        "inc_X_mean": null,
+        "nom_S_mean": null,
+        "nom_X_mean": null,
+        "n_cross_X_mean": null,
+        "S_to_R": {
+          "n": 0,
+          "delta_mean": null,
+          "delta_ci95": [
+            null,
+            null
+          ],
+          "delta_over_CS_mean": null,
+          "delta_over_CS_ci95": [
+            null,
+            null
+          ],
+          "sign_right_better": 0,
+          "sign_left_better": 0,
+          "sign_tie": 0,
+          "sign_p_two_sided": null
+        },
+        "R_to_X": {
+          "n": 0,
+          "delta_mean": null,
+          "delta_ci95": [
+            null,
+            null
+          ],
+          "delta_over_CS_mean": null,
+          "delta_over_CS_ci95": [
+            null,
+            null
+          ],
+          "sign_right_better": 0,
+          "sign_left_better": 0,
+          "sign_tie": 0,
+          "sign_p_two_sided": null
+        },
+        "same_truck_nominal": {
+          "same_truck_cheaper": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          },
+          "nominal_cross": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          },
+          "same_nominal": {
+            "n": 0,
+            "delta_S_to_X_mean": null,
+            "delta_S_to_R_mean": null,
+            "delta_R_to_X_mean": null,
+            "nominal_gap_X_minus_S_mean": null
+          }
+        },
+        "fairness": {
+          "rates": {
+            "X": {
+              "complete": 8,
+              "n": 10,
+              "rate": 0.8
+            }
+          },
+          "completion": {},
+          "all_pairs_ground_finish": {}
+        }
+      }
+    }
+  }
+}

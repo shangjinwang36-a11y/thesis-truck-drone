@@ -4,9 +4,9 @@
         [--cut-mode snapshot] [--workers 7]
 """
 import argparse, json, os, sys, time, random, zlib, re
-ROOT = '/workspace/thesis/proj_r6'
-sys.path.insert(0, ROOT + '/src'); os.chdir(ROOT)
 from pathlib import Path
+ROOT = str(Path(__file__).resolve().parents[1])
+sys.path.insert(0, ROOT + '/src'); os.chdir(ROOT)
 from multiprocessing import Pool
 
 ap = argparse.ArgumentParser()

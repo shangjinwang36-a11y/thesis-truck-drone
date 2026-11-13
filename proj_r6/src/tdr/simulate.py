@@ -545,9 +545,11 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
                 if ps_:
                     # 第二轮修复：装机(P)已完成、放飞(L)未开始即遇截断——机上票须经零时长 U 卸回原车，
                     # 否则回放仍认为票在无人机上(SEGk_HOLDER)而计划已把它记在车上。
+                    # 第六轮续修：U 只用于日志/保管对齐，不得取消该航次。若取消，依赖它把机体
+                    # 送到另一辆回收车的后续航次会变成“放飞车与起始承运车不符”，initial_recovery
+                    # 直接 STOPPED。卸回后后缀计划仍保留该航次，由调度在残段再执行一次 P 后放飞。
                     unloaded.append({"truck": s.truck, "drone": s.drone, "parcels": ps_, "t": tk(s.truck)})
-                freed.extend(ps_)
-                new.sorties.pop(sid, None)
+                keep.append(sid)
                 continue
             keep.append(sid)
         new.drone_sorties[d] = keep
@@ -568,6 +570,38 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
         new.drone_sorties[d] = [x for x in new.drone_sorties[d] if x in new.sorties]
         if not new.drone_sorties[d]:
             new.drone_sorties.pop(d)
+    # 若某机一尚未执行的航次因访问被裁掉等原因被丢弃，其后依赖该航次到达另一承运车的
+    # 后续航次必须一并取消（释放包裹给修复），否则结构校验报“放飞车与承运车不符”。
+    # 已完成航次的弹出不会走到这里：当前承运车应已更新为回收车，与下一航次放飞车一致。
+    for d, sids in list(new.drone_sorties.items()):
+        ds = st.drone_start.get(d)
+        carrier = st.drone_carrier.get(d) or (ds.truck if ds and ds.kind == "ON_TRUCK" else None)
+        keep_c: list[int] = []
+        drop_rest = False
+        for sid in sids:
+            s = new.sorties.get(sid)
+            if s is None:
+                continue
+            if drop_rest:
+                _drop(s)
+                new.remove_sortie(s.sid)
+                continue
+            if s.started:
+                keep_c.append(sid)
+                if s.rec_vid in new.visits:
+                    carrier = new.visits[s.rec_vid].truck
+                continue
+            if carrier is not None and s.truck != carrier:
+                _drop(s)
+                new.remove_sortie(s.sid)
+                drop_rest = True
+                continue
+            keep_c.append(sid)
+            if s.rec_vid in new.visits:
+                carrier = new.visits[s.rec_vid].truck
+        new.drone_sorties[d] = [x for x in keep_c if x in new.sorties]
+        if not new.drone_sorties[d]:
+            new.drone_sorties.pop(d, None)
     st.parcel_holder = _compute_holders(new, plan, inst, all_delivered, prev_state, inflight)
     info = {"unloaded": unloaded, "delivered": all_delivered, "prefix_dist": prefix_dist, "q_prefix": q_prefix,
             "t_cut": t_cut, "freed": sorted(set(freed)), "inflight": sorted(inflight)}
@@ -644,6 +678,7 @@ def collect_segment(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConf
                 if a.kind == "R":
                     rec["onboard"] = list(so0.air) + list(so0.handover)
                     rec["handover"] = list(so0.handover)
+                    rec["landed"] = bool(so0.landed)
             if a.kind == "U":
                 rec["parcels"] = list(a.info.get("parcels", []))
         elif a.kind == "L":
@@ -683,7 +718,7 @@ def collect_segment(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConf
             start = max(st.start, t0)
             frac = 0.0 if st.end - st.start < 1e-12 else (end - start) / (st.end - st.start)
             rec = {"kind": st.kind, "drone": d, "start": start, "end": end,
-                   "truck": st.truck, "mass": st.mass}
+                   "truck": st.truck, "mass": st.mass, "landed": bool(st.landed)}
             if end < st.end - 1e-9 and st.kind in ("R", "L"):
                 # 跨段截断的回收/放飞只记悬停能耗，不改变 custody/机位状态
                 rec["kind"] = "WAIT"
@@ -747,6 +782,12 @@ class EpisodeResult:
     segments: list[dict] = field(default_factory=list)
     replay: Any = None
     failed_sids: list[int] = field(default_factory=list)   # 每次失败对应的（被恢复的）航次号
+    ground_finish_cost: float | None = None
+    ground_finish_status: str | None = None
+    time_alns: float = 0.0
+    time_milp: float = 0.0
+    time_init: float = 0.0
+    time_replay: float = 0.0
 
 
 def derive_rngs(base_seed: int, case_id: str, phase: str, replan_index: int) -> dict[str, random.Random]:
@@ -780,8 +821,9 @@ def initial_run_state(plan: Plan, inst: Instance, phys: PhysicalConfig) -> Start
 def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: float,
                 phys: PhysicalConfig, world, strategy: str, alg: AlgorithmConfig,
                 rngs: dict[str, random.Random], recovery_eval_budget: int | None = None,
-                recovery_wall_s: float | None = None, variant: str = "full",
-                max_replans: int = 8, cut_mode: str = "snapshot") -> EpisodeResult:
+                recovery_wall_s: float | None = None,                 variant: str = "full",
+                max_replans: int = 8, cut_mode: str = "snapshot",
+                ground_finish: bool = False) -> EpisodeResult:
     from .replay import verify_replay
     t_start = time.perf_counter()
     res = EpisodeResult(case_id=inst.case_id, strategy=strategy,
@@ -796,6 +838,15 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
     seg_start = state
     res.replans.append(ReplanRecord(0, 0.0, [], "NOMINAL", nominal_ev.cost, nominal_ev.z,
                                     {"n_eval_requests": 0}, 0.0, "NOMINAL"))
+
+    def _finish_stopped(plan_, state_) -> None:
+        if not ground_finish or plan_ is None or state_ is None:
+            return
+        from .ground_finish import ground_finish_cost
+        cost, status = ground_finish_cost(plan_, state_, inst, phys, H)
+        res.ground_finish_cost = cost
+        res.ground_finish_status = status
+
     while True:
         ev_now = evaluate_plan(plan, inst, phys, state, H, "SIMULATE")
         if not ev_now.feasible:
@@ -827,7 +878,9 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                         [st.end for lst in tl.drone_stages.values() for st in lst] + [state.t0])
             segments.append(collect_segment(plan, tl, inst, phys, state.t0, t_end, seg_start))
             ev = evaluate_plan(plan, inst, phys, state, H, "FINAL")
-            rep = verify_replay(inst, phys, segments, H)
+            t_rep = time.perf_counter()
+            rep = verify_replay(inst, phys, segments, H, strategy=strategy)
+            res.time_replay += time.perf_counter() - t_rep
             res.segments = segments
             res.replay = rep
             res.plan = plan
@@ -865,6 +918,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                              f"drone={a.drone},parcel={a.parcel}")
             res.notes.append("MAX_REPLANS")
             res.plan, res.evaluation = new_plan, None
+            _finish_stopped(new_plan, state2)
             break
         main_limit = (recovery_eval_budget if recovery_eval_budget is not None
                       else alg.deterministic_recovery_eval_budget)
@@ -873,31 +927,61 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
         init_budget = Budget(alg.recovery_init_eval_budget, recovery_wall_s, start=t_budget0)
         init_stats = SearchStats()
         init_info: dict[str, Any] = {}
+        ceiling = set()
+        for s in new_plan.sorties.values():
+            ceiling.update(s.air)
+        risk_on = (strategy == "X" and alg.x_risk_price_air
+                   and float(alg.failure_prob or 0.0) > 0)
+        # 风险价不进通用修复代理，也不改初始恢复的“少开空送”词典序。
+        # 新开空送只由再飞算子提出，避免把第三轮硬禁止在邻域里整个关掉。
+        state2.x_failure_p = 0.0
+        state2.air_ceiling = None
         opt, reasons, catalog = initial_recovery(new_plan, state2, inst, phys, strategy,
                                                  ground_required, H=H,
                                                  extra_pool=info_.get("freed", []),
                                                  frag_sid=a.sid, stats=init_stats,
                                                  budget=init_budget, rescue_evals=main_limit,
                                                  info=init_info,
-                                                 use_milp=(alg.recovery_decision == "milp"))
+                                                 use_milp=(alg.recovery_decision == "milp"),
+                                                 joint=alg.joint_inflight_retarget,
+                                                 slot_aware=alg.slot_aware_recovery,
+                                                 unlaunched=alg.unlaunched_repair,
+                                                 preserve_cross=(strategy == "X" and alg.x_preserve_cross_repair),
+                                                 keep_s_recovery=(strategy == "X" and alg.x_keep_s_recovery),
+                                                 limit_new_air=(strategy == "X" and alg.x_limit_new_air),
+                                                 new_air_penalty=(alg.x_new_air_penalty if strategy == "X" else 0.0),
+                                                 energy_screen=(strategy == "X" and bool(getattr(alg, "x_recovery_wider", False))),
+                                                 milp_top_k=(10 if strategy == "X" and bool(getattr(alg, "x_recovery_wider", False)) else 6))
+        res.time_init += time.perf_counter() - t_budget0
+        res.time_milp += float(init_info.get("milp_wall_s") or 0.0)
         if opt is None:
             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
             res.notes.append(f"STOP_CONTEXT:replan={replan_index + 1},t_fail={a.time:.1f},t_cut={t_cut:.1f},"
                              f"drone={a.drone},parcel={a.parcel},n_candidate_reasons={len(reasons)}")
             res.notes.append("INITIAL_RECOVERY_FAILED:" + ",".join(reasons[:5]))
             res.plan, res.evaluation = new_plan, None
+            _finish_stopped(new_plan, state2)
             break
         rr = derive_rngs(alg.base_algorithm_seed, inst.case_id, "recovery", replan_index + 1)
+        greq = set(ground_required)
+        # 惩罚为 0 时，x_limit_new_air 仍是硬禁止：通用修复不能新开空送。
+        # 风险价只约束再飞算子提出的那一票，不在这里把硬禁止关掉。
+        if strategy == "X" and alg.x_limit_new_air and not (alg.x_new_air_penalty > 0):
+            greq.update(p for p in inst.parcel_mass if p not in ceiling and p not in state2.delivered)
+        air_ceiling = ceiling if (strategy == "X" and (
+            alg.x_limit_new_air or alg.x_new_air_penalty > 0 or risk_on)) else None
         ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state2, H=H, mode="recovery",
                            affected_drones={a.drone}, affected_sorties={a.sid},
-                           ground_required=set(ground_required), replan_index=replan_index + 1,
-                           rngs=rr, catalog=catalog, frag_sid=a.sid, strategy=strategy)
+                           ground_required=greq, replan_index=replan_index + 1,
+                           rngs=rr, catalog=catalog, frag_sid=a.sid, strategy=strategy,
+                           air_ceiling=air_ceiling)
         t_r = time.perf_counter()
         budget = Budget(main_limit, recovery_wall_s, start=t_budget0)   # 主循环预算
         stats = SearchStats()
         sol = optimize(opt.plan, ctx, budget, variant=variant, stats=stats, init_ev=opt.ev)
         dt = time.perf_counter() - t_r
         res.replan_times.append(dt)
+        res.time_alns += dt
         # 永不劣于残段候选：理论上 optimize 的最好解从起始解出发、只会更好；这里再做显式兜底
         res_cost = init_info.get("residual_cost")
         if (res_cost is not None and sol.evaluation is not None and sol.evaluation.feasible
@@ -943,6 +1027,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             res.replans.append(ReplanRecord(replan_index + 1, a.time, [a.parcel], sol.status,
                                             None, None, dict(sol.stats.counts), t_cut))
             res.plan, res.evaluation = new_plan, None
+            _finish_stopped(new_plan, state2)
             break
         plan, state = sol.plan, state2
         seg_start = state2
@@ -954,6 +1039,9 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             res.status = "ERROR"
             res.notes.append("REPLAN_LOOP")
             break
+    # 停止/失败出口此前只在 COMPLETED 路径上保存日志。已执行的前缀（换电、回收、
+    # 交付）因此从回合对象上消失，不变量和 n_fail_cross 都看不见。搜索与成本不变。
+    res.segments = segments
     res.wall_s = time.perf_counter() - t_start
     try:
         res.audit = world.finish_episode()
