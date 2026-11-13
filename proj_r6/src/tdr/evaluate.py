@@ -206,6 +206,36 @@ def channel_check(plan: Plan, phys: PhysicalConfig, tl: Timeline,
 
 
 
+def failure_return_violations(plan: Plan, inst: Instance, phys: PhysicalConfig, tl: Timeline) -> list[str]:
+    """T02-C：每一次尚未到场的空送都要留出“送不成、带货直飞回接机点”的电量。
+
+    失败在到场时才揭示，货仍在机上。按到场前的电量 e_i，带当前载重 st.mass 直飞到接机客户点，
+    再加一次回收悬停（降落等待的回收免悬停与 E_min，与 E_MIN_AT_R 相同），回收后不得低于 E_min。
+    与 T01 审计名义计划时用的规则相同；不看策略，名义、恢复、收尾都走这一条。已在进行的服务
+    （resumed，结果已揭示）不查。
+    """
+    errs: list[str] = []
+    for d, stages in tl.drone_stages.items():
+        e = tl.drone_energy.get(d, [])
+        for i, st in enumerate(stages):
+            if st.kind != "SERVICE" or st.resumed or st.parcel is None or st.sid is None or i >= len(e):
+                continue
+            s = plan.sorties.get(st.sid)
+            if s is None or s.rec_vid not in plan.visits:
+                continue
+            rc = inst.customer(plan.visits[s.rec_vid].customer)
+            cc = inst.customer(inst.parcel_to_customer[st.parcel])
+            dist = math.hypot(rc.x - cc.x, rc.y - cc.y)
+            e_arr = e[i] - phys.fly_energy_kwh(dist, st.mass)
+            if s.landed:
+                need, e_end = 0.0, e_arr
+            else:
+                need, e_end = phys.e_min, e_arr - phys.hover_energy_kwh(phys.recovery_s, st.mass)
+            if e_end < need - phys.energy_tol:
+                errs.append(f"FAIL_RETURN:{d}@{st.start:.1f}:{st.parcel}:e={e_end:.6f}<{need:.6f}")
+    return errs
+
+
 def _structure_initial_carrier(state: StartState, plan: Plan) -> dict[str, str] | None:
     """截断后结构校验用的起始承运车.
 
@@ -312,6 +342,7 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
             if st.kind == "R" and not st.landed:
                 if i + 1 < len(e) and e[i + 1] < phys.e_min - phys.energy_tol:
                     viol.append(f"E_MIN_AT_R:{d}@{st.start:.1f}")
+    viol += failure_return_violations(plan, inst, phys, tl)
     if viol:
         ev.status = "INFEASIBLE_RESOURCE"
         ev.violations = viol[:20]
