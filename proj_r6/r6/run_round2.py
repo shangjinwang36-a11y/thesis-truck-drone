@@ -45,6 +45,9 @@ PRESETS = {
     # 第六轮：诊断回退保持关闭。名义跨车按航次做稳健性检查，并允许两机互换回收车。
     "R6": {"label": "名义跨车按航次稳健 + 互换回收车",
            "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r6": True},
+    # 第七轮：在第 6 轮的检查之上，X 从阶段1 就开始跨车。S 的阶段1 仍是同车。
+    "R7": {"label": "第6轮 + X 阶段1 也允许跨车",
+           "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r6": True, "r7": True},
 }
 
 
@@ -82,6 +85,9 @@ def configs(pkg, preset: str):
         ad.update(x_adopt_s_if_cross=False, x_cross_robust=True,
                   x_rendezvous_slack_s=90.0, x_cross_exchange=True,
                   x_exchange_cost_tau=2.0)
+    if ps.get("r7"):
+        # 阶段1 也跨车。稳健检查和 τ 仍是第 6 轮那一组，不在评价种子上改。
+        ad.update(x_cross_from_start=True)
     alg = AlgorithmConfig.from_dict(ad)
     alg.recovery_eval_budget_override = None
     alg.recovery_time_limit_override_s = None
@@ -322,7 +328,7 @@ def main():
 
     # 名义共享：A0 与 A1 共用 A0 名义；A2 与 A3 共用 A2 名义；A4 独立
     nom_src = {"A0": "A0", "A1": "A0", "A2": "A2", "A3": "A2", "A4": "A4",
-               "R3": "R3", "R4": "R3", "R5": "R3", "R6": "R6"}
+               "R3": "R3", "R4": "R3", "R5": "R3", "R6": "R6", "R7": "R7"}
 
     if args.phase in ("nominal", "all"):
         need = sorted({nom_src[p] for p in presets if p in nom_src})

@@ -300,6 +300,7 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         "best_trace": res.stats.counts.get("best_trace"),
         "two_phase_b": two_phase_b, "phase1_evals": res.stats.counts.get("phase1_evals"),
         "phase1_cost": res.stats.counts.get("phase1_cost"),
+        "phase1_cross": res.stats.counts.get("phase1_cross"),
         "adopted_s_nominal": adopted_s,
         "adopt_reason": adopt_reason,
         "n_cross_before_repair": n_cross_before_repair,

@@ -247,6 +247,9 @@ class AlgorithmConfig:
     # 互换允许比当前解贵这么多，只要最终时刻表稳健。0 表示必须严格更便宜。
     # 第 6 轮在调参种子上选这个数。S 不跑这个算子。
     x_exchange_cost_tau: float = 0.0
+    # 第 7 轮：X 的阶段1 也允许跨车放飞/回收和跨车算子。S 的 cross_launch 为假，不读。
+    # 默认关，第 6 轮的两阶段切分保持原样。总评价次数不另加。
+    x_cross_from_start: bool = False
     # X 专属：改回收车时尽量保留/改派后续航次，而不是整链丢掉
     x_preserve_cross_repair: bool = False
     # X 专属：同一残差上保留 S 资格可行恢复作为候选，使 X 恢复不差于该残差上的 S 恢复

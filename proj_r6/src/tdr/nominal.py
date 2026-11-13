@@ -141,7 +141,7 @@ def descent_pass(plan: Plan, inst: Instance, phys: PhysicalConfig, alg: Algorith
     （并入已有航次 / 新建航次，代理分已含同步等待与电费），各用**完整评价的真实成本**判断，
     更便宜才接受。只有新建航次被接受时才补评另外 4 个 λ 起点（省评价）。
     整个阶段的评价次数计入名义总预算。"""
-    from .alns import _better, _geometry_evaluate, SolveContext
+    from .alns import _better, _geometry_evaluate, SolveContext, _nominal_cross_intact
     from .moves import air_candidates, apply_air, remove_parcel
     ctx = SolveContext(inst, phys, alg, state, None, "nominal")
     spent = 0
@@ -191,7 +191,8 @@ def descent_pass(plan: Plan, inst: Instance, phys: PhysicalConfig, alg: Algorith
                 spent += 1
                 if ev is None:
                     break
-                if ev.feasible and _better(ev, best_ev, alg) and (win is None or _better(ev, win[1], alg)):
+                if ev.feasible and _better(ev, best_ev, alg) and _nominal_cross_intact(cand, ev, ctx) \
+                        and (win is None or _better(ev, win[1], alg)):
                     win = (cand, ev, ac)
             if win is None:
                 continue
@@ -200,25 +201,36 @@ def descent_pass(plan: Plan, inst: Instance, phys: PhysicalConfig, alg: Algorith
                 before = stats.eval_requests
                 ev2, p2 = _geometry_evaluate(cand, ctx, stats, "NOMINAL_AIR_BASE", budget)
                 spent += stats.eval_requests - before
-                if ev2 is not None and _better(ev2, ev, alg):
+                if ev2 is not None and _better(ev2, ev, alg) and _nominal_cross_intact(p2, ev2, ctx):
                     cand, ev = p2, ev2
             plan, best_ev = cand, ev
             improved_pass = True
     return plan, best_ev, spent
 
 
+def phase1_allows_cross(cross_launch: bool, alg) -> bool:
+    """阶段1 是否允许跨车。S 的 cross_launch 为假，这里恒假。
+
+    默认关：阶段1 与 S 相同，跨车只在阶段2。x_cross_from_start 为真时，X 从构造阶段就开始跨车。
+    """
+    return bool(cross_launch and getattr(alg, "x_cross_from_start", False))
+
+
 def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_launch, b,
                      makespan_cap=None):
-    """第六轮：共享随机流的两阶段设计（CRN）.
+    """两阶段名义。
 
-    阶段1（预算 B−b）：S 与 X **完全相同**的同车流程(含初始构造、转换启动、ALNS、末尾下降、坐标细化)，同种子同随机流 → 结果逐位相同；
-    阶段2（剩余预算 b'=B−阶段1实际用量）：从阶段1的最优解出发继续 ALNS，随机流接着阶段1的状态；
-        S：照旧同车算子；X：打开跨车候选与 CROSS_CONVERT。总预算 S/X 相同(B)。
-    X 的可行域包含 S 的；两者在 X 第一次选到跨车候选之前轨迹逐步相同。"""
+    阶段1（预算 B−b）：默认与 S 相同的同车流程。x_cross_from_start 且本次是 X 时，
+    阶段1 的构造、下降和 ALNS 也允许跨车放飞/回收，并走 CROSS_CONVERT。稳健性检查跟着开。
+    阶段2（剩余预算，X 再留出互换用的评价）：S 仍同车；X 继续跨车。总预算仍是 B。
+    阶段1 搜索里不设完工上限，否则全地送初解已经长过 S，一步都走不动。
+    发布时仍要求完工时刻不超过 S。
+    """
     t0 = time.perf_counter()
     B = eval_budget if eval_budget is not None else alg.nominal_eval_budget
+    phase1_cross = phase1_allows_cross(cross_launch, alg)
     r1 = build_nominal(inst, phys, alg, rngs, eval_budget=B - b, variant=variant, n_used=n_used,
-                       cross_launch=False, two_phase_b=0)
+                       cross_launch=phase1_cross, two_phase_b=0)
     if r1.plan is None or r1.evaluation is None or not r1.evaluation.feasible:
         return r1
     used1 = r1.stats.eval_requests
@@ -243,15 +255,17 @@ def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_
                        makespan_cap=cap)
     res = optimize(r1.plan, ctx, budget2, variant=variant, stats=stats2)
     best_plan, best_ev = r1.plan, r1.evaluation
-    from .alns import _better, _within_makespan_cap
+    from .alns import _better, _nominal_cross_intact, _within_makespan_cap
     if res.plan is not None and res.evaluation is not None and res.evaluation.feasible \
             and _better(res.evaluation, best_ev, alg) \
-            and _within_makespan_cap(res.evaluation, ctx):
+            and _within_makespan_cap(res.evaluation, ctx) \
+            and _nominal_cross_intact(res.plan, res.evaluation, ctx):
         best_plan, best_ev = res.plan, res.evaluation
     stats2.eval_requests = used1 + stats2.eval_requests
     stats2.wall_s = time.perf_counter() - t0
     stats2.counts = dict(res.stats.counts)
     stats2.counts["exchange_hold"] = hold
+    stats2.counts["phase1_cross"] = phase1_cross
     stats2.counts["phase1_evals"] = used1
     stats2.counts["phase1_cost"] = r1.evaluation.cost
     stats2.counts["makespan_cap_effective"] = cap
@@ -285,10 +299,11 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                        rngs=rngs)
     if alg.nominal_two_start and variant == "full" and budget.eval_limit is not None \
             and budget.eval_limit >= 600:
-        from .alns import _better
+        from .alns import _better, _nominal_cross_intact
         total = budget.eval_limit
         pA, eA, nA = descent_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
-                                  max_eval=alg.nominal_descent_eval_budget)
+                                  max_eval=alg.nominal_descent_eval_budget,
+                                  allow_cross=bool(getattr(state, "nominal_cross", False)))
         pB, eB, nB = conversion_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
                                      max_eval=alg.nominal_air_bootstrap_eval_budget)
         best = None
@@ -315,11 +330,13 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
             p4, e4, n4 = descent_pass(best_plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
                                       max_eval=reserve, allow_cross=True)
             n_conv += n4
-            if e4 is not None and e4.feasible and _better(e4, best_ev, alg):
+            if e4 is not None and e4.feasible and _better(e4, best_ev, alg) \
+                    and _nominal_cross_intact(p4, e4, ctx):
                 best_plan, best_ev = p4, e4
         if variant != "no_coordinate_polish" and budget.evals_left() > 0:
             p3, e3 = coordinate_polish(best_plan, ctx, stats, budget)
-            if p3 is not None and e3 is not None and _better(e3, best_ev, alg):
+            if p3 is not None and e3 is not None and _better(e3, best_ev, alg) \
+                    and _nominal_cross_intact(p3, e3, ctx):
                 best_plan, best_ev = p3, e3
         stats.stop_reason = res.stats.stop_reason or "BUDGET"
         stats.wall_s = time.perf_counter() - t0
@@ -329,7 +346,8 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
     # 转换启动
     if alg.nominal_descent:
         plan2, ev2, n_conv = descent_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
-                                          max_eval=alg.nominal_descent_eval_budget)
+                                          max_eval=alg.nominal_descent_eval_budget,
+                                          allow_cross=bool(getattr(state, "nominal_cross", False)))
     else:
         plan2, ev2, n_conv = conversion_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
                                              max_eval=alg.nominal_air_bootstrap_eval_budget)
@@ -345,8 +363,8 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
     if variant != "no_coordinate_polish" and budget.evals_left() > 0:
         p3, e3 = coordinate_polish(best_plan, ctx, stats, budget)
         if p3 is not None and e3 is not None:
-            from .alns import _better
-            if _better(e3, best_ev, alg):
+            from .alns import _better, _nominal_cross_intact
+            if _better(e3, best_ev, alg) and _nominal_cross_intact(p3, e3, ctx):
                 best_plan, best_ev = p3, e3
     stats.stop_reason = res.stats.stop_reason or "BUDGET"
     stats.wall_s = time.perf_counter() - t0
