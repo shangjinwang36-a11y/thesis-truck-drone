@@ -123,6 +123,84 @@ def test_hover_at_recovery_lands_only_after_the_three_modes_fail():
     assert enough_cost is not None
 
 
+def test_infeasible_return_is_priced_from_where_the_drone_stopped():
+    """六种收尾都不改接机点，所以飞不回去时都拒绝给价。
+
+    这之后才把接机点改到放飞车上、当前电量够得到的最近客户，并按最小绕行插入。
+    原航程电量够的残段不改接机点。票都要落到某个地面访问上。
+    """
+    import math
+
+    from tdr.ground_finish import _attempt, _build, _relocate_unreachable
+    from tdr.recovery import _insert_support
+
+    inst, phys = _light("C50")
+    raw = json.loads((ROOT / "r6/results/round3/R3/nominal/S/C50/nominal_plan.json").read_text())
+    plan = plan_from_dict(raw["plan"])
+    state = initial_state(inst, phys)
+    base = evaluate_plan(plan, inst, phys, state, None, "NOMINAL")
+    assert base.feasible
+    horizon = max(base.timeline.truck_finish.values())
+    sortie = next(s for s in plan.sorties.values() if s.rec_vid in plan.visits and s.air)
+    rec = plan.visits[sortie.rec_vid]
+    rec_customer = inst.customer(rec.customer)
+    here = max(inst.customers, key=lambda c: math.hypot(c.x - rec_customer.x, c.y - rec_customer.y))
+    assert here.customer_id != rec.customer
+    parked = plan.clone()
+    frag = parked.sorties[sortie.sid]
+    frag.started = True
+    frag.start_time = 0.0
+    frag.start_pos = (here.x, here.y)
+    frag.handover = list(dict.fromkeys(list(frag.air) + list(frag.handover)))
+    mass = sum(inst.parcel_mass[p] for p in frag.handover)
+    need = phys.fly_energy_kwh(math.hypot(rec_customer.x - here.x, rec_customer.y - here.y), mass)
+    assert need > 0.05
+    frag.air = []
+    frag.landed = False
+    frag.launch_truck = frag.launch_truck or frag.truck
+    low = initial_state(inst, phys)
+    low.drone_energy[frag.drone] = need * 0.5
+    low.drone_start[frag.drone] = DroneStart(
+        "AIRBORNE", None, 0.0, (here.x, here.y), need * 0.5, aboard=list(frag.handover))
+    for land in (False, True):
+        for mode in ("truck", "keep_inflight", "overtime_only"):
+            missed, note = _attempt(parked, low, inst, phys, horizon, mode, land)
+            assert missed is None, note
+    cost, status = ground_finish_cost(parked, low, inst, phys, horizon)
+    assert cost is not None, status
+    assert status.startswith("FEASIBLE")
+    moved = _relocate_unreachable(parked, low, inst, phys)
+    assert moved is not None
+    truck = frag.launch_truck
+    route = moved.routes[truck]
+    placed_vid = moved.sorties[frag.sid].rec_vid
+    assert moved.visits[placed_vid].customer == here.customer_id
+    assert moved.visits[placed_vid].truck == truck
+    # 最小绕行的位置，不是一律接到路线末尾。
+    fresh = parked.clone()
+    inserted = _insert_support(fresh, inst, truck, here.customer_id, min_pos=0)
+    assert route.index(placed_vid) == fresh.routes[truck].index(inserted)
+    built, _, left = _build(moved, low, inst, phys, "truck", land=True)
+    assert left == []
+    placed = {p for v in built.visits.values() for p in v.ground}
+    assert set(frag.handover) <= placed
+    # 人已经在原定接机客户上空、电量够飞回时，六种收尾不改接机点。
+    at_rec = plan.clone()
+    stay = at_rec.sorties[sortie.sid]
+    stay.started = True
+    stay.start_time = 0.0
+    stay.start_pos = (rec_customer.x, rec_customer.y)
+    stay.handover = list(frag.handover)
+    stay.air = []
+    enough = initial_state(inst, phys)
+    enough.drone_energy[stay.drone] = phys.e_cap
+    enough.drone_start[stay.drone] = DroneStart(
+        "AIRBORNE", None, 0.0, stay.start_pos, phys.e_cap, aboard=list(stay.handover))
+    assert _relocate_unreachable(at_rec, enough, inst, phys) is None
+    kept, _, _ = _build(at_rec, enough, inst, phys, "truck", land=False)
+    assert kept.visits[kept.sorties[stay.sid].rec_vid].customer == rec.customer
+
+
 def test_land_and_wait_pricing_is_identical_for_s_r_x_and_matches_stage_energy():
     """收尾函数没有策略参数。同一停点评三次，成本和状态相同。
 

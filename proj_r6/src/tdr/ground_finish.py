@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import math
 
 from .evaluate import evaluate_plan
 from .moves import remove_sortie_closure, repair_ground_append, repair_ground_only
@@ -92,6 +93,80 @@ def _insert(plan, inst, phys, state, pool: list[str]) -> list[str]:
     return left
 
 
+def _return_flight_kwh(sortie, plan, inst, phys) -> float:
+    """按现在的残段算还要飞的电量：先送完 air，再飞回原定接机点。服务悬停不算在内。"""
+    pos = sortie.start_pos
+    mass = sum(inst.parcel_mass[p] for p in sortie.air + sortie.handover if p in inst.parcel_mass)
+    need = 0.0
+    for parcel in sortie.air:
+        cust = inst.customer(inst.parcel_to_customer[parcel])
+        need += phys.fly_energy_kwh(math.hypot(cust.x - pos[0], cust.y - pos[1]), mass)
+        mass = max(0.0, mass - inst.parcel_mass.get(parcel, 0.0))
+        pos = (cust.x, cust.y)
+    if sortie.rec_vid not in plan.visits:
+        return math.inf
+    rec = inst.customer(plan.visits[sortie.rec_vid].customer)
+    need += phys.fly_energy_kwh(math.hypot(rec.x - pos[0], rec.y - pos[1]), mass)
+    return need
+
+
+def _onboard_mass(sortie, inst) -> float:
+    return sum(inst.parcel_mass[p] for p in sortie.air + sortie.handover if p in inst.parcel_mass)
+
+
+def _nearest_reachable_customer(sortie, state, inst, phys) -> str | None:
+    """当前电量直接飞得到的客户里，离无人机最近的一个。"""
+    ds = state.drone_start.get(sortie.drone)
+    if ds is None or ds.pos is None:
+        return None
+    mass = _onboard_mass(sortie, inst)
+    best: tuple[tuple[float, str], str] | None = None
+    for cust in inst.customers:
+        hop = math.hypot(cust.x - ds.pos[0], cust.y - ds.pos[1])
+        if phys.fly_energy_kwh(hop, mass) > ds.energy + phys.energy_tol:
+            continue
+        key = (hop, cust.customer_id)
+        if best is None or key < best[0]:
+            best = (key, cust.customer_id)
+    return None if best is None else best[1]
+
+
+def _relocate_unreachable(plan, state, inst, phys):
+    """六种收尾都失败之后，把飞不回去的残段改到放飞车上当前电量够得到的点。
+
+    接机客户取离无人机最近、并且直飞电量不超过当前电量的客户。放飞车已有不早于
+    最小插入位置的同客户访问就用它，否则按最小绕行插进放飞车路线。原航程够的残段不动。
+    三种策略走同一个函数，不改搜索。
+    """
+    from .recovery import _insert_support
+
+    moved = plan.clone()
+    changed = False
+    for sortie in list(moved.sorties.values()):
+        if not sortie.started or sortie.start_pos is None:
+            continue
+        ds = state.drone_start.get(sortie.drone)
+        if ds is None or ds.pos is None:
+            continue
+        if _return_flight_kwh(sortie, moved, inst, phys) <= ds.energy + phys.energy_tol:
+            continue
+        truck = sortie.launch_truck or sortie.truck
+        if truck is None or truck in state.truck_done or truck not in moved.routes:
+            continue
+        customer_id = _nearest_reachable_customer(sortie, state, inst, phys)
+        if customer_id is None:
+            continue
+        route = moved.routes.get(truck, [])
+        min_pos = int(state.truck_min_insert.get(truck, 0) or 0)
+        vid = next((v for i, v in enumerate(route)
+                    if i >= min_pos and moved.visits[v].customer == customer_id), None)
+        if vid is None:
+            vid = _insert_support(moved, inst, truck, customer_id, min_pos=min_pos)
+        sortie.rec_vid = vid
+        changed = True
+    return moved if changed else None
+
+
 def _build(plan, state, inst, phys, mode: str, land: bool = False):
     p = plan.clone()
     st = copy.copy(state)
@@ -141,17 +216,31 @@ def _attempt(plan, state, inst, phys, H, mode: str, land: bool) -> tuple[float |
     return None, f"{tag}:{str(note)[:160]}"
 
 
-def ground_finish_cost(plan, state, inst, phys, H) -> tuple[float | None, str]:
-    """返回 (真实成本, 状态)。成本含里程、工时、能耗和加班，不含每客户罚金。
-
-    前三种收尾都不可行时，才允许已在飞的残段改成降落等待。这只去掉接机点上的悬停耗电，
-    不改已经由前三种收尾定过价的回合，也不加每客户罚金。飞到接机点的电耗仍照计。
-    """
+def _first_of_six(plan, state, inst, phys, H) -> tuple[float | None, list[str]]:
     notes = []
     for land in (False, True):
         for mode in ("truck", "keep_inflight", "overtime_only"):
             cost, note = _attempt(plan, state, inst, phys, H, mode, land)
             if cost is not None:
-                return cost, note
+                return cost, [note]
             notes.append(note)
+    return None, notes
+
+
+def ground_finish_cost(plan, state, inst, phys, H) -> tuple[float | None, str]:
+    """返回 (真实成本, 状态)。成本含里程、工时、能耗和加班，不含每客户罚金。
+
+    前三种收尾都不可行时，才允许已在飞的残段改成降落等待。这只去掉接机点上的悬停耗电，
+    不改已经由前三种收尾定过价的回合，也不加每客户罚金。飞到接机点的电耗仍照计。
+    六种都失败时，才把飞不回去的接机点改到放飞车上当前电量够得到的客户，再走同一套六种。
+    """
+    cost, notes = _first_of_six(plan, state, inst, phys, H)
+    if cost is not None:
+        return cost, notes[0]
+    moved = _relocate_unreachable(plan, state, inst, phys)
+    if moved is not None:
+        cost, extra = _first_of_six(moved, state, inst, phys, H)
+        if cost is not None:
+            return cost, extra[0]
+        notes.extend(extra)
     return None, " | ".join(notes) or "NO_ATTEMPT"
