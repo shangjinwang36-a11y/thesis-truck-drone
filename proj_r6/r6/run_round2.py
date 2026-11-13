@@ -51,6 +51,8 @@ PRESETS = {
     # 第八轮：S 与 X 都做情景估价和列池集合划分。X 仍然可以跨车，S 的列里没有跨车航次。
     "R8": {"label": "情景估价 ALNS + 列池集合划分",
            "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r6": True, "r7": True, "r8": True},
+    "R9": {"label": "会合访问 + 近邻成对破坏",
+           "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r6": True, "r7": True, "r8": True, "r9": True},
 }
 
 
@@ -99,6 +101,11 @@ def configs(pkg, preset: str):
                   scenario_count=2, scenario_p=0.2, scenario_stream=0,
                   scenario_infeasible_penalty=400.0, set_partition_period=5,
                   x_adopt_s_nominal=False)
+    if ps.get("r9"):
+        # 会合访问和近邻破坏对 S、X 都开，S 只能在放飞车上插访问。
+        # S 不再发布比阶段 1 真实成本更贵的情景方案。
+        ad.update(support_rendezvous=True, joint_near_destroy=True,
+                  pair_handoff=True, s_keep_true_cost=True)
     alg = AlgorithmConfig.from_dict(ad)
     alg.recovery_eval_budget_override = None
     alg.recovery_time_limit_override_s = None
@@ -416,7 +423,7 @@ def main():
 
     # 名义共享：A0 与 A1 共用 A0 名义；A2 与 A3 共用 A2 名义；A4 独立
     nom_src = {"A0": "A0", "A1": "A0", "A2": "A2", "A3": "A2", "A4": "A4",
-               "R3": "R3", "R4": "R3", "R5": "R3", "R6": "R6", "R7": "R7", "R8": "R8"}
+               "R3": "R3", "R4": "R3", "R5": "R3", "R6": "R6", "R7": "R7", "R8": "R8", "R9": "R9"}
 
     if args.phase in ("nominal", "all"):
         need = sorted({nom_src[p] for p in presets if p in nom_src})

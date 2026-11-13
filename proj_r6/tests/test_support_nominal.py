@@ -1,0 +1,100 @@
+"""第 9 轮：会合访问只在 X 上产生跨车；S 的近邻破坏留在同一辆车；S 不接受更贵的真实成本。"""
+import json
+from pathlib import Path
+
+from tdr.alns import SolveContext
+from tdr.config import AlgorithmConfig, PhysicalConfig
+from tdr.data import Customer, Instance
+from tdr.evaluate import is_cross_sortie
+from tdr.nominal import s_true_cost_keeps_phase1
+from tdr.plan import Plan
+from tdr.schedule import initial_state
+from tdr.support_nominal import joint_near_seeds, propose_support_rendezvous
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _tiny():
+    pkg = json.loads((ROOT / "data" / "package_light.json").read_text(encoding="utf-8"))
+    phys = PhysicalConfig.from_dict(pkg["config"])
+    phys.set_active()
+    inst = Instance("TINY", "T", 0.0, 0.0, (
+        Customer("c001", "p001", 400.0, 0.0, 1.0),
+        Customer("c002", "p002", 700.0, 0.0, 1.0),
+        Customer("c003", "p003", 1200.0, 0.0, 1.0),
+        Customer("c004", "p004", 800.0, 600.0, 1.0),
+        Customer("c005", "p005", 750.0, 150.0, 1.0),
+    ))
+    plan = Plan("TINY")
+    plan.routes["t1"] = []
+    plan.routes["t2"] = []
+    launch = plan.add_visit("t1", "c001", ground=["p001"])
+    plan.add_visit("t1", "c003", ground=["p003"])
+    plan.add_visit("t1", "c005", ground=["p005"])
+    plan.add_visit("t2", "c004", ground=["p004"])
+    plan.add_sortie("d1", "t1", launch.vid, "ARC", 0.5, ["p002"], plan.routes["t1"][1])
+    return inst, phys, plan
+
+
+def _parcels(plan):
+    got = [p for v in plan.visits.values() for p in v.ground]
+    got += [p for s in plan.sorties.values() for p in s.air]
+    return sorted(got)
+
+
+def test_x_inserts_a_cross_rendezvous_and_s_stays_on_one_truck():
+    inst, phys, plan = _tiny()
+    alg = AlgorithmConfig(cross_n=2)
+    state = initial_state(inst, phys)
+    ctx = SolveContext(inst, phys, alg, state, None, "nominal")
+    before = _parcels(plan)
+    cross = propose_support_rendezvous(plan, ctx, 1, set(), True)
+    assert cross
+    _, cand = cross[0]
+    crossed = [s for s in cand.sorties.values() if is_cross_sortie(cand, s)]
+    assert len(crossed) == 1
+    rec = cand.visits[crossed[0].rec_vid]
+    assert rec.ground == []
+    assert rec.truck != cand.visits[crossed[0].launch_vid].truck
+    assert rec.customer not in {inst.parcel_to_customer[p] for p in crossed[0].air}
+    assert rec.vid not in plan.visits
+    assert _parcels(cand) == before
+
+    same = propose_support_rendezvous(plan, ctx, 2, set(), False)
+    assert same
+    for _, cand_s in same:
+        assert not any(is_cross_sortie(cand_s, s) for s in cand_s.sorties.values())
+        assert _parcels(cand_s) == before
+
+
+def test_joint_near_uses_two_trucks_only_when_cross_is_allowed():
+    inst, _, plan = _tiny()
+    same = joint_near_seeds(plan, inst, False)
+    cross = joint_near_seeds(plan, inst, True)
+
+    def trucks(seeds):
+        found = set()
+        for p in seeds:
+            for v in plan.visits.values():
+                if p in v.ground:
+                    found.add(v.truck)
+        return found
+
+    assert trucks(same) == {"t1"}
+    assert trucks(cross) == {"t1", "t2"}
+
+
+def test_s_true_cost_floor_does_not_apply_to_x():
+    assert s_true_cost_keeps_phase1(False, True, 100.0, 110.0, 1e-4)
+    assert not s_true_cost_keeps_phase1(False, True, 110.0, 100.0, 1e-4)
+    assert not s_true_cost_keeps_phase1(True, True, 100.0, 110.0, 1e-4)
+    assert not s_true_cost_keeps_phase1(False, False, 100.0, 110.0, 1e-4)
+
+
+def test_new_flags_default_off():
+    alg = AlgorithmConfig()
+    assert alg.support_rendezvous is False
+    assert alg.joint_near_destroy is False
+    assert alg.pair_handoff is False
+    assert alg.s_keep_true_cost is False
+    assert "JOINT_NEAR" not in alg.destroy_operators

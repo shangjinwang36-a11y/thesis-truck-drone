@@ -385,6 +385,11 @@ def destroy(plan: Plan, op: str, q: int, rng: random.Random, inst: Instance,
             seeds += [p for v in plan.visits.values() if v.truck == s.truck for p in v.ground][:2]
         else:
             used = "RANDOM_DEPENDENCY"
+    elif op == "JOINT_NEAR":
+        from .support_nominal import joint_near_seeds
+        seeds = joint_near_seeds(plan, inst, bool(getattr(ctx.state, "nominal_cross", False)))
+        if not seeds:
+            used = "RANDOM_DEPENDENCY"
     seeds = [p for p in seeds if p not in frozen]
     if not seeds:
         used = "RANDOM_DEPENDENCY"
@@ -555,6 +560,8 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
     if alg.air_promote_ops and alg.operator_selector != "qlearn":
         destroy_ops.append("GROUND_TO_AIR")
         repair_ops.append("AIR_FIRST")
+    if getattr(alg, "joint_near_destroy", False) and ctx.mode == "nominal":
+        destroy_ops.append("JOINT_NEAR")
     w_d = {k: 1.0 for k in destroy_ops}
     w_r = {k: 1.0 for k in repair_ops}
     n_d = {k: 0 for k in destroy_ops}
@@ -814,6 +821,39 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                 if _better_air(e_f, p_f, best_ev, best_plan, alg, ctx):
                     stats.aud("REFLY", "best")
                     best_ev, best_plan = e_f, p_f.clone()
+                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+        # 第 9 轮：插入会合访问。X 插到另一辆车，S 只插到放飞车。两边同一频率、同一评价上限。
+        if (getattr(alg, "support_rendezvous", False) and ctx.mode == "nominal"
+                and stats.iterations % alg.cross_period == 0
+                and budget.evals_left() > 0):
+            from .support_nominal import try_support_rendezvous
+            p_s, e_s = try_support_rendezvous(cur_plan, ctx, budget, stats)
+            if (p_s is not None and e_s is not None
+                    and _better_air(e_s, p_s, cur_ev, cur_plan, alg, ctx)
+                    and _within_makespan_cap(e_s, ctx)
+                    and _nominal_cross_intact(p_s, e_s, ctx)):
+                stats.aud("FUNNEL_SUPPORT", "accepted")
+                stats.aud("SUPPORT_RENDEZVOUS", "cur_improve")
+                cur_plan, cur_ev = p_s, e_s
+                if _better_air(e_s, p_s, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_s, ctx):
+                    stats.aud("SUPPORT_RENDEZVOUS", "best")
+                    stats.last_improvement_iter = stats.iterations
+                    best_ev, best_plan = e_s, p_s.clone()
+                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+        if (getattr(alg, "pair_handoff", False) and getattr(ctx.state, "nominal_cross", False)
+                and ctx.mode == "nominal"
+                and stats.iterations % alg.cross_period == 1
+                and budget.evals_left() > 0):
+            from .support_nominal import try_pair_handoff
+            p_h, e_h = try_pair_handoff(cur_plan, ctx, budget, stats)
+            if (p_h is not None and e_h is not None
+                    and _better_air(e_h, p_h, cur_ev, cur_plan, alg, ctx)
+                    and _within_makespan_cap(e_h, ctx)
+                    and _nominal_cross_intact(p_h, e_h, ctx)):
+                stats.aud("FUNNEL_HANDOFF", "accepted")
+                cur_plan, cur_ev = p_h, e_h
+                if _better_air(e_h, p_h, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_h, ctx):
+                    best_ev, best_plan = e_h, p_h.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 第六轮：X 名义专用“同车航次改跨车回收”算子（S 的 state.nominal_cross=False，永不触发；同一份名义预算）
         if (getattr(ctx.state, "nominal_cross", False) and ctx.mode == "nominal"

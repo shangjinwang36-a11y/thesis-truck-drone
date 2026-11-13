@@ -262,6 +262,15 @@ class AlgorithmConfig:
     # 跨车航次是连接两辆车的列，必须同时选中两边的路线。S 不生成这种列。
     set_partition: bool = False
     set_partition_period: int = 5
+    # 第 9 轮：接机车可以插入一个只用于会合的访问。X 插在另一辆车上，S 只插在放飞车上。
+    # 评价次数仍在同一份名义预算里。默认关，第 8 轮的搜索轨迹不变。
+    support_rendezvous: bool = False
+    # 近邻成对破坏。X 拆两辆靠近的车，S 拆同一辆车上相邻的两站。两边都进算子列表才算公平。
+    joint_near_destroy: bool = False
+    # X 名义：修复后试一次两机互换回收。S 不触发。
+    pair_handoff: bool = False
+    # S 的情景阶段不得发布比阶段 1 真实成本更贵的计划。X 不读：跨车可以贵在名义上。
+    s_keep_true_cost: bool = False
     # X 专属：改回收车时尽量保留/改派后续航次，而不是整链丢掉
     x_preserve_cross_repair: bool = False
     # X 专属：同一残差上保留 S 资格可行恢复作为候选，使 X 恢复不差于该残差上的 S 恢复

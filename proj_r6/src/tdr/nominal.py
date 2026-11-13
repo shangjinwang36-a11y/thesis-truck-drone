@@ -244,6 +244,17 @@ def _descent_loop(plan, inst, phys, alg, state, stats, best_ev, budget, max_eval
     return plan, best_ev, spent
 
 
+def s_true_cost_keeps_phase1(cross_launch: bool, enabled: bool,
+                             phase1_cost: float | None, anchor_cost: float | None,
+                             tol: float) -> bool:
+    """S 的情景阶段如果把真实成本抬高，就退回阶段 1。X 不退，跨车可以贵在名义上。"""
+    if cross_launch or not enabled:
+        return False
+    if phase1_cost is None or anchor_cost is None:
+        return False
+    return anchor_cost > phase1_cost + tol
+
+
 def phase1_allows_cross(cross_launch: bool, alg) -> bool:
     """阶段1 是否允许跨车。S 的 cross_launch 为假，这里恒假。
 
@@ -315,6 +326,13 @@ def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_
             _better_air(anchor_ev, anchor_plan, r1.evaluation, r1.plan, alg, ctx)
             and _within_makespan_cap(anchor_ev, ctx)
             and _nominal_cross_intact(anchor_plan, anchor_ev, ctx)):
+        anchor_plan, anchor_ev = r1.plan, r1.evaluation
+    if s_true_cost_keeps_phase1(
+            cross_launch, bool(getattr(alg, "s_keep_true_cost", False)),
+            None if r1.evaluation is None else r1.evaluation.cost,
+            None if anchor_ev is None else anchor_ev.cost,
+            alg.cost_tolerance_yuan):
+        stats2.aud("S_TRUE_COST", "kept_phase1")
         anchor_plan, anchor_ev = r1.plan, r1.evaluation
     best_plan, best_ev = anchor_plan, anchor_ev
     stats2.eval_requests = used1 + stats2.eval_requests
