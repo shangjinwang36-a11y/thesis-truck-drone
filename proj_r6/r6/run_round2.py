@@ -105,7 +105,10 @@ def configs(pkg, preset: str):
         # 会合访问和近邻破坏对 S、X 都开，S 只能在放飞车上插访问。
         # S 不再发布比阶段 1 真实成本更贵的情景方案。
         ad.update(support_rendezvous=True, joint_near_destroy=True,
-                  pair_handoff=True, s_keep_true_cost=True)
+                  pair_handoff=True, s_keep_true_cost=True,
+                  convert_polish_n=20, x_s_second_start=True,
+                  scenario_eval_cap=200, scenario_screen_yuan=20.0,
+                  scenario_elite_refill=True)
     alg = AlgorithmConfig.from_dict(ad)
     alg.recovery_eval_budget_override = None
     alg.recovery_time_limit_override_s = None

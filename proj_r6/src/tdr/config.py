@@ -271,6 +271,16 @@ class AlgorithmConfig:
     pair_handoff: bool = False
     # S 的情景阶段不得发布比阶段 1 真实成本更贵的计划。X 不读：跨车可以贵在名义上。
     s_keep_true_cost: bool = False
+    # 采用 S 的名义之后，用 X 自己的预算补若干次同车改跨车。0 表示不补。
+    convert_polish_n: int = 0
+    # X 的阶段 2 把 S 的名义当作第二个起点，预算对半，不另加次数。
+    x_s_second_start: bool = False
+    # 情景补救的单独上限。0 表示仍从 1000 次物理评价里扣（第 8 轮）。
+    scenario_eval_cap: int = 0
+    # 真实成本变差超过这么多，就不再做情景评价。0 表示每个可行候选都评。
+    scenario_screen_yuan: float = 0.0
+    # 每 10 轮把当前最优再送进情景账本一次。只在还没评过时花钱。
+    scenario_elite_refill: bool = False
     # X 专属：改回收车时尽量保留/改派后续航次，而不是整链丢掉
     x_preserve_cross_repair: bool = False
     # X 专属：同一残差上保留 S 资格可行恢复作为候选，使 X 恢复不差于该残差上的 S 恢复

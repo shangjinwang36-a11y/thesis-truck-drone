@@ -156,10 +156,12 @@ def scenario_score(plan, ev, ctx) -> float | None:
     hit = cache.get(key)
     if hit is not None:
         return hit
-    budget = getattr(ctx, "live_budget", None)
+    physical = getattr(ctx, "live_budget", None)
     stats = getattr(ctx, "live_stats", None)
-    if budget is None or stats is None:
+    if physical is None or stats is None:
         return None
+    from .scenario_eval import scenario_budget_for
+    budget = scenario_budget_for(alg, plan.case_id, allow, physical)
     air = frozenset(p for s in plan.sorties.values() for p in s.air)
     costs = []
     from .alns import eval_counted

@@ -244,6 +244,11 @@ def _descent_loop(plan, inst, phys, alg, state, stats, best_ev, budget, max_eval
     return plan, best_ev, spent
 
 
+def same_truck_phase1_unchanged(cross_launch: bool, scenario_on: bool) -> bool:
+    """S 的阶段 1 不加入会合、近邻破坏。这些算子只在阶段 2，或在 X 的跨车阶段里出现。"""
+    return not cross_launch and not scenario_on
+
+
 def s_true_cost_keeps_phase1(cross_launch: bool, enabled: bool,
                              phase1_cost: float | None, anchor_cost: float | None,
                              tol: float) -> bool:
@@ -264,7 +269,7 @@ def phase1_allows_cross(cross_launch: bool, alg) -> bool:
 
 
 def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_launch, b,
-                     makespan_cap=None):
+                     makespan_cap=None, alt_start=None):
     """两阶段名义。
 
     阶段1（预算 B−b）：默认与 S 相同的同车流程。x_cross_from_start 且本次是 X 时，
@@ -283,12 +288,15 @@ def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_
     used1 = r1.stats.eval_requests
     state = initial_state(inst, phys)
     state.nominal_cross = bool(cross_launch)
+    state.allow_support = bool(cross_launch and getattr(alg, "support_rendezvous", False))
     stats2 = SearchStats()
     # 互换回收车的评价从阶段2的同一份预算里留出，发布时再花。S 不留。
     hold = 0
     if cross_launch and getattr(alg, "x_cross_exchange", False):
         from .cross_nominal import EXCHANGE_EVALS
         hold = EXCHANGE_EVALS
+    if cross_launch:
+        hold += max(0, int(getattr(alg, "convert_polish_n", 0) or 0))
     budget2 = Budget(max(1, B - used1 - hold), None)
     # 上限至少抬到阶段1完工时刻。S 的阶段2常常把 makespan 再压短，若直接用 S 的完工时刻，
     # 阶段1解本身已经越限，跨车移动会被全部拒绝。这里只禁止「比共享阶段1更长」。
@@ -314,13 +322,42 @@ def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_
                 and _nominal_cross_intact(p_m, e_m, ctx)):
             stats2.aud("SET_PARTITION", "adopted")
             best_plan, best_ev = p_m, e_m
-    res = optimize(best_plan, ctx, budget2, variant=variant, stats=stats2)
-    anchor_plan, anchor_ev = best_plan, best_ev
-    if res.plan is not None and res.evaluation is not None and res.evaluation.feasible \
-            and _better_air(res.evaluation, res.plan, anchor_ev, anchor_plan, alg, ctx) \
-            and _within_makespan_cap(res.evaluation, ctx) \
-            and _nominal_cross_intact(res.plan, res.evaluation, ctx):
-        anchor_plan, anchor_ev = res.plan, res.evaluation
+    from .scenario_eval import phase2_slices
+    use_second = (cross_launch and alt_start is not None
+                  and getattr(alg, "x_s_second_start", False))
+    first_n, second_n = phase2_slices((budget2.eval_limit or 0) - budget2.used)
+    if use_second and second_n > 0:
+        b_first = Budget(first_n, None)
+        ctx.live_budget = b_first
+        res_a = optimize(best_plan, ctx, b_first, variant=variant, stats=stats2)
+        plan_a = res_a.plan if res_a.plan is not None else best_plan
+        ev_a = res_a.evaluation if res_a.evaluation is not None else best_ev
+        ctx.cross_tried = set()
+        ctx.support_tried = set()
+        b_second = Budget(second_n, None)
+        ctx.live_budget = b_second
+        res_b = optimize(alt_start.clone(), ctx, b_second, variant=variant, stats=stats2)
+        plan_b = res_b.plan
+        ev_b = res_b.evaluation
+        anchor_plan, anchor_ev = plan_a, ev_a
+        if (plan_b is not None and ev_b is not None and ev_b.feasible
+                and _better_air(ev_b, plan_b, ev_a, plan_a, alg, ctx)
+                and _within_makespan_cap(ev_b, ctx)
+                and _nominal_cross_intact(plan_b, ev_b, ctx)):
+            stats2.aud("SECOND_START", "adopted_s")
+            anchor_plan, anchor_ev = plan_b, ev_b
+        else:
+            stats2.aud("SECOND_START", "kept_phase1_path")
+        stats2.eval_requests = budget2.used + b_first.used + b_second.used
+        res = res_a
+    else:
+        res = optimize(best_plan, ctx, budget2, variant=variant, stats=stats2)
+        anchor_plan, anchor_ev = best_plan, best_ev
+        if res.plan is not None and res.evaluation is not None and res.evaluation.feasible \
+                and _better_air(res.evaluation, res.plan, anchor_ev, anchor_plan, alg, ctx) \
+                and _within_makespan_cap(res.evaluation, ctx) \
+                and _nominal_cross_intact(res.plan, res.evaluation, ctx):
+            anchor_plan, anchor_ev = res.plan, res.evaluation
     # 阶段2若没能在情景分上改进阶段1，就发布阶段1。情景分相同则退回真实成本。
     if not (anchor_plan is r1.plan) and not (
             _better_air(anchor_ev, anchor_plan, r1.evaluation, r1.plan, alg, ctx)
@@ -337,7 +374,13 @@ def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_
     best_plan, best_ev = anchor_plan, anchor_ev
     stats2.eval_requests = used1 + stats2.eval_requests
     stats2.wall_s = time.perf_counter() - t0
-    stats2.counts = dict(res.stats.counts)
+    if not (use_second and second_n > 0):
+        stats2.counts = dict(res.stats.counts)
+    stats2.counts["n_eval_requests"] = stats2.eval_requests
+    n_sc = int(getattr(stats2, "n_scenario_eval", 0) or 0)
+    shared_scenario = int(getattr(alg, "scenario_eval_cap", 0) or 0) <= 0
+    stats2.counts["n_scenario_eval"] = n_sc
+    stats2.counts["n_phys_eval"] = int(stats2.eval_requests) - (n_sc if shared_scenario else 0)
     stats2.counts["exchange_hold"] = hold
     stats2.counts["phase1_cross"] = phase1_cross
     stats2.counts["phase1_evals"] = used1
@@ -353,15 +396,18 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                   rngs: dict[str, random.Random], eval_budget: int | None = None,
                   variant: str = "full", n_used: int | None = None,
                   cross_launch: bool = False, two_phase_b: int | None = None,
-                  makespan_cap: float | None = None, scenario_on: bool = False) -> SolveResult:
+                  makespan_cap: float | None = None, scenario_on: bool = False,
+                  alt_start=None) -> SolveResult:
     if two_phase_b is None:
         two_phase_b = getattr(alg, "nominal_two_phase_b", None)
     if two_phase_b:
         return _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_launch,
-                                two_phase_b, makespan_cap=makespan_cap if cross_launch else None)
+                                two_phase_b, makespan_cap=makespan_cap if cross_launch else None,
+                                alt_start=alt_start if cross_launch else None)
     t0 = time.perf_counter()
     state = initial_state(inst, phys)
     state.nominal_cross = bool(cross_launch)     # 第六轮：True=X（名义阶段允许跨车航次）；False=S（行为与之前完全一致）
+    state.allow_support = bool(cross_launch and getattr(alg, "support_rendezvous", False))
     stats = SearchStats()
     budget = Budget(eval_budget if eval_budget is not None else alg.nominal_eval_budget, None)
     plan = ground_only_plan(inst, n_used or phys.truck_count, phys.truck_count)

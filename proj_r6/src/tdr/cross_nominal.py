@@ -253,6 +253,45 @@ def _exchange_worth(ev, cur_ev, alg) -> bool:
 EXCHANGE_EVALS = 24
 
 
+def polish_with_convert(plan, ev, ctx, budget, stats, n: int):
+    """采用 S 之后，用词典序改进把同车航次改成跨车。
+
+    只接受更低的真实成本，完工不超过上限，最终时刻表上每条跨车都过稳健检查。
+    不看情景分，也不允许 tau 把名义抬贵。
+    """
+    from .alns import _better, _nominal_cross_intact, _within_makespan_cap, eval_counted
+    from .cross_robust import cross_robust_violations
+    best_p, best_ev = None, None
+    tried: set = set()
+    slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 0.0) or 0.0)
+    for _, cand in propose_convert(plan, ctx, n, tried):
+        if budget.evals_left() <= 0:
+            break
+        got = eval_counted(cand, ctx.inst, ctx.phys, ctx.state, ctx.H, "CONVERT_POLISH", stats, budget)
+        if got is None:
+            break
+        stats.aud("CONVERT_POLISH", "calls")
+        if not got.feasible or got.timeline is None:
+            stats.aud("CONVERT_POLISH", "infeasible")
+            continue
+        if not _within_makespan_cap(got, ctx):
+            stats.aud("CONVERT_POLISH", "makespan")
+            continue
+        if cross_robust_violations(cand, ctx.inst, ctx.phys, got.timeline, slack):
+            stats.aud("CONVERT_POLISH", "margin")
+            continue
+        if not _nominal_cross_intact(cand, got, ctx):
+            stats.aud("CONVERT_POLISH", "margin")
+            continue
+        if not _better(got, ev, ctx.alg):
+            stats.aud("CONVERT_POLISH", "not_better")
+            continue
+        if best_ev is None or _better(got, best_ev, ctx.alg):
+            best_p, best_ev = cand, got
+            ev = got
+    return best_p, best_ev
+
+
 def try_cross_exchange(plan, ctx, budget, stats, n: int | None = None):
     from .alns import _nominal_cross_intact, _within_makespan_cap, eval_counted
     best_p, best_ev = None, None

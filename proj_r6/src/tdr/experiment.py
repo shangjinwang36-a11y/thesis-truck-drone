@@ -103,7 +103,8 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
     makespan_cap = None
     s_plan_cap = None
     s_ev_cap = None
-    if (adopt_from and cross_launch and getattr(alg, "x_cross_hs_cap", False)):
+    if (adopt_from and cross_launch and (
+            getattr(alg, "x_cross_hs_cap", False) or getattr(alg, "x_s_second_start", False))):
         s_plan_cap, _, _ = load_case_nominal(inst, adopt_from)
         s_ev_cap = evaluate_plan(s_plan_cap, inst, phys, initial_state(inst, phys), None, "NOMINAL")
         if s_ev_cap.feasible and s_ev_cap.timeline and s_ev_cap.timeline.truck_finish:
@@ -112,7 +113,8 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         r_ = build_nominal(inst, phys_nom, alg, derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0),
                            eval_budget=eval_budget, variant=variant, n_used=ns,
                            cross_launch=cross_launch, two_phase_b=two_phase_b,
-                           makespan_cap=makespan_cap)
+                           makespan_cap=makespan_cap,
+                           alt_start=s_plan_cap if getattr(alg, "x_s_second_start", False) else None)
         c_ = r_.evaluation.cost if (r_.plan is not None and r_.evaluation is not None and r_.evaluation.feasible) else None
         start_costs[str(ns)] = c_
         if c_ is not None and (res is None or c_ < res.evaluation.cost):
@@ -193,6 +195,33 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
                 res.plan, ev = s_plan_cap.clone(), s_ev_cap
                 adopted_s = True
                 adopt_reason = (adopt_reason + "+cross_nominal") if adopt_reason else "cross_nominal"
+    polish_n = int(getattr(alg, "convert_polish_n", 0) or 0) if cross_launch else 0
+    if polish_n > 0 and ev is not None and ev.feasible and res.plan is not None:
+        from .alns import Budget, SearchStats, SolveContext
+        from .cross_nominal import polish_with_convert
+        from .evaluate import is_cross_sortie as _isc_pol
+        if not any(_isc_pol(res.plan, s) for s in res.plan.sorties.values()):
+            state_p = initial_state(inst, phys)
+            state_p.nominal_cross = True
+            cap_p = makespan_cap
+            if cap_p is None and ev.timeline is not None and ev.timeline.truck_finish:
+                cap_p = max(ev.timeline.truck_finish.values())
+            ctx_p = SolveContext(inst=inst, phys=phys, alg=alg, state=state_p, H=None,
+                                 mode="nominal", makespan_cap=cap_p)
+            stats_p = SearchStats()
+            b_p = Budget(polish_n, None)
+            p_c, e_c = polish_with_convert(res.plan, ev, ctx_p, b_p, stats_p, polish_n)
+            if p_c is not None and e_c is not None:
+                res.plan, ev = p_c, e_c
+                stats_p.aud("CONVERT_POLISH", "adopted")
+            res.stats.eval_requests = int(res.stats.eval_requests) + int(b_p.used)
+            if res.stats.counts is None:
+                res.stats.counts = {}
+            audit = res.stats.counts.setdefault("audit", {})
+            for name, keys in stats_p.audit.items():
+                bucket = audit.setdefault(name, {})
+                for k, v in keys.items():
+                    bucket[k] = bucket.get(k, 0) + v
     # 互换放在“是否退回 S”之后：阶段2没超过 S 时，基线就是 S，成本差是相对 S 的，
     # 不是相对还贵着几元到十几元的阶段1解。已经有跨车航次就不再叠第二条互换。
     if (cross_launch and getattr(alg, "x_cross_exchange", False) and ev is not None

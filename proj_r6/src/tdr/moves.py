@@ -33,6 +33,8 @@ class AirCandidate:
     rec_truck: str | None = None      # 第六轮：回收车（≠放飞车 即名义跨车航次）
     chain_pos: int | None = None      # 第六轮：机体航次链插入位置（链含跨车航次时必须显式给出）
     cross: bool = False
+    support_customer: str | None = None  # 第 9 轮：回收访问尚不在计划里，应用时再插入
+    support_pos: int | None = None
 
 
 @dataclass
@@ -193,8 +195,78 @@ def _truck_of(plan: Plan, vid: int) -> str:
     return plan.visits[vid].truck
 
 
+def _append_support_launches(out, plan, inst, phys, parcel: str, cpos, drones, final_on) -> None:
+    """在接机车上插入一个空地送会合点，再从另一辆车放飞。最多两条，避免挤掉已有访问上的候选。"""
+    cust = inst.parcel_to_customer[parcel]
+    added = 0
+    for tb, route_b in plan.routes.items():
+        if added >= 2:
+            break
+        owned = {plan.visits[v].customer for v in route_b}
+        if cust in owned:
+            continue
+        best_launch = None
+        for ta, route_a in plan.routes.items():
+            if ta == tb or not route_a:
+                continue
+            for i, vid in enumerate(route_a):
+                p = _pos(inst, plan, vid)
+                dist = math.hypot(p[0] - cpos[0], p[1] - cpos[1])
+                if best_launch is None or dist < best_launch[0]:
+                    best_launch = (dist, ta, i, vid, p)
+        if best_launch is None:
+            continue
+        near = None
+        for c in inst.customers:
+            if c.customer_id == cust or c.customer_id in owned:
+                continue
+            dist = math.hypot(c.x - cpos[0], c.y - cpos[1])
+            if near is None or dist < near[0]:
+                near = (dist, c)
+        if near is None:
+            continue
+        rendezvous = near[1]
+        depot = (inst.depot_x, inst.depot_y)
+        rpos = (rendezvous.x, rendezvous.y)
+        best_det = None
+        for i in range(len(route_b) + 1):
+            prev = depot if i == 0 else _pos(inst, plan, route_b[i - 1])
+            nxt = depot if i == len(route_b) else _pos(inst, plan, route_b[i])
+            det = (math.hypot(prev[0] - rpos[0], prev[1] - rpos[1])
+                   + math.hypot(rpos[0] - nxt[0], rpos[1] - nxt[1])
+                   - math.hypot(prev[0] - nxt[0], prev[1] - nxt[1]))
+            if best_det is None or det < best_det[0]:
+                best_det = (det, i)
+        _, ta, aidx, lvid, lpos = best_launch
+        try:
+            energy = air_energy(inst, phys, lpos, [parcel], rpos)
+        except KeyError:
+            continue
+        if energy > phys.e_cap - phys.e_min + phys.energy_tol:
+            continue
+        drone, pos_ = None, None
+        for d in drones:
+            k = find_chain_slot(plan, d, ta, aidx, tb, best_det[1])
+            if k is None:
+                continue
+            if k == len(plan.drone_sorties.get(d, [])) and final_on.get(tb, 0) + 1 > phys.truck_drone_slots:
+                continue
+            drone, pos_ = d, k
+            break
+        if drone is None:
+            continue
+        proxy = phys.wage_per_s * (phys.prepare_s + phys.recovery_s) + phys.cost_depot_kwh * energy
+        proxy += phys.c_km * best_det[0] / 1000.0
+        out.append(AirCandidate(
+            "NEW", ta, lvid, "ARC", 0.5, 0, proxy=proxy, energy=energy, drone=drone,
+            rec_truck=tb, chain_pos=pos_, cross=True,
+            support_customer=rendezvous.customer_id, support_pos=best_det[1]))
+        added += 1
+
+
 def cross_air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str,
-                         max_cross: int = 4, near_rec: int = 8, near_launch: int = 4) -> list["AirCandidate"]:
+                         max_cross: int = 4, near_rec: int = 8, near_launch: int = 4,
+                         allow_support: bool = False) -> list["AirCandidate"]:
     """第六轮（仅 X 的名义规划）：新建“A 车放飞 → B 车回收”的单票空送航次候选.
     回收点 = B 车路线上已有客户访问（与既有“回收只在客户点”一致）；放飞点 = A 车路线上的已有访问之后；
     无人机取放飞车当前可用于该时段的机体（链衔接检查）；能量/载荷在此预检，时序/机位/保管由完整评价核验."""
@@ -256,6 +328,8 @@ def cross_air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parce
                 for mode, lam, eps in (("ARC", 0.5, 0.0), ("STOP", 0.0, 1e-6)):
                     out.append(AirCandidate("NEW", ta, lvid, mode, lam, rvid, proxy=proxy + eps, energy=e,
                                             drone=drone, rec_truck=tb, chain_pos=pos_, cross=True))
+    if allow_support:
+        _append_support_launches(out, plan, inst, phys, parcel, cpos, drones, final_on)
     out.sort(key=lambda x: (x.proxy, x.truck or "", x.rec_vid, x.launch_vid or 0, x.mode))
     from .evaluate import has_wait_cycle
     seen = set()
@@ -615,7 +689,9 @@ def air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str
     if getattr(state, "nominal_cross", False) or allow_cross:
         # 第六轮（仅 X 名义）以及第四轮 X 恢复的再飞算子：在同车候选之外追加跨车候选。
         # allow_cross 只由该算子显式打开；S 的修复不传这个参数。
-        picked = picked + cross_air_candidates(plan, inst, phys, parcel)
+        picked = picked + cross_air_candidates(
+            plan, inst, phys, parcel,
+            allow_support=bool(getattr(state, "allow_support", False)))
         picked.sort(key=lambda x: x.proxy)
     return picked
 
@@ -649,6 +725,12 @@ def apply_air(plan: Plan, inst: Instance, parcel: str, cand: AirCandidate, phys=
                 return False
         s.air.insert(min(cand.pos, len(s.air)), parcel)
         return True
+    if cand.support_customer and cand.rec_truck and cand.rec_vid not in plan.visits:
+        pos = cand.support_pos
+        if pos is None:
+            pos = len(plan.routes.get(cand.rec_truck, []))
+        visit = plan.add_visit(cand.rec_truck, cand.support_customer, pos=pos, ground=[])
+        cand.rec_vid = visit.vid
     if cand.rec_vid not in plan.visits:
         return False
     if cand.launch_vid is not None and cand.launch_vid not in plan.visits:

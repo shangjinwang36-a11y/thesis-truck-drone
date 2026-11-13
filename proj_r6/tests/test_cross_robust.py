@@ -83,7 +83,8 @@ def test_final_timetable_rechecks_a_cross_sortie_whose_recovery_did_not_change()
     inst, phys, plan = _saved("R50", "X")
     ev = evaluate_plan(plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
     ctx = _ctx(inst, phys, robust=True)
-    assert _cross_energy_ok(plan, plan.clone(), ev, ctx) is True
+    # 回收点没变时也要看余电。R50 的跨车航次 48 低于 0.075 kWh。
+    assert _cross_energy_ok(plan, plan.clone(), ev, ctx) is False
     assert _nominal_cross_intact(plan, ev, ctx) is False
     ctx.state.nominal_cross = False
     assert _nominal_cross_intact(plan, ev, ctx) is True

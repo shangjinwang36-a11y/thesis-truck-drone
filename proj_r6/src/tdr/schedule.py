@@ -66,6 +66,7 @@ class StartState:
     drone_carrier: dict[str, str] = field(default_factory=dict)
     note: str = ""
     nominal_cross: bool = False     # 第六轮：X 的名义规划允许跨车航次（仅名义阶段使用）
+    allow_support: bool = False     # 第 9 轮：跨车新建航次可以在接机车上插入会合访问
     # 第四轮：仅 X 恢复把已知失败概率和残差空送集合放在状态上，供修复代理计价。S 保持 0 / None。
     x_failure_p: float = 0.0
     air_ceiling: set[str] | None = None

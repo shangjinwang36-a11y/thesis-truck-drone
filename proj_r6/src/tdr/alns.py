@@ -163,8 +163,16 @@ def _better_air(ev: Evaluation | None, plan: Plan | None,
     if (ctx.mode == "nominal" and getattr(alg, "scenario_aware", False)
             and getattr(ctx, "scenario_on", False)
             and plan is not None and ev.feasible):
-        from .hybrid import scenario_score
-        s_new = scenario_score(plan, ev, ctx)
+        from .scenario_eval import screen_skips_scenario
+        screen = float(getattr(alg, "scenario_screen_yuan", 0.0) or 0.0)
+        old_cost = None if other is None else other.cost
+        if not screen_skips_scenario(ev.cost, old_cost, screen):
+            from .hybrid import scenario_score
+            s_new = scenario_score(plan, ev, ctx)
+        else:
+            s_new = None
+            if getattr(ctx, "live_stats", None) is not None:
+                ctx.live_stats.aud("SCENARIO", "screened")
         if s_new is not None and (other is None or not other.feasible):
             return True
         if s_new is not None and other_plan is not None and other is not None and other.feasible:
@@ -194,23 +202,22 @@ def _within_makespan_cap(ev: Evaluation | None, ctx: "SolveContext") -> bool:
 
 
 def _cross_energy_ok(cand_plan: Plan, cur_plan: Plan, ev: Evaluation | None, ctx: "SolveContext") -> bool:
-    """新跨车或改了回收点的跨车航次，回收后余电要留出额外裕度。裕度为 0 时恒真。"""
+    """每一条跨车航次在最终时刻表上的回收余电都要留出裕度。裕度为 0 时恒真。
+
+    以前只在回收点改变时检查。后面的移动可以拉长飞行或等待、却不改回收客户，
+    薄余电就会漏过去。cur_plan 仍保留在签名里，调用处不用改。
+    """
+    del cur_plan
     frac = float(getattr(ctx.alg, "x_cross_energy_margin_frac", 0.0) or 0.0)
     if frac <= 0 or ctx.mode != "nominal" or ev is None or ev.timeline is None:
         return True
     from .evaluate import is_cross_sortie
-    changed: set[int] = set()
-    for sid, so in cand_plan.sorties.items():
-        if not is_cross_sortie(cand_plan, so):
-            continue
-        old = cur_plan.sorties.get(sid)
-        if old is None or old.rec_vid != so.rec_vid or old.truck != so.truck:
-            changed.add(sid)
-    if not changed:
+    cross_ids = [sid for sid, so in cand_plan.sorties.items() if is_cross_sortie(cand_plan, so)]
+    if not cross_ids:
         return True
     need = ctx.phys.e_min + frac * ctx.phys.e_cap
     tl = ev.timeline
-    for sid in changed:
+    for sid in cross_ids:
         so = cand_plan.sorties[sid]
         stages = tl.drone_stages.get(so.drone, [])
         energies = tl.drone_energy.get(so.drone, [])
@@ -256,7 +263,12 @@ def eval_counted(plan: Plan, inst: Instance, phys: PhysicalConfig, state: StartS
     if ev.status == "BUDGET_EXHAUSTED":
         return None
     stats.eval_by_reason[reason] = stats.eval_by_reason.get(reason, 0) + 1
-    stats.eval_requests = budget.used
+    if getattr(budget, "scenario_ledger", False):
+        stats.n_scenario_eval = budget.used
+    else:
+        stats.eval_requests = budget.used
+        if reason == "SCENARIO_RECOURSE":
+            stats.n_scenario_eval = int(getattr(stats, "n_scenario_eval", 0)) + 1
     holder = _ACTIVE_CTX.get()
     if (holder is not None and ev.feasible and ev.cost is not None
             and holder.mode == "nominal"
@@ -560,7 +572,8 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
     if alg.air_promote_ops and alg.operator_selector != "qlearn":
         destroy_ops.append("GROUND_TO_AIR")
         repair_ops.append("AIR_FIRST")
-    if getattr(alg, "joint_near_destroy", False) and ctx.mode == "nominal":
+    if (getattr(alg, "joint_near_destroy", False) and ctx.mode == "nominal"
+            and (getattr(ctx.state, "nominal_cross", False) or getattr(ctx, "scenario_on", False))):
         destroy_ops.append("JOINT_NEAR")
     w_d = {k: 1.0 for k in destroy_ops}
     w_r = {k: 1.0 for k in repair_ops}
@@ -824,6 +837,7 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 第 9 轮：插入会合访问。X 插到另一辆车，S 只插到放飞车。两边同一频率、同一评价上限。
         if (getattr(alg, "support_rendezvous", False) and ctx.mode == "nominal"
+                and (getattr(ctx.state, "nominal_cross", False) or getattr(ctx, "scenario_on", False))
                 and stats.iterations % alg.cross_period == 0
                 and budget.evals_left() > 0):
             from .support_nominal import try_support_rendezvous
@@ -833,6 +847,11 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                     and _within_makespan_cap(e_s, ctx)
                     and _nominal_cross_intact(p_s, e_s, ctx)):
                 stats.aud("FUNNEL_SUPPORT", "accepted")
+                from .hybrid import cached_scenario_cost
+                sn = cached_scenario_cost(p_s, ctx)
+                sc = cached_scenario_cost(cur_plan, ctx)
+                if sn is not None and sc is not None and sn < sc - alg.cost_tolerance_yuan:
+                    stats.aud("FUNNEL_SUPPORT", "scenario")
                 stats.aud("SUPPORT_RENDEZVOUS", "cur_improve")
                 cur_plan, cur_ev = p_s, e_s
                 if _better_air(e_s, p_s, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_s, ctx):
@@ -885,6 +904,14 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                         and _within_makespan_cap(e3, ctx) and _nominal_cross_intact(p3, e3, ctx)):
                     best_ev, best_plan = e3, p3.clone()
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+        if (getattr(alg, "scenario_elite_refill", False) and ctx.mode == "nominal"
+                and getattr(ctx, "scenario_on", False)
+                and stats.iterations % 10 == 0
+                and best_ev is not None and best_ev.feasible):
+            from .hybrid import cached_scenario_cost, scenario_score
+            if cached_scenario_cost(best_plan, ctx) is None:
+                scenario_score(best_plan, best_ev, ctx)
+                stats.aud("SCENARIO", "elite_refill")
         _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg, variant)
     # 集合划分不放进退火循环：插进去的评价会改变温度，即使不接受也会把真实成本搜索带离原轨迹。
     # 只在阶段2结束时重组一次。阶段1的列已经进池，阶段2开始前还会再解一次。
@@ -923,6 +950,10 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                     "audit": {k: (dict(v) if isinstance(v, dict) else v) for k, v in stats.audit.items()},
                     "reject": dict(stats.reject),
                     "best_trace": stats.best_trace}
+    n_sc = int(getattr(stats, "n_scenario_eval", 0) or 0)
+    shared_scenario = int(getattr(alg, "scenario_eval_cap", 0) or 0) <= 0
+    stats.counts["n_scenario_eval"] = n_sc
+    stats.counts["n_phys_eval"] = int(stats.eval_requests) - (n_sc if shared_scenario else 0)
     from .hybrid import _pool
     pool = _pool(ctx, bool(getattr(ctx.state, "nominal_cross", False))) if (
         getattr(alg, "set_partition", False) and ctx.mode == "nominal") else None

@@ -84,6 +84,13 @@ def test_joint_near_uses_two_trucks_only_when_cross_is_allowed():
     assert trucks(cross) == {"t1", "t2"}
 
 
+def test_s_phase1_does_not_take_the_new_same_truck_operators():
+    from tdr.nominal import same_truck_phase1_unchanged
+    assert same_truck_phase1_unchanged(False, False)
+    assert not same_truck_phase1_unchanged(False, True)
+    assert not same_truck_phase1_unchanged(True, False)
+
+
 def test_s_true_cost_floor_does_not_apply_to_x():
     assert s_true_cost_keeps_phase1(False, True, 100.0, 110.0, 1e-4)
     assert not s_true_cost_keeps_phase1(False, True, 110.0, 100.0, 1e-4)
@@ -97,4 +104,49 @@ def test_new_flags_default_off():
     assert alg.joint_near_destroy is False
     assert alg.pair_handoff is False
     assert alg.s_keep_true_cost is False
+    assert alg.convert_polish_n == 0
+    assert alg.x_s_second_start is False
+    assert alg.scenario_eval_cap == 0
+    assert alg.scenario_screen_yuan == 0.0
+    assert alg.scenario_elite_refill is False
     assert "JOINT_NEAR" not in alg.destroy_operators
+
+
+def test_scenario_screen_and_phase2_budget_split():
+    from tdr.scenario_eval import phase2_slices, scenario_budget_for, screen_skips_scenario
+    from tdr.alns import Budget
+    assert screen_skips_scenario(30.0, 0.0, 20.0)
+    assert not screen_skips_scenario(10.0, 0.0, 20.0)
+    assert not screen_skips_scenario(30.0, 0.0, 0.0)
+    assert phase2_slices(200) == (100, 100)
+    assert phase2_slices(5) == (2, 3)
+    assert phase2_slices(1) == (1, 0)
+    assert sum(phase2_slices(7)) == 7
+    alg = AlgorithmConfig(scenario_eval_cap=3)
+    shared = Budget(10, None)
+    x_budget = scenario_budget_for(alg, "C100", True, shared)
+    s_budget = scenario_budget_for(alg, "C100", False, shared)
+    assert x_budget is not s_budget
+    assert x_budget is scenario_budget_for(alg, "C100", True, shared)
+    assert x_budget.eval_limit == 3 and x_budget.scenario_ledger
+    plain = AlgorithmConfig()
+    assert scenario_budget_for(plain, "C100", True, shared) is shared
+
+
+def test_support_launch_inserts_a_visit_the_receiver_did_not_have():
+    from tdr.moves import apply_air, cross_air_candidates
+    inst, phys, plan = _tiny()
+    off = cross_air_candidates(plan, inst, phys, "p003", allow_support=False)
+    assert all(c.support_customer is None for c in off)
+    on = cross_air_candidates(plan.clone(), inst, phys, "p003", allow_support=True)
+    support = [c for c in on if c.support_customer]
+    assert support
+    cand = support[0]
+    owned = {plan.visits[v].customer for v in plan.routes[cand.rec_truck]}
+    assert cand.support_customer not in owned
+    assert cand.support_customer != "c003"
+    before = len(plan.routes[cand.rec_truck])
+    assert apply_air(plan, inst, "p003", cand, phys)
+    customers = {plan.visits[v].customer for v in plan.routes[cand.rec_truck]}
+    assert cand.support_customer in customers
+    assert len(plan.routes[cand.rec_truck]) == before + 1
