@@ -124,6 +124,91 @@ def rendezvous_candidates(plan, inst, truck: str, target, air_customers: set[str
     return chosen
 
 
+_SLACK_EDGES = (-0.40, -0.30, -0.20, -0.10, -0.05, -0.02, 0.0, 0.02, 0.05, 0.10, 0.20, 0.40)
+
+
+def _slack_bin(slack: float) -> str:
+    """区间标签。左端包含。正数是还能飞的余量，负数是超了多少。"""
+    prev = None
+    for edge in _SLACK_EDGES:
+        if slack < edge:
+            if prev is None:
+                return f"<{edge:.2f}"
+            return f"{prev:.2f}:{edge:.2f}"
+        prev = edge
+    return f">={_SLACK_EDGES[-1]:.2f}"
+
+
+def _note_slack(stats, energy: float, limit: float) -> None:
+    """记下回程电量离上限还差多少。只加计数，不改变接受与否。"""
+    if stats is None:
+        return
+    slack = float(limit) - float(energy)
+    stats.aud("ENERGY_SLACK", "n")
+    stats.aud("ENERGY_SLACK", _slack_bin(slack))
+    if slack < -1e-9:
+        stats.aud("ENERGY_SLACK", "fail")
+
+
+def energy_feasible_rendezvous(plan, inst, phys, sortie, sp, limit: float, stats, cap: int = 10) -> dict[str, list[str]]:
+    """沿接机车全部弧由近到远，只留下整段飞得到的客户。电量上限仍是 e_cap − e_min。"""
+    air_customers = {inst.parcel_to_customer[p] for p in sortie.air if p in inst.parcel_to_customer}
+    end = inst.customer(inst.parcel_to_customer[sortie.air[-1]])
+    target = (end.x, end.y)
+    launch = plan.visits[sortie.launch_vid].truck
+    held: list[tuple[float, str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for truck, route in plan.routes.items():
+        if truck == launch or not route:
+            continue
+        arcs = _route_arcs(plan, inst, truck)
+        ranked = []
+        for arc in arcs:
+            dist, _ = _segment_distance(target, arc[0], arc[1])
+            ranked.append((dist, arc))
+        ranked.sort(key=lambda item: item[0])
+        for _, arc in ranked:
+            customers: list[str] = []
+            for vid in (arc[2], arc[3]):
+                if vid is not None:
+                    customers.append(plan.visits[vid].customer)
+            near = []
+            for cust in inst.customers:
+                if cust.customer_id in air_customers:
+                    continue
+                dist, t = _segment_distance((cust.x, cust.y), arc[0], arc[1])
+                if 0.05 < t < 0.95:
+                    near.append((dist, cust.customer_id))
+            near.sort()
+            for _, customer in near[:2]:
+                customers.append(customer)
+            for customer in customers:
+                key = (truck, customer)
+                if not customer or customer in air_customers or key in seen:
+                    continue
+                seen.add(key)
+                c = inst.customer(customer)
+                try:
+                    energy = air_energy(inst, phys, sp, list(sortie.air), (c.x, c.y))
+                except KeyError:
+                    continue
+                _note_slack(stats, energy, limit)
+                if energy <= limit + 1e-12:
+                    held.append((energy, truck, customer))
+    held.sort()
+    out: dict[str, list[str]] = {}
+    n = 0
+    for _, truck, customer in held:
+        bucket = out.setdefault(truck, [])
+        if customer in bucket:
+            continue
+        bucket.append(customer)
+        n += 1
+        if n >= cap:
+            break
+    return out
+
+
 def _window(route: list[int], vid: int) -> list[int]:
     if vid not in route:
         return [vid]
@@ -370,6 +455,7 @@ def _short_return_plans(plan, ctx, n: int, tried: set, skip_sids: set | None = N
                             _funnel(stats, "energy", True)
                             continue
                         _funnel(stats, "generated", True)
+                        _note_slack(stats, energy, limit)
                         if energy > limit:
                             _funnel(stats, "energy", True)
                             continue
@@ -414,6 +500,9 @@ def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool)
         end = inst.customer(inst.parcel_to_customer[s.air[-1]])
         endpos = (end.x, end.y)
         sp = sortie_start(inst, plan, s)
+        limit = phys.e_cap - phys.e_min + phys.energy_tol
+        use_energy = allow_cross and bool(getattr(getattr(ctx, "alg", None), "x_energy_rendezvous", False))
+        screened = energy_feasible_rendezvous(plan, inst, phys, s, sp, limit, stats) if use_energy else None
         trucks = [t for t in plan.routes if (t != launch if allow_cross else t == launch)]
         for truck in trucks:
             route = plan.routes.get(truck, [])
@@ -425,7 +514,10 @@ def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool)
                 if min_pos > len(route):
                     continue
             owned = _customers_on(plan, truck)
-            near_ids = rendezvous_candidates(plan, inst, truck, endpos, air_customers)
+            if screened is not None:
+                near_ids = list(screened.get(truck, []))
+            else:
+                near_ids = rendezvous_candidates(plan, inst, truck, endpos, air_customers)
             for customer_id in near_ids:
                 c = inst.customer(customer_id)
                 key = (s.sid, truck, c.customer_id)
@@ -437,7 +529,9 @@ def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool)
                 except KeyError:
                     _funnel(stats, "energy", allow_cross)
                     continue
-                if energy > phys.e_cap - phys.e_min + phys.energy_tol:
+                if allow_cross and not use_energy:
+                    _note_slack(stats, energy, limit)
+                if energy > limit:
                     _funnel(stats, "energy", allow_cross)
                     continue
                 passed.add(s.sid)
@@ -502,6 +596,85 @@ def propose_support_rendezvous(plan, ctx, n: int, tried: set, allow_cross: bool)
             elif len(out) == n:
                 out[-1] = geo[0]
     return out
+
+
+def propose_energy_retarget(plan, ctx):
+    """跨车航次离电量上限不到 0.05 kWh 时，改到更早的访问或另一辆车已有的访问。
+
+    没有这么紧的航次就返回 None，调用方不消耗评价。电池上限仍是 e_cap − e_min。
+    只改回收点，票不变。新点必须严格更省电，并且仍在上限以内。
+    """
+    if not bool(getattr(getattr(ctx, "state", None), "nominal_cross", False)):
+        return None
+    if not bool(getattr(getattr(ctx, "alg", None), "x_energy_retarget", False)):
+        return None
+    from .evaluate import has_wait_cycle, is_cross_sortie
+    inst, phys = ctx.inst, ctx.phys
+    limit = phys.e_cap - phys.e_min + phys.energy_tol
+    best = None
+    best_energy = None
+    for sortie in list(plan.sorties.values()):
+        if not sortie.air or not is_cross_sortie(plan, sortie):
+            continue
+        rec = plan.visits.get(sortie.rec_vid)
+        launch_visit = plan.visits.get(sortie.launch_vid)
+        if rec is None or launch_visit is None:
+            continue
+        sp = sortie_start(inst, plan, sortie)
+        try:
+            current = air_energy(inst, phys, sp, list(sortie.air), _pos(inst, plan, rec.vid))
+        except KeyError:
+            continue
+        if current < limit - 0.05:
+            continue
+        launch = launch_visit.truck
+        vids: list[int] = []
+        route = plan.routes.get(rec.truck, [])
+        if rec.vid in route:
+            vids.extend(route[:route.index(rec.vid)])
+        for truck, other in plan.routes.items():
+            if truck == rec.truck or truck == launch:
+                continue
+            vids.extend(other)
+        for vid in vids:
+            if vid == sortie.launch_vid or vid == sortie.rec_vid:
+                continue
+            try:
+                energy = air_energy(inst, phys, sp, list(sortie.air), _pos(inst, plan, vid))
+            except KeyError:
+                continue
+            if energy > limit + 1e-12 or energy >= current - 1e-9:
+                continue
+            cand = plan.clone()
+            so = cand.sorties[sortie.sid]
+            old = so.rec_vid
+            so.rec_vid = vid
+            ov = cand.visits.get(old)
+            if ov is not None and not ov.ground and not any(
+                    o.sid != so.sid and (o.launch_vid == old or o.rec_vid == old)
+                    for o in cand.sorties.values()):
+                cand.remove_visit(old)
+            if has_wait_cycle(cand):
+                continue
+            if list(so.air) != list(sortie.air):
+                continue
+            if best_energy is None or energy < best_energy - 1e-12:
+                best, best_energy = cand, energy
+    return best
+
+
+def try_energy_retarget(plan, ctx, budget, stats):
+    from .alns import _nominal_cross_intact, _within_makespan_cap, eval_counted
+    cand = propose_energy_retarget(plan, ctx)
+    if cand is None or budget.evals_left() <= 0:
+        return None, None
+    ev = eval_counted(cand, ctx.inst, ctx.phys, ctx.state, ctx.H, "ENERGY_RETARGET", stats, budget)
+    if ev is None or not ev.feasible:
+        return None, None
+    if not _within_makespan_cap(ev, ctx) or not _nominal_cross_intact(cand, ev, ctx):
+        return None, None
+    stats.aud("ENERGY_RETARGET", "feasible")
+    return cand, ev
 
 
 def try_support_rendezvous(plan, ctx, budget, stats):

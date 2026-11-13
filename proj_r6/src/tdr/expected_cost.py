@@ -119,6 +119,23 @@ def same_truck_j_adopts_baseline(plan, cost, baseline, baseline_cost, inst, phys
     return j_base < j_plan - tol
 
 
+def cross_j_rejects(plan, cost, baseline, baseline_cost, inst, phys, p: float, tol: float) -> bool:
+    """有跨车航次、且 J 不严格低于同车基线时，不发布这些跨车。
+
+    只给 X 的发布用。没有跨车航次时不介入，那条路仍由 same_truck_j_adopts_baseline 处理。
+    """
+    from .evaluate import is_cross_sortie
+    if plan is None or baseline is None or cost is None or baseline_cost is None:
+        return False
+    if not any(is_cross_sortie(plan, sortie) for sortie in plan.sorties.values()):
+        return False
+    j_plan = expected_j(cost, plan, inst, phys, p)
+    j_base = expected_j(baseline_cost, baseline, inst, phys, p)
+    if j_plan is None or j_base is None:
+        return False
+    return not (j_plan < j_base - tol)
+
+
 def insurance_room(plan, other, inst, phys, p: float) -> float:
     """新出现的跨车航次，允许名义成本升高不超过它自己的期望补救。"""
     from .evaluate import is_cross_sortie

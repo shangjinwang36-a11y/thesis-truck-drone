@@ -28,6 +28,18 @@ def test_mcnemar_matches_the_binomial_on_discordant_pairs():
     assert mcnemar_exact(0, 0)["p_two_sided"] is None
 
 
+def test_holm_of_a_ten_to_zero_sign_test_is_six_times_the_raw_p():
+    """C100 的 10/0：双侧精确符号检验是 binomtest(10, 10, 0.5)，Holm 乘上当时的 6 个检验。"""
+    from scipy.stats import binomtest
+
+    from tdr.attribution import holm
+    raw = float(binomtest(10, 10, 0.5).pvalue)
+    assert abs(raw - 0.001953125) < 1e-15
+    adjusted = holm([raw, 0.021484375, 0.75390625, 0.75390625, 0.75390625, 1.0])
+    assert abs(adjusted[0] - 6.0 * raw) < 1e-15
+    assert abs(adjusted[0] - 0.01171875) < 1e-15
+
+
 def test_completion_table_counts_discordant_stops():
     rows = []
     for i, (s, x) in enumerate((
@@ -180,3 +192,45 @@ def test_land_and_wait_pricing_is_identical_for_s_r_x_and_matches_stage_energy()
     hovering = DroneStage("WAIT", 10.0, 40.0, mass=1.0, landed=False)
     assert stage_energy(landed_wait, phys) == 0.0
     assert stage_energy(hovering, phys) > 0.0
+
+
+def test_a_priced_ground_finish_has_placed_every_remaining_order():
+    from tdr.data import Customer, Instance
+    from tdr.ground_finish import _build, _covered
+    from tdr.plan import Plan
+
+    _, phys = _light("C50")
+    phys.set_active()
+    inst = Instance("GF", "T", 0.0, 0.0, (
+        Customer("c1", "p1", 500.0, 0.0, 1.0),
+        Customer("c2", "p2", 900.0, 100.0, 1.0),
+    ))
+    plan = Plan("GF")
+    plan.add_visit("t1", "c1", ground=["p1"])
+    state = initial_state(inst, phys)
+    cost, status = ground_finish_cost(plan, state, inst, phys, 100000.0)
+    assert cost is not None, status
+    land = "landed" in status
+    mode = "truck" if "truck" in status else ("keep_inflight" if "keep" in status else "overtime_only")
+    built, _, left = _build(plan, state, inst, phys, mode, land=land)
+    assert left == []
+    assert {"p1", "p2"} <= _covered(built)
+
+
+def test_unplaced_orders_are_not_given_a_ground_finish_cost(monkeypatch):
+    import tdr.ground_finish as gf
+    from tdr.data import Customer, Instance
+    from tdr.plan import Plan
+
+    _, phys = _light("C50")
+    inst = Instance("GF", "T", 0.0, 0.0, (Customer("c1", "p1", 500.0, 0.0, 1.0),))
+    plan = Plan("GF")
+    plan.add_visit("t1", "c1", ground=["p1"])
+
+    def leftover(plan_, state_, inst_, phys_, mode, land=False):
+        return plan_, state_, ["p-still-out"]
+
+    monkeypatch.setattr(gf, "_build", leftover)
+    cost, status = gf.ground_finish_cost(plan, initial_state(inst, phys), inst, phys, 1.0)
+    assert cost is None
+    assert "UNPLACED" in status

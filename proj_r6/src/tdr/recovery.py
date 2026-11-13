@@ -184,8 +184,10 @@ class RecoveryCatalog:
 
     def __init__(self, plan: Plan, frag: Sortie, inst: Instance, strategy: str,
                  state: StartState | None = None, ground_required: set[str] | None = None,
-                 phys: PhysicalConfig | None = None, guard_n: int = 40, slot_aware: bool = False):
+                 phys: PhysicalConfig | None = None, guard_n: int = 40, slot_aware: bool = False,
+                 drop_energy_tail: bool = False):
         self.phys = phys
+        self.drop_energy_tail = drop_energy_tail  # 第 11 轮：X 的尾巴丢掉估计成本里加了 1e4 的能量不可行条目
         self.slot_aware = slot_aware      # 第五轮 v4：按接机车机位占用给估计成本加惩罚（S/X 同一公式）
         self.guard_n = guard_n      # X 的第一批评价必须包含 S 排序的前 guard_n 个候选（第二轮修复2）
         self._base_plan = plan
@@ -305,6 +307,9 @@ class RecoveryCatalog:
             yield make(x)
         for x in (s_list if self.strategy == "S" else items):
             if x[5] in seen or x[5] in self.skip_keys:
+                continue
+            # 能量惩罚只从 X 的尾巴拿掉。前面那一段仍与 S 的顺序相同，S 自己也不丢。
+            if self.drop_energy_tail and self.strategy != "S" and x[0] >= 1e4:
                 continue
             seen.add(x[5])
             self.n_generated += 1
@@ -1038,6 +1043,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                      limit_new_air: bool = False,
                      new_air_penalty: float = 0.0,
                      risk_price_p: float = 0.0,
+                     energy_screen: bool = False,
                      ) -> tuple[RecoveryOption | None, list[str], RecoveryCatalog | None]:
     """恢复初始解（修复1）：RESIDUAL → CATALOG（残段最小改动）→ REBUILD（旧清空重建，对照）.
 
@@ -1057,7 +1063,8 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
     if catalog is None:
         catalog = RecoveryCatalog(res, frag, inst, strategy, state, ground_required, phys=phys,
                                   guard_n=max(1, (((budget.eval_limit if budget is not None else 100) or 100) - 4) // 2),
-                                  slot_aware=slot_aware)
+                                  slot_aware=slot_aware,
+                                  drop_energy_tail=bool(energy_screen and strategy == "X"))
     catalog.mode = "residual"
     catalog.res_plan = res
     # 重建路径（对照）所需的底板与待插入票

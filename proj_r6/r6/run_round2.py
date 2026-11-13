@@ -59,6 +59,9 @@ PRESETS = {
     # 第 10 轮：在第 9 轮选定的班次上限上，只改 X 的会合几何和同车发布门。不重选上限，不扫参数。
     "R10": {"label": "R9 + 短回程会合 + 同车期望门",
             "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r6": True, "r7": True, "r8": True, "r9": True, "r10": True},
+    # 第 11 轮：只在 X 上加电量预筛、改会合、跨车期望门和更宽的恢复尾巴。S 不读这些开关。
+    "R11": {"label": "R10 + 电量会合预筛 + 跨车期望门 + 恢复去能量尾巴",
+            "v7": True, "x_nom": True, "x_rec": True, "tuned": True, "r3": True, "r4": True, "r6": True, "r7": True, "r8": True, "r9": True, "r10": True, "r11": True},
 }
 
 
@@ -124,6 +127,10 @@ def configs(pkg, preset: str):
     if ps.get("r10"):
         # 几何和发布门都只在 X 的跨车路径上读。S 的搜索不进入这两支。
         ad.update(x_short_return=True, x_same_truck_j_gate=True)
+    if ps.get("r11"):
+        # 四项都只在 X 的跨车或恢复路径上读。默认关闭时第 10 轮的路径不变。
+        ad.update(x_energy_rendezvous=True, x_energy_retarget=True,
+                  x_cross_j_gate=True, x_recovery_wider=True)
     alg = AlgorithmConfig.from_dict(ad)
     alg.recovery_eval_budget_override = None
     alg.recovery_time_limit_override_s = None
@@ -262,6 +269,8 @@ def ep_one(args):
                           max_replans=max_replans,
                           ground_finish_cost=ep.ground_finish_cost,
                           ground_finish_status=ep.ground_finish_status,
+                          time_alns=ep.time_alns, time_milp=ep.time_milp,
+                          time_init=ep.time_init, time_replay=ep.time_replay,
                           cost_fair=(ep.evaluation.cost if (ok and ep.evaluation) else ep.ground_finish_cost))
     return out
 
@@ -491,7 +500,7 @@ def main():
     # 名义共享：A0 与 A1 共用 A0 名义；A2 与 A3 共用 A2 名义；A4 独立
     nom_src = {"A0": "A0", "A1": "A0", "A2": "A2", "A3": "A2", "A4": "A4",
                "R3": "R3", "R4": "R3", "R5": "R3", "R6": "R6", "R7": "R7", "R8": "R8",
-               "R9": "R9", "R9H": "R9H", "R10": "R10"}
+               "R9": "R9", "R9H": "R9H", "R10": "R10", "R11": "R11"}
 
     if args.phase in ("nominal", "all"):
         need = sorted({nom_src[p] for p in presets if p in nom_src})

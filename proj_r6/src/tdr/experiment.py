@@ -290,6 +290,20 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
                     adopted_s = True
                     adopt_reason = "expected_same_truck"
                     stats_ex.aud("EXPECTED", "adopted_same_truck")
+        # 有跨车时，只有 J 严格低于同车基线才留下。否则发布同车基线。
+        if (not adopted_s and getattr(alg, "x_cross_j_gate", False) and adopt_from
+                and ev is not None and ev.feasible and ev.cost is not None):
+            if s_plan_cap is None:
+                s_plan_cap, _, _ = load_case_nominal(inst, adopt_from)
+                s_ev_cap = evaluate_plan(s_plan_cap, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+            if s_plan_cap is not None and s_ev_cap is not None and s_ev_cap.feasible and s_ev_cap.cost is not None:
+                from .expected_cost import cross_j_rejects, failure_prob
+                if cross_j_rejects(res.plan, ev.cost, s_plan_cap, s_ev_cap.cost, inst, phys,
+                                   failure_prob(alg), alg.cost_tolerance_yuan):
+                    res.plan, ev = s_plan_cap.clone(), s_ev_cap
+                    adopted_s = True
+                    adopt_reason = "expected_cross"
+                    stats_ex.aud("EXPECTED", "rejected_cross")
         already = any(_isc_ex(res.plan, s) for s in res.plan.sorties.values())
         if not already:
             from .cross_robust import cross_robust_violations
@@ -332,6 +346,19 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
             bucket = audit.setdefault(name, {})
             for k, v in keys.items():
                 bucket[k] = bucket.get(k, 0) + v
+    # 互换可能在门之后再放进一条跨车。发布前再查一次：J 不严格低于同车基线就不留下。
+    if (cross_launch and getattr(alg, "x_cross_j_gate", False) and adopt_from
+            and ev is not None and ev.feasible and ev.cost is not None and res.plan is not None):
+        if s_plan_cap is None:
+            s_plan_cap, _, _ = load_case_nominal(inst, adopt_from)
+            s_ev_cap = evaluate_plan(s_plan_cap, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+        if s_plan_cap is not None and s_ev_cap is not None and s_ev_cap.feasible and s_ev_cap.cost is not None:
+            from .expected_cost import cross_j_rejects, failure_prob
+            if cross_j_rejects(res.plan, ev.cost, s_plan_cap, s_ev_cap.cost, inst, phys,
+                               failure_prob(alg), alg.cost_tolerance_yuan):
+                res.plan, ev = s_plan_cap.clone(), s_ev_cap
+                adopted_s = True
+                adopt_reason = "expected_cross"
     H = max(ev.timeline.truck_finish.values()) + phys.shift_slack_s
     from .evaluate import is_cross_sortie as is_cross_sortie_
     if not cross_launch:   # S：名义阶段不得出现跨车航次

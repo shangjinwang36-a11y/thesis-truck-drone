@@ -121,6 +121,10 @@ def test_new_flags_default_off():
     assert alg.expected_reeval_every == 80
     assert alg.x_short_return is False
     assert alg.x_same_truck_j_gate is False
+    assert alg.x_energy_rendezvous is False
+    assert alg.x_energy_retarget is False
+    assert alg.x_cross_j_gate is False
+    assert alg.x_recovery_wider is False
     assert "JOINT_NEAR" not in alg.destroy_operators
 
 
@@ -306,3 +310,81 @@ def test_same_truck_j_gate_drops_extra_air_and_keeps_a_cross():
     next(iter(crossed.sorties.values())).rec_vid = rec
     assert any(is_cross_sortie(crossed, s) for s in crossed.sorties.values())
     assert not same_truck_j_adopts_baseline(crossed, 100.0, base, 100.0, inst, phys, 0.2, 1e-4, None, None)
+
+
+def test_energy_prefilter_keeps_only_customers_inside_the_battery():
+    from tdr.support_nominal import energy_feasible_rendezvous, rendezvous_candidates
+    inst, phys = _geom("BATT", (
+        Customer("cLaunch", "pL", 0.0, 0.0, 1.0),
+        Customer("cAir", "pA", 1000.0, 0.0, 1.0),
+        Customer("cNear", "pN", 1500.0, 0.0, 1.0),
+        Customer("cFar", "pF", 40000.0, 0.0, 1.0),
+    ))
+    plan = Plan("BATT")
+    launch = plan.add_visit("t1", "cLaunch", ground=["pL"])
+    rec = plan.add_visit("t1", "cAir", ground=[])
+    plan.add_visit("t2", "cFar", ground=["pF"])
+    plan.add_visit("t2", "cNear", ground=["pN"])
+    plan.add_sortie("d1", "t1", launch.vid, "ARC", 0.0, ["pA"], rec.vid)
+    sortie = next(iter(plan.sorties.values()))
+    sp = sortie_start(inst, plan, sortie)
+    limit = phys.e_cap - phys.e_min
+    far = air_energy(inst, phys, sp, ["pA"], (40000.0, 0.0))
+    near = air_energy(inst, phys, sp, ["pA"], (1500.0, 0.0))
+    assert far > limit
+    assert near <= limit
+    screened = energy_feasible_rendezvous(plan, inst, phys, sortie, sp, limit, None)
+    flat = [c for ids in screened.values() for c in ids]
+    assert "cNear" in flat
+    assert "cFar" not in flat
+    assert screened["t2"] == ["cNear"] or "cNear" in screened["t2"]
+    listed = rendezvous_candidates(plan, inst, "t2", (1000.0, 0.0), {"cAir"})
+    assert "cFar" in listed
+
+
+def test_retarget_moves_a_tight_cross_onto_an_earlier_visit():
+    from tdr.support_nominal import propose_energy_retarget
+    inst, phys = _geom("RETARGET", (
+        Customer("cLaunch", "pL", 0.0, 0.0, 1.0),
+        Customer("cAir", "pA", 1000.0, 0.0, 1.0),
+        Customer("cNear", "pN", 1600.0, 0.0, 1.0),
+        Customer("cFar", "pF", 30000.0, 0.0, 1.0),
+    ))
+    plan = Plan("RETARGET")
+    launch = plan.add_visit("t1", "cLaunch", ground=["pL"])
+    plan.add_visit("t2", "cNear", ground=["pN"])
+    far = plan.add_visit("t2", "cFar", ground=["pF"])
+    plan.add_sortie("d1", "t1", launch.vid, "ARC", 0.0, ["pA"], far.vid)
+    sortie = next(iter(plan.sorties.values()))
+    assert is_cross_sortie(plan, sortie)
+    limit = phys.e_cap - phys.e_min
+    current = air_energy(inst, phys, sortie_start(inst, plan, sortie), ["pA"], (30000.0, 0.0))
+    nearer = air_energy(inst, phys, sortie_start(inst, plan, sortie), ["pA"], (1600.0, 0.0))
+    assert current > limit - 0.05
+    assert nearer <= limit
+    assert nearer < current
+    state = initial_state(inst, phys)
+    state.nominal_cross = True
+    on = SolveContext(inst, phys, AlgorithmConfig(x_energy_retarget=True), state, None, "nominal")
+    cand = propose_energy_retarget(plan, on)
+    assert cand is not None
+    flown = next(s for s in cand.sorties.values() if s.air)
+    assert cand.visits[flown.rec_vid].customer == "cNear"
+    assert list(flown.air) == ["pA"]
+    off = SolveContext(inst, phys, AlgorithmConfig(x_energy_retarget=False), state, None, "nominal")
+    assert propose_energy_retarget(plan, off) is None
+
+
+def test_cross_j_gate_rejects_a_cross_unless_j_is_strictly_lower():
+    from tdr.expected_cost import cross_j_rejects
+    inst, phys, base = _tiny()
+    crossed = base.clone()
+    rec = next(v.vid for v in crossed.visits.values() if v.truck == "t2")
+    next(iter(crossed.sorties.values())).rec_vid = rec
+    assert any(is_cross_sortie(crossed, s) for s in crossed.sorties.values())
+    assert not cross_j_rejects(base, 100.0, base, 100.0, inst, phys, 0.2, 1e-4)
+    assert cross_j_rejects(crossed, 500.0, base, 100.0, inst, phys, 0.2, 1e-4)
+    j_cross = expected_j(0.0, crossed, inst, phys, 0.2)
+    j_base = expected_j(100.0, base, inst, phys, 0.2)
+    assert j_cross < j_base - 1e-4
+    assert not cross_j_rejects(crossed, 0.0, base, 100.0, inst, phys, 0.2, 1e-4)

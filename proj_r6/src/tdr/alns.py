@@ -904,6 +904,23 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                 from .hybrid import scenario_score
                 scenario_score(best_plan, best_ev, ctx)
                 stats.aud("EXPECTED", "true_reeval")
+        # 第 11 轮：只动离电量上限不到 0.05 kWh 的跨车航次。没有这种航次就不评价。
+        if (getattr(alg, "x_energy_retarget", False) and getattr(ctx.state, "nominal_cross", False)
+                and ctx.mode == "nominal"
+                and stats.iterations % alg.cross_period == 3
+                and budget.evals_left() > 0):
+            from .support_nominal import try_energy_retarget
+            p_e, e_e = try_energy_retarget(cur_plan, ctx, budget, stats)
+            if (p_e is not None and e_e is not None
+                    and _better_air(e_e, p_e, cur_ev, cur_plan, alg, ctx)
+                    and _within_makespan_cap(e_e, ctx)
+                    and _nominal_cross_intact(p_e, e_e, ctx)):
+                stats.aud("ENERGY_RETARGET", "cur_improve")
+                cur_plan, cur_ev = p_e, e_e
+                if _better_air(e_e, p_e, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_e, ctx):
+                    stats.aud("ENERGY_RETARGET", "best")
+                    best_ev, best_plan = e_e, p_e.clone()
+                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 第 9 轮：插入会合访问。X 插到另一辆车，S 只插到放飞车。两边同一频率、同一评价上限。
         if (getattr(alg, "support_rendezvous", False) and ctx.mode == "nominal"
                 and (getattr(ctx.state, "nominal_cross", False) or getattr(ctx, "scenario_on", False))

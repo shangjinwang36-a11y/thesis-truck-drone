@@ -784,6 +784,10 @@ class EpisodeResult:
     failed_sids: list[int] = field(default_factory=list)   # 每次失败对应的（被恢复的）航次号
     ground_finish_cost: float | None = None
     ground_finish_status: str | None = None
+    time_alns: float = 0.0
+    time_milp: float = 0.0
+    time_init: float = 0.0
+    time_replay: float = 0.0
 
 
 def derive_rngs(base_seed: int, case_id: str, phase: str, replan_index: int) -> dict[str, random.Random]:
@@ -874,7 +878,9 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                         [st.end for lst in tl.drone_stages.values() for st in lst] + [state.t0])
             segments.append(collect_segment(plan, tl, inst, phys, state.t0, t_end, seg_start))
             ev = evaluate_plan(plan, inst, phys, state, H, "FINAL")
+            t_rep = time.perf_counter()
             rep = verify_replay(inst, phys, segments, H, strategy=strategy)
+            res.time_replay += time.perf_counter() - t_rep
             res.segments = segments
             res.replay = rep
             res.plan = plan
@@ -943,7 +949,11 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                                                  preserve_cross=(strategy == "X" and alg.x_preserve_cross_repair),
                                                  keep_s_recovery=(strategy == "X" and alg.x_keep_s_recovery),
                                                  limit_new_air=(strategy == "X" and alg.x_limit_new_air),
-                                                 new_air_penalty=(alg.x_new_air_penalty if strategy == "X" else 0.0))
+                                                 new_air_penalty=(alg.x_new_air_penalty if strategy == "X" else 0.0),
+                                                 energy_screen=(strategy == "X" and bool(getattr(alg, "x_recovery_wider", False))),
+                                                 milp_top_k=(10 if strategy == "X" and bool(getattr(alg, "x_recovery_wider", False)) else 6))
+        res.time_init += time.perf_counter() - t_budget0
+        res.time_milp += float(init_info.get("milp_wall_s") or 0.0)
         if opt is None:
             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
             res.notes.append(f"STOP_CONTEXT:replan={replan_index + 1},t_fail={a.time:.1f},t_cut={t_cut:.1f},"
@@ -971,6 +981,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
         sol = optimize(opt.plan, ctx, budget, variant=variant, stats=stats, init_ev=opt.ev)
         dt = time.perf_counter() - t_r
         res.replan_times.append(dt)
+        res.time_alns += dt
         # 永不劣于残段候选：理论上 optimize 的最好解从起始解出发、只会更好；这里再做显式兜底
         res_cost = init_info.get("residual_cost")
         if (res_cost is not None and sol.evaluation is not None and sol.evaluation.feasible
