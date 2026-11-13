@@ -11,9 +11,9 @@ from tdr.cross_robust import (
     reserve_kwh,
 )
 from tdr.data import load_instance
-from tdr.evaluate import evaluate_plan, is_cross_sortie
+from tdr.evaluate import Evaluation, evaluate_plan, is_cross_sortie
 from tdr.experiment import plan_from_dict
-from tdr.schedule import initial_state
+from tdr.schedule import initial_state, schedule_plan
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -41,6 +41,22 @@ def _ctx(inst, phys, robust=True):
     return ctx
 
 
+
+def _margin_probe(plan, inst, phys):
+    """余量门槛的合成账本：旧 R50 计划已被更早的失败返航检查拒绝。
+
+    保留真实路线/通道时刻，仅注入被测回收端点 0.06/0.10 kWh，分别覆盖
+    0.075 裕度、90 秒与 300 秒额外悬停边界；不声称该历史计划物理可行。
+    """
+    tl = schedule_plan(plan, inst, phys, initial_state(inst, phys))
+    for d, stages in tl.drone_stages.items():
+        tl.drone_energy[d] = [phys.e_cap] * (len(stages) + 1)
+        for i, stage in enumerate(stages):
+            if stage.kind == "R" and stage.sid in (48, 53):
+                tl.drone_energy[d][i + 1] = 0.06 if stage.sid == 48 else 0.10
+    return Evaluation(feasible=True, timeline=tl)
+
+
 def test_a_full_truck_is_legal_and_one_over_capacity_is_not():
     import dataclasses
     inst, phys, plan = _saved("R50", "X")
@@ -58,9 +74,9 @@ def test_light_reserve_is_0_075_kwh():
     assert abs(reserve_kwh(phys) - 0.075) < 1e-12
 
 
-def test_published_cross_sorties_fail_final_timetable_checks():
+def test_cross_sorties_fail_margin_slack_and_ground_checks():
     inst, phys, plan = _saved("R50", "X")
-    ev = evaluate_plan(plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+    ev = _margin_probe(plan, inst, phys)
     viol = cross_robust_violations(plan, inst, phys, ev.timeline, 90.0)
     assert set(viol) == {48, 53, 54}
     assert any(t.startswith("MARGIN:") for t in viol[48])
@@ -84,7 +100,7 @@ def test_published_cross_sorties_fail_final_timetable_checks():
 
 def test_longer_slack_rejects_a_sortie_the_90s_check_allows():
     inst, phys, plan = _saved("R50", "X")
-    ev = evaluate_plan(plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+    ev = _margin_probe(plan, inst, phys)
     short = cross_robust_violations(plan, inst, phys, ev.timeline, 90.0)
     long = cross_robust_violations(plan, inst, phys, ev.timeline, 300.0)
     assert not any(t.startswith("SLACK:") for t in short[53])
@@ -94,9 +110,9 @@ def test_longer_slack_rejects_a_sortie_the_90s_check_allows():
 def test_final_timetable_rechecks_a_cross_sortie_whose_recovery_did_not_change():
     """旧门槛只在回收点改变时查。最终时刻表上的薄余电必须仍然被拒绝。"""
     inst, phys, plan = _saved("R50", "X")
-    ev = evaluate_plan(plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+    ev = _margin_probe(plan, inst, phys)
     ctx = _ctx(inst, phys, robust=True)
-    # 回收点没变时也要看余电。R50 的跨车航次 48 低于 0.075 kWh。
+    # 回收点没变时也要看余电。合成账本中航次 48 为 0.06 < 0.075 kWh。
     assert _cross_energy_ok(plan, plan.clone(), ev, ctx) is False
     assert _nominal_cross_intact(plan, ev, ctx) is False
     ctx.state.nominal_cross = False

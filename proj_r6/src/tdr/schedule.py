@@ -137,6 +137,8 @@ class Timeline:
     drone_energy: dict[str, list[float]] = field(default_factory=dict)
     launch_times: dict[int, tuple[float, float, tuple[float, float]]] = field(default_factory=dict)
     rec_times: dict[int, tuple[float, float]] = field(default_factory=dict)
+    rec_ready: dict[int, float] = field(default_factory=dict)  # 车/通道可用，不含等本机到达
+    failure_return_need: dict[tuple[str, int], float] = field(default_factory=dict)  # SERVICE 开始所需电量
     energy_ok: bool = True
     energy_msg: str = ""
     q_total: float = 0.0
@@ -228,6 +230,12 @@ def schedule_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
                          recoveries_at, launches_at, depot_launches, prev_avail, waits, swaps)
         tl.waits = dict(waits)
         _schedule_drones(plan, inst, phys, state, tl, drones)
+        for d, stages in tl.drone_stages.items():
+            for i, stage in enumerate(stages):
+                requirement = failure_return_requirement(plan, inst, phys, tl, stage)
+                if requirement is not None:
+                    consumption, reserve = requirement
+                    tl.failure_return_need[d, i] = consumption + reserve
         if phys.swap_mode:
             new_swaps, swap_msg = _swap_pass(tl, plan, phys, state, swaps)
             if new_swaps != swaps:
@@ -359,7 +367,8 @@ def _schedule_trucks(plan: Plan, inst: Instance, phys: PhysicalConfig, state: St
                                         info={"from": pos_prev, "to": cpos, "dist": leg_dist}))
             for s in recoveries_at.get(vid, []):
                 arr = drone_arr.get(s.sid, t_arr)
-                r_start = max(ready, t_arr, arr, channel_free)
+                tl.rec_ready[s.sid] = max(ready, t_arr, channel_free)
+                r_start = max(tl.rec_ready[s.sid], arr)
                 r_end = r_start + phys.recovery_s
                 if s.handover:
                     u_end = r_end + phys.handover_s
@@ -607,6 +616,32 @@ def stage_energy(stage: DroneStage, phys: PhysicalConfig) -> float:
     return 0.0
 
 
+def failure_return_requirement(plan: Plan, inst: Instance, phys: PhysicalConfig,
+                               tl: Timeline, stage: DroneStage) -> tuple[float, float] | None:
+    """尚未揭示结果的到场：带全部当前载重直返的耗电与回收余电下限。
+
+    失败在 SERVICE 开始揭示，不扣成功服务耗电。车/通道按名义调度的相同
+    回收顺序可用，但不能把等待本机正常送货的时间误当成通道占用。
+    已揭示结果的 resumed 服务免查；后续未到场的服务仍查。
+    """
+    if stage.kind != "SERVICE" or stage.resumed or stage.parcel is None or stage.sid is None:
+        return None
+    sortie = plan.sorties.get(stage.sid)
+    if sortie is None or sortie.rec_vid not in plan.visits:
+        return None
+    rc = inst.customer(plan.visits[sortie.rec_vid].customer)
+    cc = inst.customer(inst.parcel_to_customer[stage.parcel])
+    distance = math.hypot(rc.x - cc.x, rc.y - cc.y)
+    consumption = phys.fly_energy_kwh(distance, stage.mass)
+    if sortie.landed:
+        return consumption, 0.0
+    arrival = stage.start + distance / phys.drone_speed_m_s
+    ready = tl.rec_ready[stage.sid]
+    wait = max(0.0, ready - arrival)
+    consumption += phys.hover_energy_kwh(wait + phys.recovery_s, stage.mass)
+    return consumption, phys.e_min
+
+
 def _start_energy(state: StartState, d: str, phys: PhysicalConfig) -> float:
     if state.t0 > 0 or d in state.drone_energy:
         return state.drone_energy.get(d, phys.e_cap)
@@ -618,18 +653,22 @@ def _swap_pass(tl: Timeline, plan: Plan, phys: PhysicalConfig, state: StartState
                swaps: set[int]) -> tuple[set[int], str]:
     """换电配置：按当前时刻表逐机推演电量，在首个能量违约的航次放飞前加一次换电（惰性换电）.
 
-    违约 = R 结束余电 < E_min 或电量 < 0。该航次已换电仍违约，或违约发生在已起飞的空中残段，
+    违约 = R 结束余电 < E_min、电量 < 0 或到场时不足以带货失败返航。该航次已换电仍违约，
+    或违约发生在已起飞的空中残段，
     则无法靠换电修复，返回非空信息（评价判不可行）。"""
     new = set(swaps)
     msg = ""
     for d, stages in tl.drone_stages.items():
         e = _start_energy(state, d, phys)
-        for st in stages:
+        for i, st in enumerate(stages):
             if st.kind == "SWAP":
                 e = phys.e_cap
                 continue
-            e -= stage_energy(st, phys)
+            consumed = stage_energy(st, phys)
+            e -= consumed
             req = phys.e_min if (st.kind == "R" and not st.landed) else 0.0
+            # 失败返航是 SERVICE 开始时的要求，折算为同一阶段末端的检查。
+            req = max(req, tl.failure_return_need.get((d, i), 0.0) - consumed)
             if e < req - phys.energy_tol:
                 sid = st.sid
                 s = plan.sorties.get(sid) if sid is not None else None

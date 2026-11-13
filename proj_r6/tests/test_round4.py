@@ -271,7 +271,12 @@ def test_h1_second_failure_during_committed_action():
     alg.recovery_decision = "milp"
     inst = load_instance(pkg, case)
     plan, nc, H = load_case_nominal(inst, FIX / "light_rc50" / case)
+    # T08a：本测试锁定承诺/保管链。旧夹具的返航等待能量不足，使用明确的
+    # 半功耗配置使夹具满足新规则，保留原路线与早期承诺事件。
+    from dataclasses import replace
+    phys = replace(phys, beta_hover=0.5, beta_cruise=0.5)
     nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "N")
+    assert nom.feasible, nom.violations
     air = sorted(p for s in plan.sorties.values() for p in s.air)
     failed = tuple(_r.Random(zlib.crc32(f"{case}:1:5".encode())).sample(air, 5))
     ep = simulate.run_episode(inst, plan, nom, H, phys, TestWorld(inst, case, failed), "S", alg,

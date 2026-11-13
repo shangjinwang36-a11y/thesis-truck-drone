@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 
 from .config import PhysicalConfig
 from .data import Instance
-from .evaluate import channel_check, final_carrier, recovery_is_cross, truck_slot_check
+from .evaluate import (channel_check, failure_return_violations, final_carrier,
+                       recovery_is_cross, truck_slot_check)
 from .plan import Plan
 from .schedule import (StartState, allocate_charging, initial_state, schedule_plan, stage_energy)
 
@@ -104,6 +105,7 @@ def verify_plan(inst: Instance, state: StartState | None, plan: Plan, strategy: 
             if (st.kind == "R" and not st.landed and i + 1 < len(energies)
                     and energies[i + 1] < phys.e_min - phys.energy_tol):
                 rep.violations.append(f"RESERVE_VIOLATION:{d}@{st.start:.1f}")
+    rep.violations += failure_return_violations(plan, inst, phys, tl)
     # ---- 交付与终端 ----
     delivered = set(state.delivered)
     for v in plan.visits.values():

@@ -211,6 +211,10 @@ def test_packed_unlaunched_cross_keeps_followon():
     assert plan.sorties[45].drone == "d4" and plan.sorties[45].truck == "t2"
     assert plan.visits[plan.sorties[45].rec_vid].truck == "t4"
     assert plan.sorties[52].drone == "d4" and plan.sorties[52].truck == "t4"
+    # T08a：本测试锁定承诺/保管链。旧夹具的返航等待能量不足，使用明确的
+    # 低悬停功耗配置使夹具满足新规则，保留原路线与早期承诺事件。
+    from dataclasses import replace
+    phys = replace(phys, beta_hover=0.5)
     nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "N")
     assert nom.feasible
     tl = nom.timeline

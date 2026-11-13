@@ -108,12 +108,18 @@ def test_started_fragment_cross_is_visible_to_s_policy():
     assert hits
 
 
-def test_nominal_plans_satisfy_replay_and_s_has_no_cross():
+def test_nominal_plans_recheck_return_and_feasible_ones_satisfy_replay():
     for case in CASES:
         inst, phys = _light(case)
         for side in ("S", "X"):
             plan, _, H = load_case_nominal(inst, ROOT / f"r6/results/round3/R3/nominal/{side}/{case}")
             v = check_plan(plan, inst, phys, initial_state(inst, phys), H, strategy=side)
+            # T08a：历史计划的失败带货等待缺口必须拒绝，不能继续声称全部可行。
+            unsafe = case in {"R100", "RC100"} or (case, side) == ("R50", "X")
+            if unsafe:
+                assert len(v) == 1 and v[0].startswith("SWAP_CANNOT_FIX:"), (case, side, v)
+                assert ":stage=SERVICE:" in v[0]
+                continue
             assert v == [], (case, side, v[:5])
             st = initial_run_state(plan, inst, phys)
             ev = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")

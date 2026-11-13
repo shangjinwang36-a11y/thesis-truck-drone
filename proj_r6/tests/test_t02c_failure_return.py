@@ -1,5 +1,5 @@
 """T02-C：每次尚未到场的空送都要能在“送不成、带货直飞回接机点”后，回收完仍不低于 E_min。
-规则写在 evaluate_plan 里（failure_return_violations），名义、恢复、收尾、S/R/X 共用。"""
+调度换电与 evaluate/verify 共用失败返航规则，含带货等车悬停。"""
 import json
 from pathlib import Path
 
@@ -9,7 +9,8 @@ from tdr.config import PhysicalConfig
 from tdr.data import load_instance
 from tdr.evaluate import evaluate_plan, failure_return_violations
 from tdr.experiment import plan_from_dict
-from tdr.schedule import initial_state
+from tdr.schedule import allocate_swaps, initial_state
+from tdr.verify import verify_plan
 
 ROOT = Path(__file__).resolve().parents[1]
 NOM = ROOT / "r6/results/round11_tune/R11/nominal"
@@ -25,11 +26,24 @@ def _load(strat, case):
 
 @pytest.mark.parametrize("strat", ["S", "X"])
 @pytest.mark.parametrize("case", ["C50", "R50", "RC50", "C100", "R100", "RC100"])
-def test_published_nominal_plans_already_satisfy_the_rule(strat, case):
+def test_published_nominal_plans_are_rechecked_with_loaded_wait(strat, case):
     plan, inst, phys = _load(strat, case)
     ev = evaluate_plan(plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
-    assert ev.feasible, ev.violations
-    assert failure_return_violations(plan, inst, phys, ev.timeline) == []
+    # T08a：旧 R/RC 计划曾漏算带货等待，并非都能靠起飞前换满电补救。
+    expected_feasible = case in {"C50", "C100"}
+    assert ev.feasible == expected_feasible, ev.violations
+    report = verify_plan(inst, initial_state(inst, phys), plan, strat, phys)
+    assert report.ok == expected_feasible
+    if expected_feasible:
+        assert failure_return_violations(plan, inst, phys, ev.timeline) == []
+    else:
+        assert ev.violations == report.violations
+        assert ev.violations[0].startswith("SWAP_CANNOT_FIX:")
+        assert ":stage=SERVICE:" in ev.violations[0]
+        # 仅重放名义电量以核实真正的失败返航缺口，不将重放结果当可行计划。
+        ev.timeline.swap_msg = ""
+        allocate_swaps(ev.timeline, phys, initial_state(inst, phys))
+        assert failure_return_violations(plan, inst, phys, ev.timeline)
 
 
 def test_low_energy_before_a_delivery_is_rejected():
