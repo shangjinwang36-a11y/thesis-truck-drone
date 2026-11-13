@@ -183,6 +183,10 @@ def _attempt_relocate(plan, state, inst, phys, H, k: int = 8) -> tuple[float | N
                         p = plan.clone()
                         v = p.add_visit(truck, cust, pos=pos, ground=[])
                         p.sorties[s.sid].rec_vid = v.vid
+                        # 接机点已迁移：先清除该残段交接票的旧地送，再由 _build 排到新回收点之后。
+                        hand_set = set(p.sorties[s.sid].handover)
+                        for visit in p.visits.values():
+                            visit.ground = [parcel for parcel in visit.ground if parcel not in hand_set]
                         cost, note = _attempt(p, state, inst, phys, H, mode, land)
                         if cost is None:
                             continue

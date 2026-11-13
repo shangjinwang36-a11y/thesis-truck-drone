@@ -16,18 +16,18 @@ def test_bernoulli_draw_is_keyed_by_parcel_not_by_order():
     pkg = json.loads((ROOT / "data" / "package_light.json").read_text(encoding="utf-8"))
     inst = load_instance(pkg, "C50")
     ids = [c.parcel_id for c in inst.customers]
-    forward = bernoulli_failure_flags("C50", 1002, ids, 0.2)
-    backward = bernoulli_failure_flags("C50", 1002, list(reversed(ids)), 0.2)
-    duplicated = bernoulli_failure_flags("C50", 1002, ids + ids, 0.2)
+    forward = bernoulli_failure_flags("C50", 11, ids, 0.2)
+    backward = bernoulli_failure_flags("C50", 11, list(reversed(ids)), 0.2)
+    duplicated = bernoulli_failure_flags("C50", 11, ids + ids, 0.2)
     assert forward == backward == duplicated
-    first = BernoulliWorld(inst, "C50", 1002, 0.2)
-    second = BernoulliWorld(inst, "C50", 1002, 0.2)
+    first = BernoulliWorld(inst, "C50", 11, 0.2)
+    second = BernoulliWorld(inst, "C50", 11, 0.2)
     for parcel in ids:
         early = first.observe_air_arrival(parcel, 1.0, f"early|{parcel}", "c", "d1")
         late = second.observe_air_arrival(parcel, 50.0, f"late|{parcel}|2", "c", "d9")
         assert early.air_delivery_available == late.air_delivery_available
         assert (not early.air_delivery_available) == (parcel in forward)
-    reverse = BernoulliWorld(inst, "C50", 1002, 0.2)
+    reverse = BernoulliWorld(inst, "C50", 11, 0.2)
     for parcel in reversed(ids):
         obs = reverse.observe_air_arrival(parcel, 3.0, f"rev|{parcel}", "c", "d1")
         assert (not obs.air_delivery_available) == (parcel in forward)
