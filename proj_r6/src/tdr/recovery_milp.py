@@ -195,7 +195,7 @@ def _ground_cost(stop: Stop, parcel_customer: str, cpos: tuple[float, float],
 
 def solve_recovery_milp(res: Plan, frag_sid: int, inst: Instance, phys: PhysicalConfig,
                         state: StartState, strategy: str, ground_required: set[str],
-                        top_k: int = 6, time_limit_s: float = 3.0,
+                        top_k: int = 10, time_limit_s: float = 3.0,
                         max_support: int = 12) -> MilpResult:
     t_wall = time.perf_counter()
     out = MilpResult()

@@ -187,7 +187,7 @@ class RecoveryCatalog:
                  phys: PhysicalConfig | None = None, guard_n: int = 40, slot_aware: bool = False,
                  drop_energy_tail: bool = False):
         self.phys = phys
-        self.drop_energy_tail = drop_energy_tail  # 第 11 轮：X 的尾巴丢掉估计成本里加了 1e4 的能量不可行条目
+        self.drop_energy_tail = drop_energy_tail  # 统一开关：S/R/X 均预筛带能量惩罚的候选
         self.slot_aware = slot_aware      # 第五轮 v4：按接机车机位占用给估计成本加惩罚（S/X 同一公式）
         self.guard_n = guard_n      # X 的第一批评价必须包含 S 排序的前 guard_n 个候选（第二轮修复2）
         self._base_plan = plan
@@ -287,6 +287,9 @@ class RecoveryCatalog:
                 items.append((est(st, served), st.truck != launch, st.truck, str(st.ref),
                               tuple(served), key, st))
         items.sort(key=lambda x: (x[0], x[2], x[3], x[4]))
+        # 在保护段与尾部分流前统一预筛，避免 S 的候选全部从保护段绕过筛选。
+        if self.drop_energy_tail:
+            items = [x for x in items if x[0] < 1e4]
         s_list = [x for x in items if x[2] == launch]
         seen: set = set()
 
@@ -307,9 +310,6 @@ class RecoveryCatalog:
             yield make(x)
         for x in (s_list if self.strategy == "S" else items):
             if x[5] in seen or x[5] in self.skip_keys:
-                continue
-            # 能量惩罚只从 X 的尾巴拿掉。前面那一段仍与 S 的顺序相同，S 自己也不丢。
-            if self.drop_energy_tail and self.strategy != "S" and x[0] >= 1e4:
                 continue
             seen.add(x[5])
             self.n_generated += 1
@@ -1034,7 +1034,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                      catalog: RecoveryCatalog | None = None,
                      init_catalog_entries: int | None = None,
                      rescue_evals: int = 0, info: dict | None = None,
-                     use_milp: bool = False, milp_top_k: int = 6, joint: bool = False,
+                     use_milp: bool = False, milp_top_k: int = 10, joint: bool = False,
                      slot_aware: bool = False, unlaunched: bool = False,
                      preserve_cross: bool = False, keep_s_recovery: bool = False,
                      limit_new_air: bool = False,
@@ -1061,7 +1061,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
         catalog = RecoveryCatalog(res, frag, inst, strategy, state, ground_required, phys=phys,
                                   guard_n=max(1, (((budget.eval_limit if budget is not None else 100) or 100) - 4) // 2),
                                   slot_aware=slot_aware,
-                                  drop_energy_tail=bool(energy_screen and strategy == "X"))
+                                  drop_energy_tail=bool(energy_screen))
     catalog.mode = "residual"
     catalog.res_plan = res
     # 重建路径（对照）所需的底板与待插入票

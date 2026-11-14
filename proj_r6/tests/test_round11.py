@@ -1,4 +1,4 @@
-"""第 11 轮：失败按包裹键抽取；恢复目录只在 X 的尾巴丢掉能量不可行条目。"""
+"""第 11 轮：失败按包裹键抽取；T08a 修正恢复目录为 S/R/X 统一能量预筛。"""
 import json
 from pathlib import Path
 
@@ -65,7 +65,7 @@ def _take(cat, n=80):
     return out
 
 
-def test_energy_screen_drops_the_x_tail_and_keeps_the_s_prefix():
+def test_energy_screen_applies_to_all_strategies():
     plan, frag, inst, phys, state = _airborne(0.001)
     guard = 4
     plain = RecoveryCatalog(plan, frag, inst, "X", state, set(), phys=phys, guard_n=guard)
@@ -73,6 +73,8 @@ def test_energy_screen_drops_the_x_tail_and_keeps_the_s_prefix():
                                drop_energy_tail=True)
     same = RecoveryCatalog(plan, frag, inst, "S", state, set(), phys=phys, guard_n=guard,
                            drop_energy_tail=True)
+    reactive = RecoveryCatalog(plan, frag, inst, "R", state, set(), phys=phys, guard_n=guard,
+                               drop_energy_tail=True)
     a = _take(plain)
     b = _take(screened)
     c = _take(same)
@@ -82,6 +84,7 @@ def test_energy_screen_drops_the_x_tail_and_keeps_the_s_prefix():
 
     assert len(a) > guard
     assert any(entry["est"] >= 1e4 for entry in a[guard:])
-    assert [key(entry) for entry in a[:guard]] == [key(entry) for entry in b[:guard]]
-    assert all(entry["est"] < 1e4 for entry in b[guard:])
-    assert any(entry["est"] >= 1e4 for entry in c)
+    assert b and c
+    assert all(entry["est"] < 1e4 for entry in b + c)
+    assert [key(entry) for entry in b if entry["truck"] == "t1"] == [key(entry) for entry in c]
+    assert _take(reactive) == b
