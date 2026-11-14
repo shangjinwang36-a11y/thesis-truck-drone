@@ -745,6 +745,14 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             continue
         reward = 0.0
         accepted = False
+        became_same_best = False
+        # A cross stored as the champion must not change the same-truck score.
+        # S has no cross champion, so this reference is best_plan and the path is unchanged.
+        score_ev, score_plan = best_ev, best_plan
+        if (getattr(ctx.state, "nominal_cross", False) and ctx.mode == "nominal"
+                and getattr(alg, "v13_rules", False) and same_ev is not None
+                and best_plan is not None and not _no_cross(best_plan)):
+            score_ev, score_plan = same_ev, same_plan
         stats.aud(op, "feasible")
         stats.aud("R:" + rep, "feasible")
         if trial_cross:
@@ -769,13 +777,15 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             reward = 0.0
             stagnation += 1
             accepted = False
-        elif _better_air(cand_ev, cand_plan, best_ev, best_plan, alg, ctx):
+        elif _better_air(cand_ev, cand_plan, score_ev, score_plan, alg, ctx):
             stats.aud(op, "best")
             stats.aud("R:" + rep, "best")
             if trial_cross:
                 stats.aud("CROSS_REPAIR_TRIALS", "best")
             stats.last_improvement_iter = stats.iterations
-            best_ev, best_plan = cand_ev, cand_plan.clone()
+            if _better_air(cand_ev, cand_plan, best_ev, best_plan, alg, ctx):
+                best_ev, best_plan = cand_ev, cand_plan.clone()
+            became_same_best = True
             reward = alg.score_global_best
             accepted = True
             stagnation = 0
@@ -872,7 +882,8 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             pend = (skey, sact, reward / alg.score_global_best)
         # 连续位置细化：新最好解，或每 10 轮
         do_polish = variant != "no_coordinate_polish" and (
-            (best_ev is cand_ev) or stats.iterations % alg.coordinate_polish_every_alns_iterations == 0)
+            (best_ev is cand_ev) or became_same_best
+            or stats.iterations % alg.coordinate_polish_every_alns_iterations == 0)
         if do_polish and budget.evals_left() > 0:
             if alg.coordinate_light:
                 p2, e2 = coordinate_polish(cur_plan, ctx, stats, budget, base_ev=cur_ev,
@@ -953,6 +964,7 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                 and getattr(alg, "v13_rules", False) and budget.evals_left() > 0):
             from .cross_nominal import try_integrated_cross
             from .evaluate import is_cross_sortie as _isc_now
+            _same_rng = (rng_op.getstate(), rng_des.getstate(), rng_acc.getstate())
             _ensure_cross_weights(stats)
             rng_cross = stats.cross_rng
             rng_cross.seed(
@@ -984,6 +996,9 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                     stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
                 else:
                     _reward(stats.cross_s, chosen, 0.0)
+            rng_op.setstate(_same_rng[0])
+            rng_des.setstate(_same_rng[1])
+            rng_acc.setstate(_same_rng[2])
         cross_room = not getattr(alg, "v13_rules", False)
         if (getattr(alg, "x_energy_retarget", False) and getattr(ctx.state, "nominal_cross", False)
                 and ctx.mode == "nominal"
@@ -1161,6 +1176,8 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
     if getattr(stats, "cross_weights", None):
         stats.counts["cross_weights"] = {k: round(float(v), 4) for k, v in stats.cross_weights.items()}
         stats.counts["cross_selects"] = dict(stats.cross_selects)
+    if getattr(ctx, "schedule_rejects", None):
+        stats.counts["schedule_rejects"] = int(ctx.schedule_rejects)
     status = "FEASIBLE_LIMIT"
     if stats.stop_reason in ("EVAL_LIMIT", "WALLCLOCK", "MAX_ROUNDS") and best_ev.feasible:
         status = "FEASIBLE_LIMIT"

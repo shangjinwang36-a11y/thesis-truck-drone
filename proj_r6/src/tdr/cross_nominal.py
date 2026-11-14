@@ -380,6 +380,43 @@ def _clears(phys, consumed: float, reserve: float) -> bool:
     return consumed <= phys.e_cap - reserve + phys.energy_tol
 
 
+def scheduler_feasible(plan, inst, phys, H, slack_s: float) -> bool:
+    """The real schedule, without charging a search evaluation.
+
+    The geometric floor only prices the edited sortie. Moving its recovery point
+    changes other drones' waits, and those drones are what the scheduler rejects
+    with SWAP_CANNOT_FIX. This runs the same schedule, swap check, H check, and
+    cross floor the evaluator uses.
+    """
+    from .evaluate import channel_check, has_wait_cycle, is_cross_sortie, truck_slot_check
+    from .schedule import allocate_charging, initial_state, schedule_plan
+    from .cross_robust import cross_robust_violations
+    if any(is_cross_sortie(plan, s) for s in plan.sorties.values()) and has_wait_cycle(plan):
+        return False
+    state = initial_state(inst, phys)
+    try:
+        tl = schedule_plan(plan, inst, phys, state)
+    except (KeyError, ValueError):
+        # A retarget can drop a visit another sortie still names. That plan is not schedulable.
+        return False
+    if not tl.converged or tl.swap_msg:
+        return False
+    ok, _, _ = allocate_charging(tl, phys, state)
+    if not ok or tl.custody_violations:
+        return False
+    if H is not None and any(f > float(H) + 1e-6 for f in tl.truck_finish.values()):
+        return False
+    if truck_slot_check(plan, inst, phys, tl, state) or channel_check(plan, phys, tl):
+        return False
+    for energies in tl.drone_energy.values():
+        if any(e < phys.e_min - phys.energy_tol for e in energies):
+            return False
+    if any(is_cross_sortie(plan, s) for s in plan.sorties.values()):
+        if cross_robust_violations(plan, inst, phys, tl, slack_s):
+            return False
+    return True
+
+
 def _rescue_open(plan, inst, phys, customer_xy, mass: float, launch: str, rec: str, floor: float) -> bool:
     """A truck other than the launch and the chosen recovery can still meet this customer."""
     for truck, route in plan.routes.items():
@@ -543,8 +580,13 @@ def propose_integrated(plan, ctx, kind: int):
                 mass = sum(inst.parcel_mass[p] for p in s.air)
                 t_air = air_time(inst, phys, sp, s.air, rp)
                 hover = phys.hover_energy_kwh(max(0.0, tt - t_air), mass)
-                # Below the floor: do not return the meeting. The caller spends no evaluation.
-                if not _clears(phys, e + hover, floor):
+                # Launch, one service, and recovery are always flown. The geometric
+                # check is still only this sortie; the scheduler below prices the others.
+                necessary = (e + hover
+                             + phys.hover_energy_kwh(phys.launch_s, mass)
+                             + phys.hover_energy_kwh(phys.air_service_s, mass)
+                             + phys.hover_energy_kwh(phys.recovery_s, mass))
+                if not _clears(phys, necessary, floor):
                     continue
                 sc = save - sync_cost(phys, t_air, tt, mass) - phys.cost_depot_kwh * e
                 # Plain v1.3 failure weight. A second truck that can still meet the customer
@@ -573,19 +615,46 @@ def propose_integrated(plan, ctx, kind: int):
             if len(chosen) >= 3:
                 break
         moves = chosen
-    if not moves:
-        return _relieve_slow_truck(plan, ctx) if kind % 3 == 0 else None
-    cand = plan.clone()
-    applied = 0
-    for item in moves:
-        sid, vid, removable = item[0], item[1], item[2]
-        if _apply_rec(cand, sid, vid, removable):
-            applied += 1
-        else:
-            return None
-    if applied == 0:
+    bundles = []
+    if moves and kind % 3 != 2:
+        bundles.append(moves)
+        bundles.extend([[item] for item in moves])
+    elif moves:
+        bundles.append(moves)
+    found = _first_on_schedule(plan, ctx, bundles)
+    if found is not None:
+        return found
+    if kind % 3 == 0:
+        return _relieve_slow_truck(plan, ctx)
+    return None
+
+
+def _first_on_schedule(plan, ctx, bundles):
+    """Return the first bundle the real scheduler accepts. No search evaluation."""
+    if not bundles:
         return None
-    return cand
+    inst, phys = ctx.inst, ctx.phys
+    H = getattr(ctx, "H", None)
+    slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+    tried = 0
+    for bundle in bundles:
+        if tried >= 6:
+            break
+        cand = plan.clone()
+        applied = 0
+        ok = True
+        for item in bundle:
+            if not _apply_rec(cand, item[0], item[1], item[2]):
+                ok = False
+                break
+            applied += 1
+        if not ok or applied == 0:
+            continue
+        tried += 1
+        if scheduler_feasible(cand, inst, phys, H, slack):
+            return cand
+        ctx.schedule_rejects = int(getattr(ctx, "schedule_rejects", 0) or 0) + 1
+    return None
 
 
 def _critical_truck(inst, plan, phys, H: float | None) -> str | None:
@@ -657,7 +726,14 @@ def _relieve_slow_truck(plan, ctx):
         if apply_air(trial, inst, parcel, acs[0][1]):
             cand = trial
             placed += 1
-    return cand if placed else None
+    if placed == 0:
+        return None
+    H = getattr(ctx, "H", None)
+    slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+    if scheduler_feasible(cand, inst, phys, H, slack):
+        return cand
+    ctx.schedule_rejects = int(getattr(ctx, "schedule_rejects", 0) or 0) + 1
+    return None
 
 
 def try_integrated_cross(plan, ctx, budget, stats, kind: int):

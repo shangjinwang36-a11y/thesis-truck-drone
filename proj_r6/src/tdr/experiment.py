@@ -440,6 +440,7 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         "cross_cand_floor_enter": res.stats.counts.get("cross_cand_floor_enter"),
         "cross_weights": res.stats.counts.get("cross_weights"),
         "cross_selects": res.stats.counts.get("cross_selects"),
+        "schedule_rejects": res.stats.counts.get("schedule_rejects"),
         "cross_launch": bool(cross_launch),
         "audit": res.stats.counts.get("audit"), "reject": res.stats.counts.get("reject"),
         "last_improvement_iter": res.stats.counts.get("last_improvement_iter"),

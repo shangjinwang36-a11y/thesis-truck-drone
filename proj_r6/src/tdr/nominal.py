@@ -430,6 +430,10 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                                 two_phase_b, makespan_cap=makespan_cap if cross_launch else None,
                                 alt_start=alt_start if cross_launch else None)
     t0 = time.perf_counter()
+    # Same-truck draws are reseeded every iteration from the case and the iteration,
+    # identically for S and X. Cross draws use another stream.
+    if getattr(alg, "v13_rules", False):
+        alg.crn_per_iteration = True
     state = initial_state(inst, phys)
     # X's cross neighbourhood is on from the first descent and the first ALNS iteration.
     state.nominal_cross = bool(cross_launch and getattr(alg, "v13_x_nominal", True))
