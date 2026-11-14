@@ -462,6 +462,7 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         "cross_charged": res.stats.counts.get("cross_charged"),
         "cross_accepted": res.stats.counts.get("cross_accepted"),
         "cross_evals": res.stats.counts.get("cross_evals"),
+        "n_screens": res.stats.counts.get("n_screens"),
         "cross_launch": bool(cross_launch),
         "audit": res.stats.counts.get("audit"), "reject": res.stats.counts.get("reject"),
         "last_improvement_iter": res.stats.counts.get("last_improvement_iter"),

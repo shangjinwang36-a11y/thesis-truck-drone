@@ -152,6 +152,7 @@ def _episode_one(args):
                                   max_replans=len(inst.customers), ground_finish=True)
         walls = []
         evals = 0
+        screens = 0
         hits = 0
         process_evals = []
         n_cross_rescues = 0
@@ -161,6 +162,7 @@ def _episode_one(args):
             process_evals.append(n_req)
             n_cross_rescues += int(bool(stt.get("cross_rescue")))
             evals += n_req
+            screens += int(stt.get("n_screens") or 0)
             hits += int(stt.get("wall_hits") or 0)
             if stt.get("wall_s") is not None:
                 walls.append(float(stt["wall_s"]))
@@ -169,6 +171,7 @@ def _episode_one(args):
             cost=getattr(ep, "v13_cost", None),
             legacy_status=ep.status,
             recovery_evals=evals,
+            recovery_screens=screens,
             max_process_evals=max(process_evals) if process_evals else 0,
             wall_hits=hits,
             wall_max_s=max(walls) if walls else 0.0,

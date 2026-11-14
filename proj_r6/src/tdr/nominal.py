@@ -233,6 +233,14 @@ def _descent_loop(plan, inst, phys, alg, state, stats, best_ev, budget, max_eval
                 cand = base.clone()
                 if not apply_air(cand, inst, p, ac):
                     continue
+                if getattr(alg, "v13_rules", False):
+                    from .cross_nominal import screen_nominal_j
+                    slack = float(getattr(alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+                    tol = float(getattr(alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
+                    if screen_nominal_j(cand, inst, phys, ctx.H, slack,
+                                        getattr(stats, "j_champion_j", None), tol, stats) is None:
+                        stats.aud("SCREEN", "skip")
+                        continue
                 before = budget.used
                 ev = eval_counted(cand, inst, phys, state, None, "NOMINAL_AIR_BASE", stats, budget)
                 if ev is not None and ev.feasible and _better_air(ev, cand, best_ev, plan, alg, ctx) \
@@ -246,7 +254,7 @@ def _descent_loop(plan, inst, phys, alg, state, stats, best_ev, budget, max_eval
                 # X only. Same-truck moves above already ran in S's order. A cross
                 # is charged only when the scheduler accepts it and the admissible
                 # bound can beat the best plain J already stored.
-                from .cross_nominal import scheduled_plain_j
+                from .cross_nominal import screen_nominal_j
                 from .expected_cost import expected_j as _ej
                 j_here = None if best_ev is None or best_ev.cost is None else _ej(
                     best_ev.cost, plan, inst, phys, 0.0, v13=True, rescue_aware=False)
@@ -255,15 +263,13 @@ def _descent_loop(plan, inst, phys, alg, state, stats, best_ev, budget, max_eval
                     min(j_here, j_arch) if j_here is not None else j_arch)
                 tol = float(getattr(alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
                 slack = float(getattr(alg, "x_rendezvous_slack_s", 90.0) or 90.0)
-                H = getattr(alg, "v13_H", None)
                 for ac in cross_later:
                     if not room():
                         break
                     cand = base.clone()
                     if not apply_air(cand, inst, p, ac):
                         continue
-                    j_hat = scheduled_plain_j(cand, inst, phys, H, slack)
-                    if j_hat is None or j_ref is None or not (j_hat < j_ref - tol):
+                    if screen_nominal_j(cand, inst, phys, ctx.H, slack, j_ref, tol, stats) is None:
                         stats.aud("CROSS_INSERT", "proxy_skip")
                         continue
                     before = budget.used
@@ -559,6 +565,7 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
             stats.counts["cross_charged"] = int(getattr(stats, "cross_charged", 0) or 0)
             stats.counts["cross_accepted"] = int(getattr(stats, "cross_accepted", 0) or 0)
             stats.counts["cross_evals"] = int(getattr(stats, "cross_evals", 0) or 0)
+        stats.counts["n_screens"] = int(getattr(stats, "n_screens", 0) or 0)
         stats.counts["n_conversion_evals"] = n_conv
         from .alns import publish_j_champion
         best_plan, best_ev = publish_j_champion(best_plan, best_ev, stats, alg, ctx)

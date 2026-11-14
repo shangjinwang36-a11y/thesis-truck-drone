@@ -671,21 +671,49 @@ def build_catalog_candidates(cat: "RecoveryCatalog", entry: dict, inst: Instance
                             ground_required, strategy=getattr(cat, "strategy", "S"))
 
 
-def _first_feasible(cands: list[Plan], inst, phys, state, H, stats, budget):
-    """按顺序评价候选，返回第一个可行者 (plan, ev)；预算耗尽返回 (None, None, True)."""
+def _first_feasible(cands: list[Plan], inst, phys, state, H, stats, budget, *,
+                    fair_screen: bool = False, alg=None, champion_cost=None, cross: bool = False):
+    """按顺序评价候选，返回第一个可行者 (plan, ev)；预算耗尽返回 (None, None, True).
+
+    fair_screen prices the timeline first, for S and for X. A candidate that does
+    not beat the champion cost is not charged. A cross that fails that test loses
+    roulette weight so the next draws stay on same-truck recovery.
+    """
     reasons: list[str] = []
+    tol = float(getattr(alg, "cost_tolerance_yuan", 1e-4) or 1e-4) if alg is not None else 1e-4
+    slack = float(getattr(alg, "x_rendezvous_slack_s", 90.0) or 90.0) if alg is not None else 90.0
+    improved = False
     for cand in cands:
-        if budget is not None and budget.evals_left() <= 0:
+        if budget is not None and (budget.evals_left() <= 0 or budget.time_left() <= 0):
             return None, None, True, reasons
+        if fair_screen and alg is not None and stats is not None:
+            from .cross_nominal import screen_recovery_cost
+            if screen_recovery_cost(cand, inst, phys, H, slack, state, champion_cost, tol, stats) is None:
+                reasons.append("SCREEN_SKIP")
+                continue
         if stats is not None and budget is not None:
             ev = eval_counted(cand, inst, phys, state, H, "RECOVERY_INITIAL_BASE", stats, budget)
             if ev is None:
                 return None, None, True, reasons
         else:
             ev = evaluate_plan(cand, inst, phys, state, H, "RECOVERY_INITIAL_BASE")
-        if ev.feasible:
+        if ev.feasible and ev.cost is not None and (
+                champion_cost is None or float(ev.cost) < float(champion_cost) - tol or not fair_screen):
+            improved = True
+            if cross and stats is not None:
+                from .alns import _ensure_recovery_cross_weights
+                _ensure_recovery_cross_weights(stats)
+                stats.cross_weights["CROSS"] = stats.cross_weights.get("CROSS", 1.0) + 4.0
+                stats.cross_fail_streak = 0
             return cand, ev, False, reasons
+        if ev.feasible and fair_screen:
+            reasons.append("SCREEN_NOT_BETTER")
+            continue
         reasons.append(ev.violations[0] if ev.violations else ev.status)
+    if cross and stats is not None and not improved:
+        from .alns import _decay_cross_share, _ensure_recovery_cross_weights
+        _ensure_recovery_cross_weights(stats)
+        _decay_cross_share(stats, "CROSS")
     return None, None, False, reasons
 
 
@@ -1079,6 +1107,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                      risk_price_p: float = 0.0,
                      energy_screen: bool = False,
                      integrated_rank: bool = False, inject_rescue: bool = False,
+                     fair_screen: bool = False, alg=None,
                      ) -> tuple[RecoveryOption | None, list[str], RecoveryCatalog | None]:
     """恢复初始解（修复1）：RESIDUAL → CATALOG（残段最小改动）→ REBUILD（旧清空重建，对照）.
 
@@ -1145,6 +1174,18 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                                              risk_p=risk_p, inst=inst, phys=phys, state=state):
             best, best_src, best_entry = opt, src, entry
 
+    def _champion_cost():
+        if best is None or best.ev is None or best.ev.cost is None:
+            return None
+        return float(best.ev.cost)
+
+    def _eval(cands, entry):
+        is_cross = bool(fair_screen and strategy == "X" and entry is not None
+                        and entry.get("truck") != catalog.launch_truck)
+        return _first_feasible(cands, inst, phys, state, H, stats, budget,
+                               fair_screen=fair_screen, alg=alg,
+                               champion_cost=_champion_cost(), cross=is_cross)
+
     def _rescue_check():
         # v1.3: a missed initial solution keeps searching inside the same cap.
         # rescue_evals is retained as a call-site argument and is not added on top.
@@ -1155,7 +1196,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
     cands = build_residual_candidate(res, frag.sid, None, inst, phys, state, ground_required,
                                      strategy, preserve_cross=preserve_cross)
     if cands:
-        cp, ev, exhausted, rs = _first_feasible(cands, inst, phys, state, H, stats, budget)
+        cp, ev, exhausted, rs = _eval(cands, None)
         reasons += rs
         if cp is not None:
             info["residual_feasible"] = True
@@ -1194,7 +1235,12 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
             if not cands:
                 info["milp_true_costs"].append(None)
                 continue
-            cp, ev, _, rs = _first_feasible(cands, inst, phys, state, H, stats, budget)
+            if fair_screen and strategy == "X" and ent.get("truck") != catalog.launch_truck:
+                from .alns import recovery_cross_attempt
+                if stats is not None and not recovery_cross_attempt(stats):
+                    info["milp_true_costs"].append(None)
+                    continue
+            cp, ev, _, rs = _eval(cands, ent)
             reasons += rs
             info["milp_true_costs"].append(ev.cost if cp is not None else None)
             if cp is not None:
@@ -1207,17 +1253,24 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
     tried_entries: list[dict] = []
     while (tried < cap or best is None):
         _rescue_check()
-        if budget is not None and budget.evals_left() <= 0:
+        if budget is not None and (budget.evals_left() <= 0 or budget.time_left() <= 0):
             break
         # Once a feasible suffix exists and the initial slice has been spent, leave the
         # rest of the same cap for the main search. No solution yet: do not stop early.
         release_at = getattr(budget, "init_release_at", None) if budget is not None else None
-        if best is not None and release_at is not None and budget.used >= release_at:
+        if best is not None and release_at is not None and (
+                budget.used >= release_at
+                or int(getattr(stats, "n_screens", 0) or 0) >= release_at):
             break
         entries = catalog.next_entries(1)
         if not entries:
             break
         entry = entries[0]
+        if fair_screen and strategy == "X" and entry.get("truck") != catalog.launch_truck:
+            from .alns import recovery_cross_attempt
+            if stats is not None and not recovery_cross_attempt(stats):
+                info["cross_skips"] = int(info.get("cross_skips") or 0) + 1
+                continue
         tried += 1
         if len(tried_entries) < 12:
             tried_entries.append(entry)
@@ -1232,7 +1285,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
         if not cands:
             reasons.append("BUILD_FAILED")
             continue
-        cp, ev, exhausted, rs = _first_feasible(cands, inst, phys, state, H, stats, budget)
+        cp, ev, exhausted, rs = _eval(cands, entry)
         reasons += rs
         if cp is not None:
             _consider(cp, ev, entry, "CATALOG")
@@ -1253,7 +1306,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                                   strategy=strategy)
             if not rb:
                 continue
-            cp, ev, _, rs = _first_feasible(rb, inst, phys, state, H, stats, budget)
+            cp, ev, _, rs = _eval(rb, ent)
             reasons += rs
             if cp is not None:
                 info["rebuild_cost"] = ev.cost
@@ -1267,7 +1320,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
         rb = build_candidates(base, pool, frag.sid, best_entry, inst, phys, state, H,
                               ground_required, strategy=strategy)
         if rb:
-            cp, ev, _, rs = _first_feasible(rb, inst, phys, state, H, stats, budget)
+            cp, ev, _, rs = _eval(rb, best_entry)
             if cp is not None:
                 info["rebuild_cost"] = ev.cost
                 _consider(cp, ev, best_entry, "REBUILD")
@@ -1289,7 +1342,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                                              ground_required, "S", preserve_cross=False)
             if not cands:
                 continue
-            cp, ev, _, rs = _first_feasible(cands, inst, phys, state, H, stats, budget)
+            cp, ev, _, rs = _eval(cands, ent)
             reasons += rs
             if cp is not None:
                 _consider(cp, ev, ent or {"truck": cp.visits[cp.sorties[frag.sid].rec_vid].truck,

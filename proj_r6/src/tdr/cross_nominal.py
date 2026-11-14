@@ -380,18 +380,21 @@ def _clears(phys, consumed: float, reserve: float) -> bool:
     return consumed <= phys.e_cap - reserve + phys.energy_tol
 
 
-def _schedule_ok(plan, inst, phys, H, slack_s: float):
+def _schedule_ok(plan, inst, phys, H, slack_s: float, state=None, nominal_floor: bool = True):
     """The evaluator's schedule and checks, without charging a search evaluation.
 
     Returns the timeline when the plan would be feasible, else None. Moving one
     recovery visit changes other drones' waits; those waits are in the timeline.
+    Nominal planning applies the cross floor. Recovery passes the live state and
+    does not, because the recovery evaluator does not apply that floor either.
     """
     from .evaluate import channel_check, has_wait_cycle, is_cross_sortie, truck_slot_check
     from .schedule import allocate_charging, initial_state, schedule_plan
     from .cross_robust import cross_robust_violations
     if any(is_cross_sortie(plan, s) for s in plan.sorties.values()) and has_wait_cycle(plan):
         return None
-    state = initial_state(inst, phys)
+    if state is None:
+        state = initial_state(inst, phys)
     try:
         tl = schedule_plan(plan, inst, phys, state)
     except (KeyError, ValueError):
@@ -409,10 +412,10 @@ def _schedule_ok(plan, inst, phys, H, slack_s: float):
     for energies in tl.drone_energy.values():
         if any(e < phys.e_min - phys.energy_tol for e in energies):
             return None
-    if any(is_cross_sortie(plan, s) for s in plan.sorties.values()):
+    if nominal_floor and any(is_cross_sortie(plan, s) for s in plan.sorties.values()):
         if cross_robust_violations(plan, inst, phys, tl, slack_s):
             return None
-    if abs(state.prefix_ac_kwh + tl.q_total) > phys.energy_tol:
+    if abs(getattr(state, "prefix_ac_kwh", 0.0) + tl.q_total) > phys.energy_tol:
         return None
     return tl, state
 
@@ -422,25 +425,65 @@ def scheduler_feasible(plan, inst, phys, H, slack_s: float) -> bool:
     return _schedule_ok(plan, inst, phys, H, slack_s) is not None
 
 
-def scheduled_plain_j(plan, inst, phys, H, slack_s: float):
-    """Plain v1.3 J from the scheduler timeline. None when the plan is infeasible.
+def scheduled_execution_cost(plan, inst, phys, H, slack_s: float, state=None,
+                             nominal_floor: bool = True):
+    """Execution cost from the scheduler timeline, or None when the plan is infeasible.
 
     Truck distance, driver time (including waits), and depot refill are the cost
     the evaluator would record. This does not take a budget evaluation.
     """
-    from .expected_cost import expected_j
-    got = _schedule_ok(plan, inst, phys, H, slack_s)
+    got = _schedule_ok(plan, inst, phys, H, slack_s, state=state, nominal_floor=nominal_floor)
     if got is None:
         return None
-    tl, state = got
-    distance = state.prefix_distance_m + sum(tl.truck_distance_m.values())
+    tl, st = got
+    distance = float(getattr(st, "prefix_distance_m", 0.0) or 0.0) + sum(tl.truck_distance_m.values())
     driver_s = sum(tl.truck_finish.values())
     drones = [f"d{i + 1}" for i in range(phys.drone_count)]
     refill = sum(phys.e_cap - tl.e_return.get(d, phys.e_cap) for d in drones)
-    refill += state.prefix_refill_kwh + tl.swap_refill_kwh
-    cost = (phys.c_km * distance / 1000.0 + phys.wage_per_s * driver_s
+    refill += float(getattr(st, "prefix_refill_kwh", 0.0) or 0.0) + tl.swap_refill_kwh
+    return (phys.c_km * distance / 1000.0 + phys.wage_per_s * driver_s
             + phys.cost_depot_kwh * refill)
+
+
+def scheduled_plain_j(plan, inst, phys, H, slack_s: float, state=None):
+    """Plain v1.3 J from the scheduler timeline. None when the plan is infeasible."""
+    from .expected_cost import expected_j
+    cost = scheduled_execution_cost(plan, inst, phys, H, slack_s, state=state, nominal_floor=True)
+    if cost is None:
+        return None
     return expected_j(cost, plan, inst, phys, 0.0, v13=True, rescue_aware=False)
+
+
+def _count_screen(stats) -> None:
+    if stats is None:
+        return
+    stats.n_screens = int(getattr(stats, "n_screens", 0) or 0) + 1
+
+
+def _beats(value, champion, tol: float) -> bool:
+    if value is None:
+        return False
+    if champion is None:
+        return True
+    return float(value) < float(champion) - tol
+
+
+def screen_nominal_j(plan, inst, phys, H, slack_s: float, champion, tol: float, stats):
+    """Shared nominal screen. S and X both call this before a charged evaluation."""
+    _count_screen(stats)
+    j = scheduled_plain_j(plan, inst, phys, H, slack_s)
+    if not _beats(j, champion, tol):
+        return None
+    return j
+
+
+def screen_recovery_cost(plan, inst, phys, H, slack_s: float, state, champion, tol: float, stats):
+    """Shared recovery screen. Same threshold rule, priced as execution cost."""
+    _count_screen(stats)
+    cost = scheduled_execution_cost(plan, inst, phys, H, slack_s, state=state, nominal_floor=False)
+    if not _beats(cost, champion, tol):
+        return None
+    return cost
 
 
 def _rescue_open(plan, inst, phys, customer_xy, mass: float, launch: str, rec: str, floor: float) -> bool:
@@ -772,9 +815,9 @@ def try_integrated_cross(plan, ctx, budget, stats, kind: int, j_ref: float | Non
         stats.aud("CROSS_INSERT", "no_floor")
         return None, None
     slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0)
-    j_new = scheduled_plain_j(cand, ctx.inst, ctx.phys, getattr(ctx, "H", None), slack)
     tol = float(getattr(ctx.alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
-    if j_new is None or j_ref is None or not (j_new < j_ref - tol):
+    j_new = screen_nominal_j(cand, ctx.inst, ctx.phys, getattr(ctx, "H", None), slack, j_ref, tol, stats)
+    if j_new is None:
         stats.aud("CROSS_INSERT", "proxy_skip")
         return None, None
     if budget is None or budget.evals_left() <= 0:

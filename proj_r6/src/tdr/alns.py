@@ -356,6 +356,10 @@ def eval_counted(plan: Plan, inst: Instance, phys: PhysicalConfig, state: StartS
     holder = _ACTIVE_CTX.get()
     if holder is not None and ev.feasible and ev.cost is not None:
         _note_j_champion(stats, plan, ev, holder.alg, holder)
+        if holder.mode == "recovery":
+            old = getattr(stats, "screen_champion_cost", None)
+            if old is None or float(ev.cost) < float(old):
+                stats.screen_champion_cost = float(ev.cost)
     if (holder is not None and ev.feasible and ev.cost is not None
             and holder.mode == "nominal"
             and reason not in ("SCENARIO_RECOURSE", "SET_PARTITION")
@@ -699,6 +703,8 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             break
         stats.iterations += 1
         stats.rounds += 1
+        if ctx.mode == "recovery" and best_ev is not None and best_ev.cost is not None:
+            stats.screen_champion_cost = float(best_ev.cost)
         if alg.crn_per_iteration:
             # 共同随机数(CRN)：每轮的随机流只由(种子,算例,重规划序号,轮次)决定，与此前消耗了多少评价无关；
             # S/X 在同一轮次、同一当前解时抽到完全相同的算子/破坏量/接受随机数，削弱 X 目录更大造成的流错位噪声。
@@ -1257,6 +1263,7 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
     if getattr(stats, "cross_weights", None):
         stats.counts["cross_charged"] = int(getattr(stats, "cross_charged", 0) or 0)
         stats.counts["cross_accepted"] = int(getattr(stats, "cross_accepted", 0) or 0)
+    stats.counts["n_screens"] = int(getattr(stats, "n_screens", 0) or 0)
     status = "FEASIBLE_LIMIT"
     if stats.stop_reason in ("EVAL_LIMIT", "WALLCLOCK", "MAX_ROUNDS") and best_ev.feasible:
         status = "FEASIBLE_LIMIT"
@@ -1349,6 +1356,28 @@ def _decay_cross_share(stats, chosen: str) -> None:
     w["SKIP"] = float(w.get("SKIP", 1.0)) + 2.0
 
 
+def recovery_cross_attempt(stats) -> bool:
+    """X recovery only. SKIP is the other outcome, so a failing cross loses the next draws."""
+    _ensure_recovery_cross_weights(stats)
+    chosen = _roulette(stats.cross_weights, stats.cross_rng)
+    stats.cross_n[chosen] = stats.cross_n.get(chosen, 0) + 1
+    stats.cross_selects[chosen] = stats.cross_selects.get(chosen, 0) + 1
+    return chosen != "SKIP"
+
+
+def _ensure_recovery_cross_weights(stats) -> None:
+    if getattr(stats, "recovery_cross_ready", False):
+        return
+    names = ("SKIP", "CROSS")
+    stats.cross_weights = {k: 1.0 for k in names}
+    stats.cross_n = {k: 0 for k in names}
+    stats.cross_s = {k: 0.0 for k in names}
+    stats.cross_selects = {k: 0 for k in names}
+    stats.cross_rng = random.Random(0)
+    stats.cross_fail_streak = 0
+    stats.recovery_cross_ready = True
+
+
 def _ensure_cross_weights(stats) -> None:
     """X nominal only. Same reaction, segment, and floor as the destroy/repair weights."""
     if getattr(stats, "cross_weights", None):
@@ -1421,12 +1450,16 @@ def _geometry_evaluate(plan: Plan, ctx: SolveContext, stats: SearchStats, reason
         p = plan.clone()
         for s, lam in zip(adj, vec):
             p.sorties[s.sid].lam = lam
-        # v1.3, S and X: an infeasible schedule does not spend an evaluation.
+        # v1.3 nominal, S and X: the same timeline screen. A candidate that does not
+        # beat the champion plain J is not charged. Recovery keeps charging its
+        # same-truck neighbours; cross rescues are screened at the catalog.
         if (budget is not None and getattr(ctx.alg, "v13_rules", False)
                 and ctx.mode == "nominal"):
-            from .cross_nominal import scheduler_feasible
+            from .cross_nominal import screen_nominal_j
             slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0)
-            if not scheduler_feasible(p, inst, phys, ctx.H, slack):
+            tol = float(getattr(ctx.alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
+            if screen_nominal_j(
+                    p, inst, phys, ctx.H, slack, getattr(stats, "j_champion_j", None), tol, stats) is None:
                 stats.aud("SCREEN", "skip")
                 continue
         ev = eval_counted(p, inst, phys, ctx.state, ctx.H, reason, stats, budget) if budget else \
@@ -1471,6 +1504,14 @@ def coordinate_polish(plan: Plan, ctx: SolveContext, stats: SearchStats,
                 if abs(new - old) < 1e-12:
                     continue
                 cand.sorties[s.sid].lam = new
+                if getattr(alg, "v13_rules", False) and ctx.mode == "nominal":
+                    from .cross_nominal import screen_nominal_j
+                    slack = float(getattr(alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+                    tol = float(getattr(alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
+                    if screen_nominal_j(
+                            cand, inst, phys, ctx.H, slack,
+                            getattr(stats, "j_champion_j", None), tol, stats) is None:
+                        continue
                 extra += 1
                 ev = eval_counted(cand, inst, phys, ctx.state, ctx.H, "COORDINATE", stats, budget)
                 if ev is None:
@@ -1624,6 +1665,15 @@ def try_recovery_reassign(plan: Plan, ctx: SolveContext, budget: Budget,
         if not entries:
             break
         entry = entries[0]
+        launch = None
+        if ctx.frag_sid is not None and ctx.frag_sid in (getattr(cat, "res_plan", None) or plan).sorties:
+            frag = (getattr(cat, "res_plan", None) or plan).sorties[ctx.frag_sid]
+            launch = frag.launch_truck or frag.truck
+        is_cross = bool(getattr(ctx, "strategy", None) == "X" and launch is not None
+                        and entry.get("truck") != launch)
+        if getattr(ctx.alg, "v13_rules", False) and is_cross:
+            if not recovery_cross_attempt(stats):
+                continue
         cat.n_evaluated += 1
         cat.covered_trucks.add(entry["truck"])
         cat.covered_customers.add(entry["ref"] if entry["support"]
@@ -1634,11 +1684,27 @@ def try_recovery_reassign(plan: Plan, ctx: SolveContext, budget: Budget,
         for cand in cands:
             if budget.evals_left() <= 0:
                 break
+            if getattr(ctx.alg, "v13_rules", False):
+                from .cross_nominal import screen_recovery_cost
+                slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+                tol = float(getattr(ctx.alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
+                if screen_recovery_cost(
+                        cand, ctx.inst, ctx.phys, ctx.H, slack, ctx.state,
+                        getattr(stats, "screen_champion_cost", None), tol, stats) is None:
+                    if is_cross:
+                        _decay_cross_share(stats, "CROSS")
+                    break
             ev = eval_counted(cand, ctx.inst, ctx.phys, ctx.state, ctx.H,
                               "RECOVERY_INITIAL_BASE", stats, budget)
             if ev is None:
                 break
             if ev.feasible and (best_ev is None or _better_air(ev, cand, best_ev, best_p, ctx.alg, ctx)):
                 best_p, best_ev = cand, ev
+                if is_cross:
+                    _ensure_recovery_cross_weights(stats)
+                    stats.cross_weights["CROSS"] = stats.cross_weights.get("CROSS", 1.0) + 4.0
+                    stats.cross_fail_streak = 0
+            elif is_cross:
+                _decay_cross_share(stats, "CROSS")
             break
     return best_p, best_ev

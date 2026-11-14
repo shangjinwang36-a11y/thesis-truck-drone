@@ -1019,7 +1019,9 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                                                  energy_screen=bool(getattr(alg, "x_recovery_wider", False)),
                                                  milp_top_k=(10 if bool(getattr(alg, "x_recovery_wider", False)) else 6),
                                                  integrated_rank=x_integrated and bool(getattr(alg, "v13_x_rank", True)),
-                                                 inject_rescue=x_integrated and bool(getattr(alg, "v13_x_rescue", True)))
+                                                 inject_rescue=x_integrated and bool(getattr(alg, "v13_x_rescue", True)),
+                                                 fair_screen=bool(getattr(alg, "v13_rules", False)),
+                                                 alg=alg)
         res.time_init += time.perf_counter() - t_budget0
         res.time_milp += float(init_info.get("milp_wall_s") or 0.0)
         if opt is None:
@@ -1081,6 +1083,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             "n_main_iterations": stats.iterations,
             "main_by_reason": dict(stats.eval_by_reason),
             "n_eval_requests": budget.used,
+            "n_screens": int(getattr(init_stats, "n_screens", 0) or 0) + int(getattr(stats, "n_screens", 0) or 0),
             "wall_s": time.perf_counter() - t_budget0,
             "wall_hits": int(getattr(budget, "wall_hits", 0)),
             "budget_limit": main_limit,
