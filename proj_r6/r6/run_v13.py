@@ -23,7 +23,32 @@ M1 = 10
 M2 = 10
 
 
-def _alg(cfg, case_id):
+def _apply_ablation(alg, name: str):
+    """X-only switches. S ignores them. Every run uses the v1.3 objective."""
+    alg.v13_x_rank = True
+    alg.v13_x_rescue = True
+    alg.v13_x_sync = True
+    alg.v13_x_nominal = True
+    alg.x_cross_from_start = True
+    alg.x_energy_retarget = True
+    alg.support_rendezvous = True
+    if name == "norescue":
+        alg.v13_x_rescue = False
+    elif name == "norank":
+        alg.v13_x_rank = False
+    elif name == "nonominal":
+        alg.v13_x_nominal = False
+        alg.x_cross_from_start = False
+        alg.x_energy_retarget = False
+        alg.support_rendezvous = False
+    elif name == "nosync":
+        alg.v13_x_sync = False
+        alg.x_energy_retarget = False
+        alg.support_rendezvous = False
+    return alg
+
+
+def _alg(cfg, case_id, ablation: str = "full"):
     import dataclasses
     from tdr.config import AlgorithmConfig, PhysicalConfig
     from tdr.v13 import physical_kwargs_from_resolved
@@ -40,9 +65,11 @@ def _alg(cfg, case_id):
         joint_inflight_retarget=True,
         slot_aware_recovery=True,
         unlaunched_repair=True,
-        x_cross_from_start=False,
+        x_cross_from_start=True,
         x_cross_robust=True,
         x_rendezvous_slack_s=90.0,
+        x_energy_retarget=True,
+        support_rendezvous=True,
         x_recovery_wider=True,
         cross_ops=True,
         scenario_aware=True,
@@ -57,23 +84,22 @@ def _alg(cfg, case_id):
     )
     # land_and_wait and soft_h stay at the resolved-config values (both false).
     alg.v13_H = float(cfg["cases"][case_id]["H_case_s"])
-    # Full same-truck budget. Cross-truck nominal moves use only the evaluations the
-    # same-truck search did not spend, and replace it only when correct-weight J improves.
-    alg.v13_same_truck_nominal = 1000
+    alg.v13_n = int(cfg["cases"][case_id]["N_air_eligible"])
+    _apply_ablation(alg, ablation)
     assert phys.land_and_wait is False and phys.soft_h is False and phys.swap_mode is True
     del dataclasses
     return phys, alg
 
 
 def _nominal_one(args):
-    cfg, case, strategy, out_root = args
+    cfg, case, strategy, out_root, ablation = args
     from tdr.data import load_instance
     from tdr.config import load_package
     from tdr.experiment import build_case_nominal
     from tdr.v13 import assert_seed_allowed
     del assert_seed_allowed
     pkg = load_package(ROOT / "data" / "package_light.json")
-    phys, alg = _alg(cfg, case)
+    phys, alg = _alg(cfg, case, ablation)
     inst = load_instance(pkg, case)
     dest = Path(out_root) / "nominal" / strategy / case
     t0 = time.perf_counter()
@@ -89,7 +115,7 @@ def _nominal_one(args):
 
 
 def _episode_one(args):
-    cfg, case, seed, nom_root = args
+    cfg, case, seed, nom_root, ablation = args
     from tdr.config import load_package
     from tdr.data import load_instance
     from tdr.evaluate import evaluate_plan, is_cross_sortie
@@ -100,7 +126,7 @@ def _episode_one(args):
     from tdr.v13 import assert_seed_allowed, planner_log_record
     assert_seed_allowed(seed, formal=False)
     pkg = load_package(ROOT / "data" / "package_light.json")
-    phys, alg = _alg(cfg, case)
+    phys, alg = _alg(cfg, case, ablation)
     inst = load_instance(pkg, case)
     H = float(cfg["cases"][case]["H_case_s"])
     plan_s, _, _ = load_case_nominal(inst, Path(nom_root) / "nominal" / "S" / case)
@@ -235,6 +261,8 @@ def main():
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--smoke", action="store_true", help="C50 nominal plus tune seed 101 only")
     parser.add_argument("--which", choices=("tune", "dev", "both"), default="both")
+    parser.add_argument("--ablation", default="full",
+                        choices=("full", "norescue", "norank", "nonominal", "nosync"))
     args = parser.parse_args()
     from tdr.v13 import git_run_metadata, load_run_config
     cfg, view, digest = load_run_config(formal=False, m1=M1, m2=M2)
@@ -251,15 +279,16 @@ def main():
     else:
         seeds = list(range(101, 111)) + list(range(1, 11))
     t0 = time.perf_counter()
-    nom_jobs = [(cfg, c, s, str(out)) for c in cases for s in ("S", "X")]
+    nom_jobs = [(cfg, c, s, str(out), args.ablation) for c in cases for s in ("S", "X")]
     with Pool(args.workers) as pool:
         nominals = pool.map(_nominal_one, nom_jobs)
     print("nominal done", time.perf_counter() - t0, flush=True)
-    ep_jobs = [(cfg, c, seed, str(out)) for c in cases for seed in seeds]
+    ep_jobs = [(cfg, c, seed, str(out), args.ablation) for c in cases for seed in seeds]
     with Pool(args.workers) as pool:
         episodes = pool.map(_episode_one, ep_jobs)
     print("episodes done", time.perf_counter() - t0, flush=True)
     summary = _summarize(episodes, nominals)
+    summary["ablation"] = args.ablation
     summary["m1"] = M1
     summary["m2"] = M2
     summary["resolved_sha256"] = digest

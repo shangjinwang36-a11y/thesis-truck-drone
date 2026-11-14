@@ -173,10 +173,11 @@ def _better_air(ev: Evaluation | None, plan: Plan | None,
             and plan is not None and ev.feasible and ev.cost is not None):
         from .expected_cost import expected_j, failure_prob
         p = failure_prob(alg)
-        j_new = expected_j(ev.cost, plan, ctx.inst, ctx.phys, p)
+        v13 = bool(getattr(alg, "v13_rules", False))
+        j_new = expected_j(ev.cost, plan, ctx.inst, ctx.phys, p, v13=v13)
         j_old = None
         if other is not None and other.feasible and other.cost is not None and other_plan is not None:
-            j_old = expected_j(other.cost, other_plan, ctx.inst, ctx.phys, p)
+            j_old = expected_j(other.cost, other_plan, ctx.inst, ctx.phys, p, v13=v13)
         if j_new is not None and (j_old is None or j_new < j_old - alg.cost_tolerance_yuan):
             return True
         if j_new is not None and j_old is not None and abs(j_new - j_old) <= alg.cost_tolerance_yuan:
@@ -227,8 +228,9 @@ def _incubate_cross(cand_plan, cur_plan, cand_ev, cur_ev, inst, phys, alg) -> bo
     """新跨车组件可以先留在当前解里，升高不超过它自己的期望补救。不改全局最优。"""
     from .expected_cost import expected_j, failure_prob, insurance_room
     p_fail = failure_prob(alg)
-    j_new = expected_j(cand_ev.cost, cand_plan, inst, phys, p_fail)
-    j_cur = expected_j(cur_ev.cost, cur_plan, inst, phys, p_fail)
+    v13 = bool(getattr(alg, "v13_rules", False))
+    j_new = expected_j(cand_ev.cost, cand_plan, inst, phys, p_fail, v13=v13)
+    j_cur = expected_j(cur_ev.cost, cur_plan, inst, phys, p_fail, v13=v13)
     if j_new is None or j_cur is None:
         return False
     return j_new <= j_cur + insurance_room(cand_plan, cur_plan, inst, phys, p_fail) + alg.cost_tolerance_yuan
@@ -607,6 +609,11 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
     best_ev = cur_ev
     stats.best_trace.append((0, best_ev.cost or 0.0, best_ev.z or 0.0))
     cur_plan = plan.clone()
+    from .evaluate import is_cross_sortie as _is_cross_plan
+    def _no_cross(p) -> bool:
+        return p is not None and not any(_is_cross_plan(p, s) for s in p.sorties.values())
+    same_plan = best_plan.clone() if _no_cross(best_plan) else None
+    same_ev = best_ev if same_plan is not None else None
     # 第四轮 M3：退火温度尺度只用“后缀成本”(全班成本扣除快照前已发生的常量 C_prefix_fixed)，
     # 规范 7.x：不得用随故障时刻增长的历史常数放大退火温度。
     C_scale = max((cur_ev.cost or 1.0) - prefix_fixed_cost(ctx.state, phys), 1.0)
@@ -641,12 +648,6 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             break
         if budget.wall_limit is not None and budget.time_left() <= 0:
             stats.stop_reason = "WALLCLOCK"
-            break
-        # X's same-truck phase only. S never sets this, so S still spends the whole cap.
-        stagnant_limit = int(getattr(ctx, "stop_when_stagnant", 0) or 0)
-        if (stagnant_limit and stagnation >= stagnant_limit and best_ev is not None
-                and best_ev.feasible and stats.eval_requests > 30):
-            stats.stop_reason = "STAGNATION"
             break
         if stats.iterations >= alg.max_search_rounds:
             stats.stop_reason = "MAX_ROUNDS"
@@ -772,13 +773,15 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             stagnation = 0
             stats.last_improvement_eval = stats.eval_requests
             stats.best_trace.append((stats.eval_requests, best_ev.cost or 0.0, best_ev.z or 0.0))
-        elif _better_air(cand_ev, cand_plan, cur_ev, cur_plan, alg, ctx):
+        elif _better_air(cand_ev, cand_plan, cur_ev, cur_plan, alg, ctx) and not (
+                trial_cross and ctx.mode == "nominal" and getattr(alg, "v13_rules", False)):
             stats.aud(op, "cur_improve")
             stats.aud("R:" + rep, "cur_improve")
             reward = alg.score_current_improvement
             accepted = True
             stagnation = 0
         elif (trial_cross and ctx.mode == "nominal" and getattr(alg, "expected_accept", False)
+              and not getattr(alg, "v13_rules", False)
               and cand_ev is not None and cand_ev.feasible and cur_ev is not None and cur_ev.feasible
               and _incubate_cross(cand_plan, cur_plan, cand_ev, cur_ev, inst, phys, alg)):
             accepted = True
@@ -801,13 +804,18 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             reward = 0.0
             stagnation += 1
         else:
-            # SA
-            if cand_ev.feasible:
+            # SA. Under v1.3 a cross joins the current plan only when J improves,
+            # which the two branches above already require. Annealing stays for same-truck moves.
+            if trial_cross and ctx.mode == "nominal" and getattr(alg, "v13_rules", False):
+                accepted = False
+                stagnation += 1
+            elif cand_ev.feasible:
                 if ctx.mode == "nominal" and getattr(alg, "expected_accept", False):
                     from .expected_cost import expected_j, failure_prob
                     p_fail = failure_prob(alg)
-                    j_new = expected_j(cand_ev.cost, cand_plan, inst, phys, p_fail)
-                    j_cur = expected_j(cur_ev.cost, cur_plan, inst, phys, p_fail) if cur_ev is not None else None
+                    v13 = bool(getattr(alg, "v13_rules", False))
+                    j_new = expected_j(cand_ev.cost, cand_plan, inst, phys, p_fail, v13=v13)
+                    j_cur = expected_j(cur_ev.cost, cur_plan, inst, phys, p_fail, v13=v13) if cur_ev is not None else None
                     dc = 0.0 if j_new is None or j_cur is None else j_new - j_cur
                 else:
                     from .hybrid import cached_scenario_cost
@@ -841,9 +849,17 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             if trial_cross:
                 stats.aud("CROSS_REPAIR_TRIALS", "accepted")
                 stats.aud("FUNNEL_CROSS", "accepted")
-            cur_plan, cur_ev = cand_plan.clone(), cand_ev
+            if not (trial_cross and ctx.mode == "nominal" and getattr(alg, "v13_rules", False)):
+                cur_plan, cur_ev = cand_plan.clone(), cand_ev
         _reward(s_d, op, reward)
         _reward(s_r, rep, reward)
+        if ctx.mode == "nominal" and getattr(alg, "v13_rules", False):
+            if _no_cross(cur_plan) and cur_ev is not None and cur_ev.feasible and (
+                    same_ev is None or _better_air(cur_ev, cur_plan, same_ev, same_plan, alg, ctx)):
+                same_plan, same_ev = cur_plan.clone(), cur_ev
+            if _no_cross(best_plan) and best_ev is not None and best_ev.feasible and (
+                    same_ev is None or _better_air(best_ev, best_plan, same_ev, same_plan, alg, ctx)):
+                same_plan, same_ev = best_plan.clone(), best_ev
         if sel is not None:
             pend = (skey, sact, reward / alg.score_global_best)
         # 连续位置细化：新最好解，或每 10 轮
@@ -927,15 +943,14 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             from .support_nominal import try_energy_retarget
             p_e, e_e = try_energy_retarget(cur_plan, ctx, budget, stats)
             if (p_e is not None and e_e is not None
-                    and _better_air(e_e, p_e, cur_ev, cur_plan, alg, ctx)
+                    and _better_air(e_e, p_e, best_ev, best_plan, alg, ctx)
                     and _within_makespan_cap(e_e, ctx)
                     and _nominal_cross_intact(p_e, e_e, ctx)):
-                stats.aud("ENERGY_RETARGET", "cur_improve")
-                cur_plan, cur_ev = p_e, e_e
-                if _better_air(e_e, p_e, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_e, ctx):
-                    stats.aud("ENERGY_RETARGET", "best")
-                    best_ev, best_plan = e_e, p_e.clone()
-                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+                stats.aud("ENERGY_RETARGET", "best")
+                if not getattr(alg, "v13_rules", False):
+                    cur_plan, cur_ev = p_e, e_e
+                best_ev, best_plan = e_e, p_e.clone()
+                stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 第 9 轮：插入会合访问。X 插到另一辆车，S 只插到放飞车。两边同一频率、同一评价上限。
         if (getattr(alg, "support_rendezvous", False) and ctx.mode == "nominal"
                 and (getattr(ctx.state, "nominal_cross", False) or getattr(ctx, "scenario_on", False))
@@ -944,7 +959,8 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             from .support_nominal import try_support_rendezvous
             p_s, e_s = try_support_rendezvous(cur_plan, ctx, budget, stats)
             if (p_s is not None and e_s is not None
-                    and _better_air(e_s, p_s, cur_ev, cur_plan, alg, ctx)
+                    and _better_air(e_s, p_s, best_ev if getattr(alg, "v13_rules", False) else cur_ev,
+                                    best_plan if getattr(alg, "v13_rules", False) else cur_plan, alg, ctx)
                     and _within_makespan_cap(e_s, ctx)
                     and _nominal_cross_intact(p_s, e_s, ctx)):
                 stats.aud("FUNNEL_SUPPORT", "accepted")
@@ -956,7 +972,8 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                 if sn is not None and sc is not None and sn < sc - alg.cost_tolerance_yuan:
                     stats.aud("FUNNEL_SUPPORT", "scenario")
                 stats.aud("SUPPORT_RENDEZVOUS", "cur_improve")
-                cur_plan, cur_ev = p_s, e_s
+                if not getattr(alg, "v13_rules", False):
+                    cur_plan, cur_ev = p_s, e_s
                 if _better_air(e_s, p_s, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_s, ctx):
                     stats.aud("SUPPORT_RENDEZVOUS", "best")
                     stats.last_improvement_iter = stats.iterations
@@ -985,13 +1002,15 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             from .cross_nominal import try_cross_convert
             p_x, e_x = try_cross_convert(cur_plan, ctx, budget, stats)
             if (p_x is not None and e_x is not None
-                    and _better_air(e_x, p_x, cur_ev, cur_plan, alg, ctx)
+                    and _better_air(e_x, p_x, best_ev if getattr(alg, "v13_rules", False) else cur_ev,
+                                    best_plan if getattr(alg, "v13_rules", False) else cur_plan, alg, ctx)
                     and _within_makespan_cap(e_x, ctx)
                     and _cross_energy_ok(p_x, cur_plan, e_x, ctx)
                     and _nominal_cross_intact(p_x, e_x, ctx)):
                 stats.aud("CROSS_CONVERT", "cur_improve")
                 stats.aud("FUNNEL_CROSS", "accepted")
-                cur_plan, cur_ev = p_x, e_x
+                if not getattr(alg, "v13_rules", False):
+                    cur_plan, cur_ev = p_x, e_x
                 if _better_air(e_x, p_x, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_x, ctx):
                     stats.aud("CROSS_CONVERT", "best")
                     stats.last_improvement_iter = stats.iterations
@@ -1072,6 +1091,8 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             stats.counts["n_link_columns"] = 0
             stats.counts["n_sync_columns"] = 0
     final_ev = best_ev
+    stats.same_plan = same_plan
+    stats.same_ev = same_ev
     status = "FEASIBLE_LIMIT"
     if stats.stop_reason in ("EVAL_LIMIT", "WALLCLOCK", "MAX_ROUNDS") and best_ev.feasible:
         status = "FEASIBLE_LIMIT"

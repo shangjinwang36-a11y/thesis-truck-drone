@@ -119,7 +119,7 @@ def _scenarios_of(ctx):
         else:
             ready = sample_failure_scenarios(
                 inst.case_id, [c.parcel_id for c in inst.customers],
-                float(getattr(alg, "scenario_p", 0.2) or 0.0),
+                float(getattr(alg, "scenario_p", 0.0) or 0.0),
                 int(getattr(alg, "scenario_count", 2) or 0),
                 int(getattr(alg, "scenario_stream", 0) or 0))
         ctx.scenarios = ready

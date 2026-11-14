@@ -53,18 +53,20 @@ def _consecutive(plan, left, right) -> bool:
     return abs(chain.index(left.sid) - chain.index(right.sid)) == 1
 
 
-def recourse_terms(plan, inst, phys, p: float) -> tuple[float, float]:
-    """返回 (Σ p Q_i, Σ p² Q_ij)。p 越界时按 0 处理。"""
-    p = float(p or 0.0)
-    if p <= 0 or plan is None:
-        return 0.0, 0.0
+def _recourse_rows(plan, inst, phys):
     rows = []
+    if plan is None:
+        return rows
     for sortie in plan.sorties.values():
         if sortie.started or not sortie.air or sortie.rec_vid not in plan.visits:
             continue
         rows.append((sortie, _failure_cost(plan, inst, phys, sortie)))
-    single = p * sum(cost for _, cost in rows)
-    pair = 0.0
+    return rows
+
+
+def _interactions(plan, inst, phys, rows) -> list[float]:
+    """Proxy I_ij for sorties that compete for one recovery truck. Not truncated."""
+    out = []
     for i, (left, cl) in enumerate(rows):
         for right, cr in rows[i + 1:]:
             if plan.visits[left.rec_vid].truck != plan.visits[right.rec_vid].truck:
@@ -72,25 +74,43 @@ def recourse_terms(plan, inst, phys, p: float) -> tuple[float, float]:
             if not (_consecutive(plan, left, right) or left.rec_vid == right.rec_vid
                     or _overlap(plan, inst, phys, left, right)):
                 continue
-            pair += p * p * min(cl, cr)
+            out.append(min(cl, cr))
+    return out
+
+
+def recourse_terms(plan, inst, phys, p: float) -> tuple[float, float]:
+    """返回 (Σ p Q_i, Σ p² I_ij)。p 越界时按 0 处理。"""
+    p = float(p or 0.0)
+    if p <= 0 or plan is None:
+        return 0.0, 0.0
+    rows = _recourse_rows(plan, inst, phys)
+    single = p * sum(cost for _, cost in rows)
+    pair = p * p * sum(_interactions(plan, inst, phys, rows))
     return single, pair
 
 
-def expected_j(cost: float | None, plan, inst, phys, p: float) -> float | None:
+def expected_j(cost: float | None, plan, inst, phys, p: float, v13: bool = False) -> float | None:
+    """Search objective. v1.3 uses 3/(2N) and 1/(N(N-1)), not p=0.2 and p²."""
     if cost is None:
         return None
-    single, pair = recourse_terms(plan, inst, phys, p)
-    return float(cost) + single + pair
+    rows = _recourse_rows(plan, inst, phys)
+    singles = sum(q for _, q in rows)
+    inter = sum(_interactions(plan, inst, phys, rows))
+    n = int(getattr(inst, "n", 0) or 0)
+    if v13 and n >= 2:
+        return float(cost) + (3.0 / (2.0 * n)) * singles + (1.0 / (n * (n - 1))) * inter
+    p = float(p or 0.0)
+    return float(cost) + p * singles + (p * p) * inter
 
 
 def failure_prob(alg) -> float:
-    """Planning weight. Under v1.3 this is 3/(2N), not the sensitivity value 0.2."""
-    forced = getattr(alg, "v13_p", None)
-    if getattr(alg, "v13_rules", False) and forced is not None:
-        return float(forced)
-    p = float(getattr(alg, "scenario_p", 0.0) or 0.0)
-    if p <= 0:
-        p = float(getattr(alg, "failure_prob", 0.0) or 0.0)
+    """Main-experiment planning weight. v1.3 is 3/(2N). There is no 0.2 default."""
+    if getattr(alg, "v13_rules", False):
+        n = int(getattr(alg, "v13_n", 0) or 0)
+        if n < 2:
+            raise RuntimeError("v1.3 planning has no N and will not fall back to another failure weight")
+        return 3.0 / (2.0 * n)
+    p = float(getattr(alg, "failure_prob", 0.0) or 0.0)
     return p
 
 

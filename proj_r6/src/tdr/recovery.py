@@ -193,11 +193,14 @@ class RecoveryCatalog:
     def __init__(self, plan: Plan, frag: Sortie, inst: Instance, strategy: str,
                  state: StartState | None = None, ground_required: set[str] | None = None,
                  phys: PhysicalConfig | None = None, guard_n: int = 40, slot_aware: bool = False,
-                 drop_energy_tail: bool = False):
+                 drop_energy_tail: bool = False, integrated_rank: bool = False,
+                 inject_rescue: bool = False):
         self.phys = phys
         self.drop_energy_tail = drop_energy_tail  # 第 11 轮：X 的尾巴丢掉估计成本里加了 1e4 的能量不可行条目
         self.slot_aware = slot_aware      # 第五轮 v4：按接机车机位占用给估计成本加惩罚（S/X 同一公式）
-        self.guard_n = guard_n      # X 的第一批评价必须包含 S 排序的前 guard_n 个候选（第二轮修复2）
+        self.guard_n = guard_n      # S, and X when not integrated: same-truck entries first
+        self.integrated_rank = bool(integrated_rank and strategy == "X")
+        self.inject_rescue = bool(inject_rescue and strategy == "X")
         self._base_plan = plan
         self.frag = frag
         self.inst = inst
@@ -303,6 +306,29 @@ class RecoveryCatalog:
             return {"truck": st.truck, "kind": "support" if st.support else "visit",
                     "ref": st.ref, "support": st.support, "served": list(x[4]), "est": x[0]}
 
+        if self.integrated_rank or self.inject_rescue:
+            # One X search: reachable cross-truck rescues and same-truck entries together,
+            # best estimated saving first. S never sets these flags.
+            if self.inject_rescue:
+                for entry in cross_rescue_menu(plan, state, inst, phys, frag.sid,
+                                               self.ground_required, ranked=self.integrated_rank or True):
+                    key = (entry["truck"], entry["ref"], tuple(entry["served"]))
+                    if key in seen or key in self.skip_keys:
+                        continue
+                    seen.add(key)
+                    self.n_generated += 1
+                    yield entry
+            ordered = items if self.integrated_rank else s_list
+            for x in ordered:
+                if x[5] in seen or x[5] in self.skip_keys:
+                    continue
+                if self.drop_energy_tail and x[0] >= 1e4:
+                    continue
+                seen.add(x[5])
+                self.n_generated += 1
+                yield make(x)
+            if self.integrated_rank:
+                return
         n_guard = 0
         for x in s_list:                       # 先放 S 排序的前 guard_n 个（X、S 完全一致）
             if n_guard >= self.guard_n and self.strategy != "S":
@@ -1052,6 +1078,7 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
                      new_air_penalty: float = 0.0,
                      risk_price_p: float = 0.0,
                      energy_screen: bool = False,
+                     integrated_rank: bool = False, inject_rescue: bool = False,
                      ) -> tuple[RecoveryOption | None, list[str], RecoveryCatalog | None]:
     """恢复初始解（修复1）：RESIDUAL → CATALOG（残段最小改动）→ REBUILD（旧清空重建，对照）.
 
@@ -1072,7 +1099,9 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
         catalog = RecoveryCatalog(res, frag, inst, strategy, state, ground_required, phys=phys,
                                   guard_n=max(1, (((budget.eval_limit if budget is not None else 100) or 100) - 4) // 2),
                                   slot_aware=slot_aware,
-                                  drop_energy_tail=bool(energy_screen and strategy == "X"))
+                                  drop_energy_tail=bool(energy_screen and strategy == "X"),
+                                  integrated_rank=bool(integrated_rank and strategy == "X"),
+                                  inject_rescue=bool(inject_rescue and strategy == "X"))
     catalog.mode = "residual"
     catalog.res_plan = res
     # 重建路径（对照）所需的底板与待插入票
@@ -1275,38 +1304,108 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
     return best, reasons[:20], catalog
 
 
-def search_cross_recoveries(base_plan, state, inst, phys, ground_required, H, frag_sid,
-                            stats, budget, champion_cost: float):
-    """Evaluate cross-truck recovery entries on the shared budget.
+def _detour_m(inst, plan, truck, customer, min_pos: int) -> float:
+    route = plan.routes.get(truck, [])
+    depot = (inst.depot_x, inst.depot_y)
+    c = inst.customer(customer)
+    cpos = (c.x, c.y)
+    best = None
+    for i in range(min_pos, len(route) + 1):
+        prev = depot if i == 0 else _pos(inst, plan, route[i - 1])
+        nxt = depot if i == len(route) else _pos(inst, plan, route[i])
+        det = (math.hypot(prev[0] - cpos[0], prev[1] - cpos[1])
+               + math.hypot(cpos[0] - nxt[0], cpos[1] - nxt[1])
+               - math.hypot(prev[0] - nxt[0], prev[1] - nxt[1]))
+        if best is None or det < best:
+            best = det
+    return 0.0 if best is None else best
 
-    Same-truck entries are skipped without an evaluation. A candidate replaces the
-    champion only when its true cost is strictly lower. Returns (plan, ev) or (None, None).
+
+def cross_rescue_menu(base_plan, state, inst, phys, frag_sid, ground_required, ranked: bool = True):
+    """Rendezvous options a failed sortie can reach under loaded hover, best saving first.
+
+    No full evaluation. Trucks other than the launch truck only. Returns entry dicts.
+    """
+    frag = base_plan.sorties.get(frag_sid)
+    if frag is None or frag.start_pos is None:
+        return []
+    launch = frag.launch_truck or frag.truck
+    mass = sum(inst.parcel_mass[p] for p in list(frag.air) + list(frag.handover))
+    e0 = state.drone_energy.get(frag.drone, phys.e_cap)
+    dpos = frag.start_pos
+    menu = []
+    trucks = [t for t in base_plan.routes if t != launch and t not in state.truck_done]
+    # Existing visits, then a new stop at the drone's current customer if it is one.
+    here = None
+    for cust in inst.customers:
+        if math.hypot(cust.x - dpos[0], cust.y - dpos[1]) < 1.0:
+            here = cust.customer_id
+            break
+    for truck in trucks:
+        min_pos = int(state.truck_min_insert.get(truck, 0) or 0)
+        options = []
+        for vid in base_plan.routes.get(truck, [])[min_pos:]:
+            options.append((False, vid, base_plan.visits[vid].customer))
+        if here is not None:
+            options.append((True, here, here))
+        tpos = state.truck_start_pos.get(truck, (inst.depot_x, inst.depot_y))
+        ready = float(state.truck_ready_time.get(truck, state.t0))
+        for support, ref, customer in options:
+            c = inst.customer(customer)
+            cpos = (c.x, c.y)
+            fly = math.hypot(cpos[0] - dpos[0], cpos[1] - dpos[1])
+            e_fly = phys.fly_energy_kwh(fly, mass)
+            t_drone = frag.start_time + fly / phys.drone_speed_m_s
+            t_truck = ready + math.hypot(cpos[0] - tpos[0], cpos[1] - tpos[1]) / phys.truck_speed_m_s
+            wait = max(0.0, t_truck - t_drone)
+            e_need = e_fly + phys.hover_energy_kwh(wait + phys.recovery_s, mass)
+            if e0 - e_need < phys.e_min - phys.energy_tol:
+                continue
+            det = 0.0 if not support else _detour_m(inst, base_plan, truck, customer, min_pos)
+            # Launch truck would have to come to the drone. That detour is the saving baseline.
+            launch_det = _detour_m(inst, base_plan, launch, customer, int(state.truck_min_insert.get(launch, 0) or 0))
+            saving = (launch_det - det) * phys.c_km / 1000.0 - phys.cost_depot_kwh * e_need
+            menu.append((saving, truck, support, ref, customer))
+    if ranked:
+        menu.sort(key=lambda row: -row[0])
+    else:
+        menu.sort(key=lambda row: (row[1], str(row[3])))
+    out = []
+    seen = set()
+    for saving, truck, support, ref, customer in menu:
+        key = (truck, ref, support)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"truck": truck, "kind": "support" if support else "visit", "ref": ref,
+                    "support": support, "served": [], "saving": saving})
+    return out
+
+
+def search_cross_recoveries(base_plan, state, inst, phys, ground_required, H, frag_sid,
+                            stats, budget, champion_cost: float, ranked: bool = True):
+    """Cross-truck rescue on the shared budget. Keeps a plan only when it is strictly cheaper.
+
+    Candidates are rendezvous the loaded drone can reach, ranked by estimated truck-detour
+    saving, then built by the same residual repair that re-sequences the drone's later tasks.
     """
     frag = base_plan.sorties.get(frag_sid)
     if frag is None or budget is None or budget.evals_left() <= 0:
         return None, None
-    launch = frag.launch_truck or frag.truck
-    catalog = RecoveryCatalog(base_plan, frag, inst, "X", state, ground_required, phys=phys,
-                              guard_n=1, slot_aware=True, drop_energy_tail=True)
     best_plan, best_ev = None, None
-    # The generator emits the launch-truck guard first. Skip those without evaluating.
-    skipped = 0
-    while budget.evals_left() > 0 and skipped < 4000:
-        batch = catalog.next_entries(1)
-        if not batch:
+    tried = 0
+    for entry in cross_rescue_menu(base_plan, state, inst, phys, frag_sid, ground_required, ranked=ranked):
+        if budget.evals_left() <= 0 or tried >= 40:
             break
-        entry = batch[0]
-        if entry["truck"] == launch:
-            skipped += 1
-            continue
         cands = build_residual_candidate(base_plan, frag_sid, entry, inst, phys, state,
                                          ground_required, "X", preserve_cross=False)
         if not cands:
             continue
+        tried += 1
         cp, ev, _, _rs = _first_feasible(cands, inst, phys, state, H, stats, budget)
         if cp is None or ev is None or not ev.feasible or ev.cost is None:
             continue
         if ev.cost < champion_cost - 1e-6 and (best_ev is None or ev.cost < best_ev.cost - 1e-9):
             best_plan, best_ev = cp, ev
-            champion_cost = ev.cost
+            champion_cost = float(ev.cost)
     return best_plan, best_ev

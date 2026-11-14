@@ -385,6 +385,51 @@ def test_t_cfg_hash_formal_refusal_and_metadata(draft):
     assert "statistics" not in view
 
 
+def test_planner_does_not_read_point_two_failure_weight():
+    """v1.3 planning never uses a 0.2 failure weight, including as a default."""
+    from tdr.config import AlgorithmConfig, PhysicalConfig
+    from tdr.data import load_instance
+    from tdr.expected_cost import expected_j, failure_prob
+    from tdr.v13 import physical_kwargs_from_resolved, verify_draft_config
+
+    class Probe:
+        v13_rules = True
+        v13_n = 50
+
+        @property
+        def scenario_p(self):
+            raise AssertionError("planner read scenario_p")
+
+        @property
+        def failure_prob(self):
+            raise AssertionError("planner read failure_prob field")
+
+    assert failure_prob(Probe()) == pytest.approx(3.0 / 100.0)
+    alg = AlgorithmConfig(v13_rules=True, scenario_p=0.2)
+    alg.v13_n = 100
+    assert failure_prob(alg) == pytest.approx(3.0 / 200.0)
+    assert failure_prob(alg) != pytest.approx(0.2)
+
+    cfg, _ = verify_draft_config()
+    pkg = load_package(ROOT / "data" / "package_light.json")
+    inst = load_instance(pkg, "C50")
+    phys = PhysicalConfig(**physical_kwargs_from_resolved(cfg, "C50"))
+    from tdr.experiment import load_case_nominal
+    plan, _, _ = load_case_nominal(inst, ROOT / "r6/results/round11_tune/R11/nominal/S/C50")
+    j_poison = expected_j(100.0, plan, inst, phys, 0.2, v13=True)
+    j_zero = expected_j(100.0, plan, inst, phys, 0.0, v13=True)
+    assert j_poison == pytest.approx(j_zero)
+    n = inst.n
+    # The single-failure coefficient is 3/(2N), not 0.2.
+    rows_only = expected_j(0.0, plan, inst, phys, 0.2, v13=True)
+    assert rows_only == pytest.approx(j_poison - 100.0)
+    assert abs(rows_only) > 0
+    # A 0.2-weighted copy of the same proxy must not match the v1.3 value on this plan.
+    legacy = expected_j(100.0, plan, inst, phys, 0.2, v13=False)
+    assert legacy != pytest.approx(j_poison)
+    del n
+
+
 def test_t_post_objective_weights_and_isolated_scenarios():
     # Negative interaction is kept. Weights are 3/(2N) and 1/(N(N-1)), not a pooled average.
     j = exact_j(10.0, [1.0, -2.0], [-4.0], 2)

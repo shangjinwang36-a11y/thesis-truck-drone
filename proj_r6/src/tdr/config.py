@@ -257,7 +257,7 @@ class AlgorithmConfig:
     # 每个情景的补救评价都计入同一份名义预算。S 与 X 同一套；S 的补救只能回到放飞车。
     scenario_aware: bool = False
     scenario_count: int = 2
-    scenario_p: float = 0.2
+    scenario_p: float = 0.0
     scenario_stream: int = 0
     # 情景补救不可行时，这一情景的成本按名义成本再加这么多。不是在评价种子上拟合的。
     scenario_infeasible_penalty: float = 400.0
