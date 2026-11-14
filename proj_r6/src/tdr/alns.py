@@ -642,6 +642,12 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
         if budget.wall_limit is not None and budget.time_left() <= 0:
             stats.stop_reason = "WALLCLOCK"
             break
+        # X's same-truck phase only. S never sets this, so S still spends the whole cap.
+        stagnant_limit = int(getattr(ctx, "stop_when_stagnant", 0) or 0)
+        if (stagnant_limit and stagnation >= stagnant_limit and best_ev is not None
+                and best_ev.feasible and stats.eval_requests > 30):
+            stats.stop_reason = "STAGNATION"
+            break
         if stats.iterations >= alg.max_search_rounds:
             stats.stop_reason = "MAX_ROUNDS"
             break

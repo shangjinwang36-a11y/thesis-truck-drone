@@ -392,12 +392,80 @@ def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_
     return SolveResult(best_plan, best_ev, "FEASIBLE_LIMIT", stats2)
 
 
+def _v13_cross_phase(inst, phys, alg, rngs, start_plan, start_ev, stats, budget_left, variant):
+    """Spend the remaining nominal budget on cross-truck moves. Keep the phase-1 plan unless J improves."""
+    from .alns import _better_air, optimize
+    from .expected_cost import expected_j, failure_prob
+    from .schedule import initial_state
+    saved_p = getattr(alg, "v13_p", None)
+    alg.v13_p = 3.0 / (2.0 * max(1, inst.n))
+    state = initial_state(inst, phys)
+    state.nominal_cross = True
+    state.allow_support = bool(getattr(alg, "support_rendezvous", False))
+    budget = Budget(max(0, budget_left), None)
+    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=getattr(alg, "v13_H", None),
+                       mode="nominal", rngs=rngs)
+    ctx.live_budget = budget
+    ctx.live_stats = stats
+    ctx.scenario_on = False
+    if budget_left <= 0 or start_plan is None or start_ev is None or not start_ev.feasible:
+        alg.v13_p = saved_p
+        return start_plan, start_ev, 0
+    try:
+        res = optimize(start_plan, ctx, budget, variant=variant, stats=stats)
+        used = budget.used
+        if res.plan is None or res.evaluation is None or not res.evaluation.feasible:
+            stats.aud("V13_PHASE2", "infeasible")
+            return start_plan, start_ev, used
+        p = failure_prob(alg)
+        j1 = expected_j(start_ev.cost, start_plan, inst, phys, p)
+        j2 = expected_j(res.evaluation.cost, res.plan, inst, phys, p)
+        tol = alg.cost_tolerance_yuan
+        cheaper = (res.evaluation.cost or 0.0) < (start_ev.cost or 0.0) - tol
+        # The proxy recourse term will spend nominal yuan for a saving that the
+        # episode does not realise. A cross is published only when correct-weight
+        # J improves and the true nominal cost does not rise.
+        j_better = j2 is not None and j1 is not None and j2 < j1 - tol
+        not_dearer = (res.evaluation.cost or 0.0) <= (start_ev.cost or 0.0) + tol
+        better = cheaper or (j_better and not_dearer)
+        if better:
+            stats.aud("V13_PHASE2", "adopted")
+            return res.plan, res.evaluation, used
+        stats.aud("V13_PHASE2", "kept_same_truck")
+        return start_plan, start_ev, used
+    finally:
+        alg.v13_p = saved_p
+
+
 def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                   rngs: dict[str, random.Random], eval_budget: int | None = None,
                   variant: str = "full", n_used: int | None = None,
                   cross_launch: bool = False, two_phase_b: int | None = None,
                   makespan_cap: float | None = None, scenario_on: bool = False,
-                  alt_start=None) -> SolveResult:
+                  alt_start=None, v13_phase2: bool = False) -> SolveResult:
+    # X under v1.3: same-truck search first, inside this budget, then cross-truck
+    # moves that must improve J. This does not read an S search result.
+    if (cross_launch and getattr(alg, "v13_rules", False) and not v13_phase2
+            and not (two_phase_b or getattr(alg, "nominal_two_phase_b", None))):
+        total = eval_budget if eval_budget is not None else alg.nominal_eval_budget
+        same_n = int(getattr(alg, "v13_same_truck_nominal", 700) or 700)
+        same_n = max(1, min(int(total), same_n))
+        phase1 = build_nominal(inst, phys, alg, rngs, eval_budget=same_n, variant=variant,
+                               n_used=n_used, cross_launch=False, two_phase_b=0,
+                               makespan_cap=None, scenario_on=False, alt_start=None,
+                               v13_phase2=True)
+        used1 = int(phase1.stats.eval_requests or 0)
+        if phase1.plan is None or phase1.evaluation is None or not phase1.evaluation.feasible:
+            return phase1
+        left = max(0, int(total) - used1)
+        plan2, ev2, used2 = _v13_cross_phase(
+            inst, phys, alg, rngs, phase1.plan.clone(), phase1.evaluation, phase1.stats, left, variant)
+        phase1.stats.eval_requests = used1 + used2
+        phase1.stats.counts["v13_phase1_evals"] = used1
+        phase1.stats.counts["v13_phase2_evals"] = used2
+        phase1.stats.counts["v13_phase1_cost"] = phase1.evaluation.cost
+        phase1.stats.counts["v13_published_cost"] = None if ev2 is None else ev2.cost
+        return SolveResult(plan2, ev2, phase1.status, phase1.stats)
     if two_phase_b is None:
         two_phase_b = getattr(alg, "nominal_two_phase_b", None)
     if two_phase_b:

@@ -40,7 +40,7 @@ def _alg(cfg, case_id):
         joint_inflight_retarget=True,
         slot_aware_recovery=True,
         unlaunched_repair=True,
-        x_cross_from_start=True,
+        x_cross_from_start=False,
         x_cross_robust=True,
         x_rendezvous_slack_s=90.0,
         x_recovery_wider=True,
@@ -57,6 +57,9 @@ def _alg(cfg, case_id):
     )
     # land_and_wait and soft_h stay at the resolved-config values (both false).
     alg.v13_H = float(cfg["cases"][case_id]["H_case_s"])
+    # Full same-truck budget. Cross-truck nominal moves use only the evaluations the
+    # same-truck search did not spend, and replace it only when correct-weight J improves.
+    alg.v13_same_truck_nominal = 1000
     assert phys.land_and_wait is False and phys.soft_h is False and phys.swap_mode is True
     del dataclasses
     return phys, alg
@@ -231,6 +234,7 @@ def main():
     parser.add_argument("--out", default=str(ROOT / "r6/results/v13_baseline"))
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--smoke", action="store_true", help="C50 nominal plus tune seed 101 only")
+    parser.add_argument("--which", choices=("tune", "dev", "both"), default="both")
     args = parser.parse_args()
     from tdr.v13 import git_run_metadata, load_run_config
     cfg, view, digest = load_run_config(formal=False, m1=M1, m2=M2)
@@ -238,7 +242,14 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     (out / "resolved_sha256.txt").write_text(digest + "\n")
     cases = ["C50"] if args.smoke else CASES
-    seeds = [101] if args.smoke else list(range(101, 111)) + list(range(1, 11))
+    if args.smoke:
+        seeds = [101]
+    elif args.which == "tune":
+        seeds = list(range(101, 111))
+    elif args.which == "dev":
+        seeds = list(range(1, 11))
+    else:
+        seeds = list(range(101, 111)) + list(range(1, 11))
     t0 = time.perf_counter()
     nom_jobs = [(cfg, c, s, str(out)) for c in cases for s in ("S", "X")]
     with Pool(args.workers) as pool:

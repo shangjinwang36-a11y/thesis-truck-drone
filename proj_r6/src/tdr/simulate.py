@@ -982,8 +982,14 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             wall_s = float(alg.recovery_wallclock_seconds or 60.0)
         t_budget0 = time.perf_counter()
         init_budget = Budget(main_limit, wall_s, start=t_budget0)
+        # X runs the same-truck procedure on this cap and, once that search has gone
+        # 40 iterations without a new best, spends whatever is left on cross-truck
+        # recoveries. A cross replaces the champion only when it is strictly cheaper.
+        # S does not stop early and does not see this branch.
+        x_cross_tail = bool(strategy == "X" and getattr(alg, "v13_rules", False))
         init_budget.hold = 4
         init_budget.init_release_at = min(100, max(1, main_limit - 4))
+        search_strategy = "S" if x_cross_tail else strategy
         init_stats = SearchStats()
         init_info: dict[str, Any] = {}
         ceiling = set()
@@ -995,7 +1001,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
         # 新开空送只由再飞算子提出，避免把第三轮硬禁止在邻域里整个关掉。
         state2.x_failure_p = 0.0
         state2.air_ceiling = None
-        opt, reasons, catalog = initial_recovery(new_plan, state2, inst, phys, strategy,
+        opt, reasons, catalog = initial_recovery(new_plan, state2, inst, phys, search_strategy,
                                                  ground_required, H=H,
                                                  extra_pool=info_.get("freed", []),
                                                  frag_sid=a.sid, stats=init_stats,
@@ -1013,6 +1019,18 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                                                  milp_top_k=(10 if bool(getattr(alg, "x_recovery_wider", False)) else 6))
         res.time_init += time.perf_counter() - t_budget0
         res.time_milp += float(init_info.get("milp_wall_s") or 0.0)
+        if opt is None and x_cross_tail and init_budget.evals_left() > 0:
+            # Same-truck phase used its slice and found nothing. Release the tail and
+            # look for a cross-truck recovery before declaring the process failed.
+            init_budget.hold = 4
+            from .recovery import search_cross_recoveries
+            cp, cev = search_cross_recoveries(
+                new_plan, state2, inst, phys, ground_required, H, a.sid,
+                init_stats, init_budget, champion_cost=float("inf"))
+            if cp is not None and cev is not None and cev.feasible:
+                opt = type("Opt", (), {"plan": cp, "ev": cev, "description": "V13_CROSS"})()
+                init_info["best_source"] = "V13_CROSS"
+                init_info["init_cost"] = cev.cost
         if opt is None:
             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
             res.notes.append(f"STOP_CONTEXT:replan={replan_index + 1},t_fail={a.time:.1f},t_cut={t_cut:.1f},"
@@ -1043,8 +1061,10 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
         ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state2, H=H, mode="recovery",
                            affected_drones={a.drone}, affected_sorties={a.sid},
                            ground_required=greq, replan_index=replan_index + 1,
-                           rngs=rr, catalog=catalog, frag_sid=a.sid, strategy=strategy,
+                           rngs=rr, catalog=catalog, frag_sid=a.sid, strategy=search_strategy,
                            air_ceiling=air_ceiling)
+        if x_cross_tail:
+            ctx.stop_when_stagnant = 40
         t_r = time.perf_counter()
         budget = init_budget   # same cap; init evaluations are already counted
         stats = SearchStats()
@@ -1059,6 +1079,20 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             res.notes.append("RESIDUAL_GUARD_TRIGGERED")
             rp, rev = init_info["_residual"]
             sol = SolveResult(rp, rev, "FEASIBLE_LIMIT", sol.stats)
+        same_cost = None if sol.evaluation is None else sol.evaluation.cost
+        cross_cost = None
+        if x_cross_tail and same_cost is not None and sol.plan is not None:
+            init_budget.hold = 4
+            from .recovery import search_cross_recoveries
+            cp, cev = search_cross_recoveries(
+                sol.plan, state2, inst, phys, ground_required, H, a.sid,
+                stats, init_budget, champion_cost=float(same_cost))
+            if cp is not None and cev is not None and cev.cost is not None and cev.cost < same_cost - 1e-6:
+                cross_cost = float(cev.cost)
+                sol = SolveResult(cp, cev, "FEASIBLE_LIMIT", sol.stats)
+            else:
+                # The cross tail did not beat the same-truck champion. Keep it.
+                cross_cost = None
         init_counts = {
             "n_init_evals": init_stats.eval_requests,
             "init_by_reason": dict(init_stats.eval_by_reason),
@@ -1066,6 +1100,9 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             "n_main_iterations": stats.iterations,
             "main_by_reason": dict(stats.eval_by_reason),
             "n_eval_requests": budget.used,
+            "same_truck_cost": same_cost,
+            "cross_cost": cross_cost,
+            "kept": "cross" if cross_cost is not None else "same_truck",
             "wall_s": time.perf_counter() - t_budget0,
             "wall_hits": int(getattr(budget, "wall_hits", 0)),
             "budget_limit": main_limit,

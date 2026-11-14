@@ -1273,3 +1273,40 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
         info["init_cost"] = best.ev.cost
         info["s_eligible"] = best_s_eligible
     return best, reasons[:20], catalog
+
+
+def search_cross_recoveries(base_plan, state, inst, phys, ground_required, H, frag_sid,
+                            stats, budget, champion_cost: float):
+    """Evaluate cross-truck recovery entries on the shared budget.
+
+    Same-truck entries are skipped without an evaluation. A candidate replaces the
+    champion only when its true cost is strictly lower. Returns (plan, ev) or (None, None).
+    """
+    frag = base_plan.sorties.get(frag_sid)
+    if frag is None or budget is None or budget.evals_left() <= 0:
+        return None, None
+    launch = frag.launch_truck or frag.truck
+    catalog = RecoveryCatalog(base_plan, frag, inst, "X", state, ground_required, phys=phys,
+                              guard_n=1, slot_aware=True, drop_energy_tail=True)
+    best_plan, best_ev = None, None
+    # The generator emits the launch-truck guard first. Skip those without evaluating.
+    skipped = 0
+    while budget.evals_left() > 0 and skipped < 4000:
+        batch = catalog.next_entries(1)
+        if not batch:
+            break
+        entry = batch[0]
+        if entry["truck"] == launch:
+            skipped += 1
+            continue
+        cands = build_residual_candidate(base_plan, frag_sid, entry, inst, phys, state,
+                                         ground_required, "X", preserve_cross=False)
+        if not cands:
+            continue
+        cp, ev, _, _rs = _first_feasible(cands, inst, phys, state, H, stats, budget)
+        if cp is None or ev is None or not ev.feasible or ev.cost is None:
+            continue
+        if ev.cost < champion_cost - 1e-6 and (best_ev is None or ev.cost < best_ev.cost - 1e-9):
+            best_plan, best_ev = cp, ev
+            champion_cost = ev.cost
+    return best_plan, best_ev

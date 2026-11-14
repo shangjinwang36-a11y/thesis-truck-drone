@@ -84,6 +84,10 @@ def expected_j(cost: float | None, plan, inst, phys, p: float) -> float | None:
 
 
 def failure_prob(alg) -> float:
+    """Planning weight. Under v1.3 this is 3/(2N), not the sensitivity value 0.2."""
+    forced = getattr(alg, "v13_p", None)
+    if getattr(alg, "v13_rules", False) and forced is not None:
+        return float(forced)
     p = float(getattr(alg, "scenario_p", 0.0) or 0.0)
     if p <= 0:
         p = float(getattr(alg, "failure_prob", 0.0) or 0.0)
