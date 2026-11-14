@@ -99,6 +99,13 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
                        adopt_from: str | Path | None = None) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    if getattr(alg, "v13_rules", False) and cross_launch and (
+            adopt_from or getattr(alg, "x_s_second_start", False)
+            or getattr(alg, "x_adopt_s_nominal", False)
+            or getattr(alg, "x_adopt_s_if_cross", False)):
+        from .v13 import WarmStartForbidden
+        raise WarmStartForbidden(
+            "v1.3 forbids X reading an independent S search (adopt_from / x_s_second_start / x_adopt_s_nominal)")
     rngs = derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0)
     t = time.perf_counter()
     starts = [alg.nominal_start_trucks]
@@ -359,7 +366,17 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
                 res.plan, ev = s_plan_cap.clone(), s_ev_cap
                 adopted_s = True
                 adopt_reason = "expected_cross"
-    H = max(ev.timeline.truck_finish.values()) + phys.shift_slack_s
+    if getattr(alg, "v13_rules", False) and getattr(alg, "v13_H", None) is not None:
+        H = float(alg.v13_H)
+        ev = evaluate_plan(res.plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
+        if not ev.feasible:
+            meta = {"case_id": inst.case_id, "status": "NO_FEASIBLE_NOMINAL",
+                    "solver_status": ev.status, "violations": (ev.violations or [])[:5],
+                    "H_s": H, "wall_s": wall}
+            _write_json(out / "result.json", meta)
+            return meta
+    else:
+        H = max(ev.timeline.truck_finish.values()) + phys.shift_slack_s
     from .evaluate import is_cross_sortie as is_cross_sortie_
     if not cross_launch:   # S：名义阶段不得出现跨车航次
         from .evaluate import is_cross_sortie

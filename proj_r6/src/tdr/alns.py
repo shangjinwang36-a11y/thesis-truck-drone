@@ -69,11 +69,19 @@ class Budget:
         self.start = start if start is not None else time.perf_counter()
         self.reserve = reserve
         self.used = used
+        self.wall_hits = 0
+        # Evaluations held back inside the same cap (contingency pricing). Not an extra budget.
+        self.hold = 0
+        # After this many evaluations, initial recovery yields to the main search if it
+        # already has a feasible plan. It does not stop the search when it has none.
+        self.init_release_at = None
 
     def take(self, n: int = 1) -> bool:
-        if self.eval_limit is not None and self.used + n > self.eval_limit:
+        cap = None if self.eval_limit is None else self.eval_limit - int(self.hold or 0)
+        if cap is not None and self.used + n > cap:
             return False
         if self.wall_limit is not None and self.time_left() <= 0:
+            self.wall_hits += 1
             return False
         self.used += n
         return True
@@ -84,7 +92,8 @@ class Budget:
     def evals_left(self) -> float:
         if self.eval_limit is None:
             return float("inf")
-        return float(max(0, self.eval_limit - self.used))
+        cap = self.eval_limit - int(getattr(self, "hold", 0) or 0)
+        return float(max(0, cap - self.used))
 
     def time_left(self) -> float:
         if self.wall_limit is None:

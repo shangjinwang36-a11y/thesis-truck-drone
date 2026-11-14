@@ -86,6 +86,13 @@ def _skeleton(plan: Plan, inst: Instance) -> tuple[Plan, list[str]]:
     return base, pool
 
 
+def _clear_ground_parcel(plan: Plan, parcel: str) -> None:
+    """A handover parcel has one ground delivery. Drop any earlier copy before placing it."""
+    for v in plan.visits.values():
+        if parcel in v.ground:
+            v.ground = [q for q in v.ground if q != parcel]
+
+
 def _place_handover_g(plan: Plan, inst: Instance, truck: str, rv: int,
                       parcels: list[str]) -> list[str]:
     errs: list[str] = []
@@ -94,6 +101,7 @@ def _place_handover_g(plan: Plan, inst: Instance, truck: str, rv: int,
         return [f"RECOVERY_VISIT_MISSING:{rv}"]
     rv_cust = plan.visits[rv].customer
     for p in sorted(set(parcels)):
+        _clear_ground_parcel(plan, p)
         cust = inst.parcel_to_customer[p]
         if cust == rv_cust:
             if p not in plan.visits[rv].ground:
@@ -309,7 +317,7 @@ class RecoveryCatalog:
             if x[5] in seen or x[5] in self.skip_keys:
                 continue
             # 能量惩罚只从 X 的尾巴拿掉。前面那一段仍与 S 的顺序相同，S 自己也不丢。
-            if self.drop_energy_tail and self.strategy != "S" and x[0] >= 1e4:
+            if self.drop_energy_tail and x[0] >= 1e4:
                 continue
             seen.add(x[5])
             self.n_generated += 1
@@ -867,7 +875,7 @@ def _joint_retarget(res: Plan, frag: Sortie, inst: Instance, phys: PhysicalConfi
             info['landing_seeds'] = info.get('landing_seeds', 0) + 1
     if not seeds or budget is None:
         return False
-    budget.eval_limit = (budget.eval_limit or 0) + JOINT_EXTRA_EVALS + (LAND_EXTRA_EVALS if (phys.land_and_wait or unlaunched) else 0)
+    # v1.3: joint search spends the shared budget. It does not add a second ledger.
     info["joint_used"] = True
     info["joint_retargets"] = 0
     for seed in seeds:
@@ -1109,11 +1117,10 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
             best, best_src, best_entry = opt, src, entry
 
     def _rescue_check():
-        # 初始化预算耗尽且还没有可行解：追加一次 rescue 额度（两种策略同规则）
-        if (budget is not None and best is None and rescue_evals > 0
-                and not info["rescue_used"] and budget.evals_left() <= 0):
-            budget.eval_limit = (budget.eval_limit or 0) + rescue_evals
-            info["rescue_used"] = True
+        # v1.3: a missed initial solution keeps searching inside the same cap.
+        # rescue_evals is retained as a call-site argument and is not added on top.
+        if rescue_evals:
+            info["rescue_available_inside_cap"] = True
 
     # ① RESIDUAL：保持原回收访问
     cands = build_residual_candidate(res, frag.sid, None, inst, phys, state, ground_required,
@@ -1173,8 +1180,11 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
         _rescue_check()
         if budget is not None and budget.evals_left() <= 0:
             break
-        if best is not None and budget is not None and budget.evals_left() <= 3:
-            break                      # 给 REBUILD 对照候选留 3 次评价
+        # Once a feasible suffix exists and the initial slice has been spent, leave the
+        # rest of the same cap for the main search. No solution yet: do not stop early.
+        release_at = getattr(budget, "init_release_at", None) if budget is not None else None
+        if best is not None and release_at is not None and budget.used >= release_at:
+            break
         entries = catalog.next_entries(1)
         if not entries:
             break
@@ -1207,7 +1217,6 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
     # 而 S 在同样条件下会走兜底并得到更便宜的解，造成 X 的起始最优反而比 S 差。
     if not best_s_eligible and tried_entries and budget is not None:
         info["fallback_used"] = True
-        budget.eval_limit = (budget.eval_limit or 0) + 24
         for ent in tried_entries:
             if budget.evals_left() <= 0:
                 break
@@ -1242,7 +1251,8 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
     if keep_s_recovery and strategy == "X" and budget is not None and not best_s_eligible:
         info["s_seed_used"] = True
         s_cat = RecoveryCatalog(res, frag, inst, "S", state, ground_required, phys=phys,
-                                guard_n=catalog.guard_n, slot_aware=slot_aware)
+                                guard_n=catalog.guard_n, slot_aware=slot_aware,
+                                drop_energy_tail=bool(getattr(catalog, "drop_energy_tail", False)))
         for ent in [None] + list(s_cat.next_entries(6)):
             if budget.evals_left() <= 0:
                 break

@@ -247,7 +247,13 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
     delivered = set(state.delivered)
     for v in plan.visits.values():
         delivered.update(v.ground)
+    doomed = set(getattr(state, "known_air_failures", ()) or ())
     for s in plan.sorties.values():
+        priced = [p for p in s.air if p in doomed]
+        if priced:
+            ev.status = "DOOMED_AIR_PRICED_AS_SUCCESS"
+            ev.violations = [f"DOOMED_AIR_PRICED_AS_SUCCESS:{priced[:5]}"]
+            return ev
         delivered.update(s.air)
     missing = [c.parcel_id for c in inst.customers if c.parcel_id not in delivered]
     if missing:
@@ -298,13 +304,14 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
     for k, f in tl.truck_finish.items():
         if H is not None and f > H + 1e-6 and not phys.soft_h:
             viol.append(f"H_EXCEEDED:{k}@{f:.1f}>{H:.1f}")
-    # 回收余电
+    # 全程电量下限。landed 豁免已作废：出现该标记即是实现错误。
     for d, stages in tl.drone_stages.items():
         e = tl.drone_energy.get(d, [])
         for i, st in enumerate(stages):
-            if st.kind == "R" and not st.landed:
-                if i + 1 < len(e) and e[i + 1] < phys.e_min - phys.energy_tol:
-                    viol.append(f"E_MIN_AT_R:{d}@{st.start:.1f}")
+            if st.landed:
+                raise AssertionError("landed wait/recovery branch must never trigger")
+            if i + 1 < len(e) and e[i + 1] < phys.e_min - phys.energy_tol:
+                viol.append(f"E_MIN:{d}@{st.start:.1f}:{e[i + 1]:.6f}")
     if viol:
         ev.status = "INFEASIBLE_RESOURCE"
         ev.violations = viol[:20]
@@ -325,6 +332,14 @@ def evaluate_plan(plan: Plan, inst: Instance, phys: PhysicalConfig,
     c_overtime = phys.wage_per_s * (phys.overtime_mult - 1.0) * overtime_s
     Qnet = phys.slot_efficiency * Qac
     c_veh = phys.cost_vehicle_kwh * Qnet
+    if phys.swap_mode:
+        # Swap-only: on-truck charging energy and its cost stay at zero.
+        if abs(Qac) > phys.energy_tol or abs(c_veh) > phys.tolerance_cost_cny:
+            ev.status = "VEHICLE_CHARGE_NOT_ZERO"
+            ev.violations = [f"VEHICLE_CHARGE_NOT_ZERO:q={Qac}"]
+            ev.timeline = tl
+            return ev
+        c_veh = 0.0
     c_dep = phys.cost_depot_kwh * depot_refill
     ev.cost_breakdown = {
         "truck_km": D / 1000.0, "c_km": c_km, "driver_s": sumF, "c_driver": c_driver,
@@ -379,7 +394,7 @@ def _plan_energy_waits(tl: Timeline, plan: Plan, phys: PhysicalConfig, state: St
         e = state.drone_energy.get(d, phys.e_cap)
         for i, st in enumerate(stages):
             e -= stage_energy(st, phys)
-            req = phys.e_min if (st.kind == "R" and not st.landed) else 0.0
+            req = phys.e_min
             if e - req < -phys.energy_tol:
                 bad_idx = i
                 break

@@ -306,7 +306,7 @@ def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_
     cap = None
     if cross_launch and (makespan_cap is not None or getattr(alg, "x_cross_hs_cap", False)):
         cap = p1_finish if makespan_cap is None else max(makespan_cap, p1_finish or makespan_cap)
-    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=None, mode="nominal", rngs=rngs,
+    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=getattr(alg, "v13_H", None), mode="nominal", rngs=rngs,
                        makespan_cap=cap)
     ctx.scenario_on = bool(getattr(alg, "scenario_aware", False))
     ctx.live_budget = budget2
@@ -415,7 +415,7 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
     if ev is None or not ev.feasible:
         return SolveResult(plan, ev, "INVALID_INPUT", stats)
     best_plan, best_ev = plan.clone(), ev
-    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=None, mode="nominal",
+    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=getattr(alg, "v13_H", None), mode="nominal",
                        rngs=rngs)
     ctx.live_budget = budget
     ctx.live_stats = stats
@@ -479,7 +479,7 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
     if ev2 is not None and ev2.feasible:
         best_plan, best_ev = plan2, ev2
     # ALNS
-    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=None, mode="nominal",
+    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=getattr(alg, "v13_H", None), mode="nominal",
                        rngs=rngs)
     res = optimize(best_plan, ctx, budget, variant=variant, stats=stats)
     if res.plan is not None and res.evaluation is not None and res.evaluation.feasible:

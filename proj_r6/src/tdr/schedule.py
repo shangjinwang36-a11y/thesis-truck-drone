@@ -70,6 +70,10 @@ class StartState:
     # 第四轮：仅 X 恢复把已知失败概率和残差空送集合放在状态上，供修复代理计价。S 保持 0 / None。
     x_failure_p: float = 0.0
     air_ceiling: set[str] | None = None
+    # v1.3: parcels already revealed as air failures must not be priced as successful air deliveries.
+    known_air_failures: set[str] = field(default_factory=set)
+    # Spare-battery debits that have already happened. Clone/replan must not reset this.
+    swap_ledger: object | None = None
 
 
 def initial_state(inst: Instance, phys: PhysicalConfig) -> StartState:
@@ -594,17 +598,41 @@ def _compute_distances(plan: Plan, inst: Instance, state: StartState, tl: Timeli
 def stage_energy(stage: DroneStage, phys: PhysicalConfig) -> float:
     if stage.kind in ("ON_TRUCK", "READY", "P", "U", "DONE", "SWAP"):
         return 0.0
+    # v1.3: the landed exemption (zero energy, E_min waived) must never run.
+    if stage.landed and stage.kind in ("WAIT", "R"):
+        raise AssertionError("landed wait/recovery branch must never trigger")
     if stage.kind == "L":
         return phys.hover_energy_kwh(phys.launch_s, stage.mass)
-    if stage.landed and stage.kind in ("WAIT", "R"):
-        return 0.0
     if stage.kind == "R":
         return phys.hover_energy_kwh(phys.recovery_s, stage.mass)
     if stage.kind == "CRUISE":
         return phys.fly_energy_kwh(stage.dist, stage.mass)
     if stage.kind in ("SERVICE", "WAIT"):
-        return phys.hover_energy_kwh(stage.end - stage.start, stage.mass)
+        dur = stage.end - stage.start
+        # A negative wait from delay truncation is infeasible, not an energy credit.
+        if dur < -phys.energy_tol:
+            return float("inf")
+        return phys.hover_energy_kwh(dur, stage.mass)
     return 0.0
+
+
+def _swap_key(drone: str, stage: DroneStage) -> tuple:
+    return (drone, round(float(stage.start), 6))
+
+
+def _swap_already_debited(state: StartState, drone: str, stage: DroneStage) -> bool:
+    ledger = getattr(state, "swap_ledger", None)
+    if ledger is None:
+        return False
+    key = _swap_key(drone, stage)
+    return key in getattr(ledger, "completed", {}) or key in getattr(ledger, "reserved", {})
+
+
+def _floor_kwh(stage: DroneStage, phys: PhysicalConfig) -> float:
+    """Every recorded drone energy is at least E_min. Landed does not lower the floor."""
+    if stage.landed and stage.kind in ("WAIT", "R"):
+        raise AssertionError("landed wait/recovery branch must never trigger")
+    return phys.e_min
 
 
 def _start_energy(state: StartState, d: str, phys: PhysicalConfig) -> float:
@@ -629,7 +657,7 @@ def _swap_pass(tl: Timeline, plan: Plan, phys: PhysicalConfig, state: StartState
                 e = phys.e_cap
                 continue
             e -= stage_energy(st, phys)
-            req = phys.e_min if (st.kind == "R" and not st.landed) else 0.0
+            req = _floor_kwh(st, phys)
             if e < req - phys.energy_tol:
                 sid = st.sid
                 s = plan.sorties.get(sid) if sid is not None else None
@@ -658,12 +686,23 @@ def allocate_swaps(tl: Timeline, phys: PhysicalConfig, state: StartState):
         energies = [e]
         for st in tl.drone_stages[d]:
             if st.kind == "SWAP":
-                refill += phys.e_cap - e
+                already = _swap_already_debited(state, d, st)
+                if not already:
+                    refill += max(0.0, phys.e_cap - e)
+                    tl.swap_count_by_truck[st.truck] = tl.swap_count_by_truck.get(st.truck, 0) + 1
+                # Full battery only once the swap stage itself is reached. A reserved
+                # swap was debited at the cut and must not be debited again.
                 e = phys.e_cap
-                tl.swap_count_by_truck[st.truck] = tl.swap_count_by_truck.get(st.truck, 0) + 1
             else:
                 e -= stage_energy(st, phys)
             energies.append(e)
+            if e < phys.e_min - phys.energy_tol:
+                tl.drone_energy[d] = energies
+                tl.e_return[d] = e
+                tl.energy_ok = False
+                tl.energy_msg = f"E_MIN:{d}@{st.end:.1f}:{e:.6f}<{phys.e_min:.6f}"
+                tl.deficits = {d: phys.e_min - e}
+                return False, tl.energy_msg, {}
         tl.drone_energy[d] = energies
         tl.e_return[d] = energies[-1]
     tl.swap_refill_kwh = refill
@@ -675,7 +714,7 @@ def allocate_swaps(tl: Timeline, phys: PhysicalConfig, state: StartState):
             tl.energy_msg = f"SWAP_SPARES:{k}:{n}>{state.truck_ac.get(k, phys.spare_batteries):.0f}"
             tl.deficits = {}
             return False, tl.energy_msg, {}
-    ok = all(tl.e_return.get(d, 0.0) >= -phys.energy_tol for d in drones)
+    ok = all(tl.e_return.get(d, 0.0) >= phys.e_min - phys.energy_tol for d in drones)
     tl.energy_ok = ok
     tl.energy_msg = "" if ok else "NEGATIVE_RETURN"
     return ok, tl.energy_msg, {}
@@ -726,7 +765,7 @@ def allocate_charging(tl: Timeline, phys: PhysicalConfig, state: StartState):
                 b_rows.append(phys.e_cap + consumed - e0)
             else:
                 consumed += stage_energy(st, phys)
-                req = phys.e_min if (st.kind == "R" and not st.landed) else 0.0
+                req = _floor_kwh(st, phys)
                 row = np.zeros(nvar)
                 for jj in range(charge_seen):
                     row[var_index[(d, jj)]] = -phys.slot_efficiency
@@ -758,7 +797,7 @@ def allocate_charging(tl: Timeline, phys: PhysicalConfig, state: StartState):
                 en = stage_energy(st, phys)
                 need += en
                 e -= en
-                req = phys.e_min if (st.kind == "R" and not st.landed) else 0.0
+                req = _floor_kwh(st, phys)
                 worst = min(worst, e - req)
             tl.deficits[d] = max(0.0, -worst)
             diag.append(f"{d}:e0={e:.2f},need={need:.2f},worst={worst:.2f}")
@@ -804,7 +843,7 @@ def _check_energy_without_charge(tl: Timeline, phys: PhysicalConfig, state: Star
         e = _start_energy(state, d, phys)
         for st in stages:
             e -= stage_energy(st, phys)
-            if st.kind == "R" and not st.landed and e < phys.e_min - phys.energy_tol:
+            if e < phys.e_min - phys.energy_tol:
                 return False, f"E_MIN_VIOLATION:{d}@{st.start:.1f}"
             if e < -phys.energy_tol:
                 return False, f"NEGATIVE_ENERGY:{d}@{st.start:.1f}"
