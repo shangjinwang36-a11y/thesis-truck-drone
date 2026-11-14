@@ -380,41 +380,67 @@ def _clears(phys, consumed: float, reserve: float) -> bool:
     return consumed <= phys.e_cap - reserve + phys.energy_tol
 
 
-def scheduler_feasible(plan, inst, phys, H, slack_s: float) -> bool:
-    """The real schedule, without charging a search evaluation.
+def _schedule_ok(plan, inst, phys, H, slack_s: float):
+    """The evaluator's schedule and checks, without charging a search evaluation.
 
-    The geometric floor only prices the edited sortie. Moving its recovery point
-    changes other drones' waits, and those drones are what the scheduler rejects
-    with SWAP_CANNOT_FIX. This runs the same schedule, swap check, H check, and
-    cross floor the evaluator uses.
+    Returns the timeline when the plan would be feasible, else None. Moving one
+    recovery visit changes other drones' waits; those waits are in the timeline.
     """
     from .evaluate import channel_check, has_wait_cycle, is_cross_sortie, truck_slot_check
     from .schedule import allocate_charging, initial_state, schedule_plan
     from .cross_robust import cross_robust_violations
     if any(is_cross_sortie(plan, s) for s in plan.sorties.values()) and has_wait_cycle(plan):
-        return False
+        return None
     state = initial_state(inst, phys)
     try:
         tl = schedule_plan(plan, inst, phys, state)
     except (KeyError, ValueError):
         # A retarget can drop a visit another sortie still names. That plan is not schedulable.
-        return False
+        return None
     if not tl.converged or tl.swap_msg:
-        return False
+        return None
     ok, _, _ = allocate_charging(tl, phys, state)
     if not ok or tl.custody_violations:
-        return False
+        return None
     if H is not None and any(f > float(H) + 1e-6 for f in tl.truck_finish.values()):
-        return False
+        return None
     if truck_slot_check(plan, inst, phys, tl, state) or channel_check(plan, phys, tl):
-        return False
+        return None
     for energies in tl.drone_energy.values():
         if any(e < phys.e_min - phys.energy_tol for e in energies):
-            return False
+            return None
     if any(is_cross_sortie(plan, s) for s in plan.sorties.values()):
         if cross_robust_violations(plan, inst, phys, tl, slack_s):
-            return False
-    return True
+            return None
+    if abs(state.prefix_ac_kwh + tl.q_total) > phys.energy_tol:
+        return None
+    return tl, state
+
+
+def scheduler_feasible(plan, inst, phys, H, slack_s: float) -> bool:
+    """The real schedule, without charging a search evaluation."""
+    return _schedule_ok(plan, inst, phys, H, slack_s) is not None
+
+
+def scheduled_plain_j(plan, inst, phys, H, slack_s: float):
+    """Plain v1.3 J from the scheduler timeline. None when the plan is infeasible.
+
+    Truck distance, driver time (including waits), and depot refill are the cost
+    the evaluator would record. This does not take a budget evaluation.
+    """
+    from .expected_cost import expected_j
+    got = _schedule_ok(plan, inst, phys, H, slack_s)
+    if got is None:
+        return None
+    tl, state = got
+    distance = state.prefix_distance_m + sum(tl.truck_distance_m.values())
+    driver_s = sum(tl.truck_finish.values())
+    drones = [f"d{i + 1}" for i in range(phys.drone_count)]
+    refill = sum(phys.e_cap - tl.e_return.get(d, phys.e_cap) for d in drones)
+    refill += state.prefix_refill_kwh + tl.swap_refill_kwh
+    cost = (phys.c_km * distance / 1000.0 + phys.wage_per_s * driver_s
+            + phys.cost_depot_kwh * refill)
+    return expected_j(cost, plan, inst, phys, 0.0, v13=True, rescue_aware=False)
 
 
 def _rescue_open(plan, inst, phys, customer_xy, mass: float, launch: str, rec: str, floor: float) -> bool:
@@ -732,16 +758,33 @@ def _relieve_slow_truck(plan, ctx):
     return None
 
 
-def try_integrated_cross(plan, ctx, budget, stats, kind: int):
-    """Evaluate one floor-legal cross move. No meeting under the floor means no evaluation."""
+def try_integrated_cross(plan, ctx, budget, stats, kind: int, j_ref: float | None = None):
+    """Charge one cross only when the uncharged scheduler delta beats plain J.
+
+    propose_integrated already drops meetings the scheduler cannot fly. The delta
+    prices that same timeline (distance, driver time including waits, depot refill,
+    and the v1.3 failure terms). eval_counted runs only if that J beats j_ref.
+    """
     from .alns import eval_counted
+    from .expected_cost import expected_j as _ej
     cand = propose_integrated(plan, ctx, kind)
     if cand is None:
         stats.aud("CROSS_INSERT", "no_floor")
         return None, None
+    slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+    j_new = scheduled_plain_j(cand, ctx.inst, ctx.phys, getattr(ctx, "H", None), slack)
+    tol = float(getattr(ctx.alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
+    if j_new is None or j_ref is None or not (j_new < j_ref - tol):
+        stats.aud("CROSS_INSERT", "proxy_skip")
+        return None, None
     if budget is None or budget.evals_left() <= 0:
         return None, None
+    stats.cross_charged = int(getattr(stats, "cross_charged", 0) or 0) + 1
     ev = eval_counted(cand, ctx.inst, ctx.phys, ctx.state, ctx.H, "CROSS_INSERT", stats, budget)
+    if ev is not None and ev.feasible and ev.cost is not None:
+        j_eval = _ej(ev.cost, cand, ctx.inst, ctx.phys, 0.0, v13=True, rescue_aware=False)
+        if j_eval is None or abs(j_eval - j_new) > 1e-4:
+            stats.aud("CROSS_INSERT", "delta_mismatch")
     stats.aud("CROSS_INSERT", "calls")
     if ev is None:
         return None, None

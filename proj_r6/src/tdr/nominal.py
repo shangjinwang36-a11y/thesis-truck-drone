@@ -210,15 +210,19 @@ def _descent_loop(plan, inst, phys, alg, state, stats, best_ev, budget, max_eval
             remove_parcel(base, p)
             cross_later = []
             if allow_cross and getattr(state, "nominal_cross", False):
-                _all = air_candidates(base, inst, phys, p, max_new=3, state=state)
-                same = [x for x in _all if not x.cross][:3]
-                crossed = [x for x in _all if x.cross][:2]
-                # v1.3: try the same-truck moves in the same order as S. Spend a cross
-                # evaluation only when none of those moves improves J.
+                # Same three same-truck candidates S tries, in S's order. Cross
+                # candidates are a separate list and are charged only later.
                 if getattr(alg, "v13_rules", False):
-                    acs = same
-                    cross_later = crossed
+                    acs = air_candidates(base, inst, phys, p, max_new=3, state=None)[:3]
+                    from .moves import cross_air_candidates
+                    cross_later = [a for a in cross_air_candidates(
+                        base, inst, phys, p,
+                        allow_support=bool(getattr(state, "allow_support", False)))
+                        if a.cross][:2]
                 else:
+                    _all = air_candidates(base, inst, phys, p, max_new=3, state=state)
+                    same = [x for x in _all if not x.cross][:3]
+                    crossed = [x for x in _all if x.cross][:2]
                     acs = same + crossed
             else:
                 acs = air_candidates(base, inst, phys, p, max_new=3, state=None)[:3]
@@ -239,17 +243,42 @@ def _descent_loop(plan, inst, phys, alg, state, stats, best_ev, budget, max_eval
                 if ev is None:
                     break
             if win is None and cross_later:
+                # X only. Same-truck moves above already ran in S's order. A cross
+                # is charged only when the scheduler accepts it and the admissible
+                # bound can beat the best plain J already stored.
+                from .cross_nominal import scheduled_plain_j
+                from .expected_cost import expected_j as _ej
+                j_here = None if best_ev is None or best_ev.cost is None else _ej(
+                    best_ev.cost, plan, inst, phys, 0.0, v13=True, rescue_aware=False)
+                j_arch = getattr(stats, "j_champion_j", None)
+                j_ref = j_here if j_arch is None else (
+                    min(j_here, j_arch) if j_here is not None else j_arch)
+                tol = float(getattr(alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
+                slack = float(getattr(alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+                H = getattr(alg, "v13_H", None)
                 for ac in cross_later:
                     if not room():
                         break
                     cand = base.clone()
                     if not apply_air(cand, inst, p, ac):
                         continue
+                    j_hat = scheduled_plain_j(cand, inst, phys, H, slack)
+                    if j_hat is None or j_ref is None or not (j_hat < j_ref - tol):
+                        stats.aud("CROSS_INSERT", "proxy_skip")
+                        continue
                     before = budget.used
-                    ev = eval_counted(cand, inst, phys, state, None, "NOMINAL_AIR_BASE", stats, budget)
-                    if ev is not None and ev.feasible and _better_air(ev, cand, best_ev, plan, alg, ctx) \
-                            and _nominal_cross_intact(cand, ev, ctx) \
-                            and (win is None or _better_air(ev, cand, win[1], win[0], alg, ctx)):
+                    stats.cross_charged = int(getattr(stats, "cross_charged", 0) or 0) + 1
+                    ev = eval_counted(cand, inst, phys, state, None, "CROSS_INSERT", stats, budget)
+                    j_new = None if ev is None or ev.cost is None else _ej(
+                        ev.cost, cand, inst, phys, 0.0, v13=True, rescue_aware=False)
+                    beats = (j_new is not None and j_ref is not None
+                             and j_new < j_ref - tol)
+                    if beats:
+                        stats.cross_accepted = int(getattr(stats, "cross_accepted", 0) or 0) + 1
+                    if (beats and ev is not None and ev.feasible
+                            and _better_air(ev, cand, best_ev, plan, alg, ctx)
+                            and _nominal_cross_intact(cand, ev, ctx)
+                            and (win is None or _better_air(ev, cand, win[1], win[0], alg, ctx))):
                         win = (cand, ev, ac)
                     spent += budget.used - before
                     if ev is None:
@@ -494,15 +523,15 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
         else:
             budget.eval_limit = total - reserve
         long_start = best_plan
-        if getattr(state, "nominal_cross", False):
-            sp, se = getattr(stats, "same_plan", None), getattr(stats, "same_ev", None)
-            if sp is not None and se is not None:
-                long_start = sp
         _stamp_cross_census(stats, long_start, inst, phys, alg, "_enter")
         res = optimize(long_start, ctx, budget, variant=variant, stats=stats)
         stats.iter_cap = None
         budget.eval_limit = total
         state.defer_cross_repair = False
+        # The shared final descent is the same operator S runs. Support hand-offs stay
+        # inside X's cross operator, so this descent does not grow a different candidate list.
+        if getattr(state, "nominal_cross", False):
+            state.allow_support = False
         if res.plan is not None and res.evaluation is not None and res.evaluation.feasible:
             if best_plan is None or _better_air(res.evaluation, res.plan, best_ev, best_plan, alg, ctx):
                 best_plan, best_ev = res.plan, res.evaluation
@@ -526,6 +555,10 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
         stats.stop_reason = res.stats.stop_reason or "BUDGET"
         stats.wall_s = time.perf_counter() - t0
         stats.counts = dict(res.stats.counts)
+        if getattr(state, "nominal_cross", False):
+            stats.counts["cross_charged"] = int(getattr(stats, "cross_charged", 0) or 0)
+            stats.counts["cross_accepted"] = int(getattr(stats, "cross_accepted", 0) or 0)
+            stats.counts["cross_evals"] = int(getattr(stats, "cross_evals", 0) or 0)
         stats.counts["n_conversion_evals"] = n_conv
         from .alns import publish_j_champion
         best_plan, best_ev = publish_j_champion(best_plan, best_ev, stats, alg, ctx)

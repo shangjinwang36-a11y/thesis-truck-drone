@@ -1008,7 +1008,16 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             if mark > getattr(ctx, "_expected_reeval_mark", 0):
                 ctx._expected_reeval_mark = mark
                 from .hybrid import scenario_score
+                # X only. This fill is not an acceptance test. Scoring it with cross
+                # recourse keeps evaluating after S's same-truck recourse has stopped,
+                # and those extra charges are what walk X off S's remaining search.
+                _saved_cross = None
+                if getattr(ctx.state, "nominal_cross", False) and getattr(alg, "v13_rules", False):
+                    _saved_cross = True
+                    ctx.state.nominal_cross = False
                 scenario_score(best_plan, best_ev, ctx)
+                if _saved_cross:
+                    ctx.state.nominal_cross = True
                 stats.aud("EXPECTED", "true_reeval")
         # X only. Adaptive weights over SKIP and the three cross kinds. S never
         # enters, so S's destroy and repair roulette is unchanged. A kind that
@@ -1033,22 +1042,32 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                 if (stats.iterations % 4 == 0 and best_plan is not None
                         and any(_isc_now(best_plan, s) for s in best_plan.sorties.values())):
                     base_i = best_plan
-                p_i, e_i = try_integrated_cross(base_i, ctx, budget, stats, kind)
                 from .expected_cost import expected_j as _ej
-                # Plain v1.3 J. The rescue proxy does not decide acceptance.
-                j_i = None if e_i is None else _ej(e_i.cost, p_i, inst, phys, 0.0, v13=True, rescue_aware=False)
                 j_b = None if best_ev is None else _ej(best_ev.cost, best_plan, inst, phys, 0.0, v13=True, rescue_aware=False)
-                accepted_cross = (p_i is not None and e_i is not None and j_i is not None and j_b is not None
-                                  and j_i < j_b - alg.cost_tolerance_yuan
+                j_arch = getattr(stats, "j_champion_j", None)
+                j_ref = j_b if j_arch is None else min(j_b, j_arch) if j_b is not None else j_arch
+                charged_before = int(getattr(stats, "cross_charged", 0) or 0)
+                p_i, e_i = try_integrated_cross(base_i, ctx, budget, stats, kind, j_ref=j_ref)
+                charged = int(getattr(stats, "cross_charged", 0) or 0) > charged_before
+                # Plain v1.3 J. Accept only when this beats the best J seen so far.
+                j_i = None if e_i is None else _ej(e_i.cost, p_i, inst, phys, 0.0, v13=True, rescue_aware=False)
+                accepted_cross = (p_i is not None and e_i is not None and j_i is not None and j_ref is not None
+                                  and j_i < j_ref - alg.cost_tolerance_yuan
                                   and _within_makespan_cap(e_i, ctx)
                                   and _nominal_cross_intact(p_i, e_i, ctx))
                 if accepted_cross:
+                    # Keep the cross in the best-J archive only. Putting it in best_plan
+                    # changes later same-truck scores and walks X off S's path.
                     stats.aud("CROSS_INSERT", "best")
+                    stats.cross_accepted = int(getattr(stats, "cross_accepted", 0) or 0) + 1
+                    stats.cross_fail_streak = 0
                     _reward(stats.cross_s, chosen, alg.score_global_best)
-                    best_ev, best_plan = e_i, p_i.clone()
-                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+                    stats.cross_weights[chosen] = stats.cross_weights.get(chosen, 1.0) + 4.0
+                    stats.best_trace.append((stats.eval_requests, best_ev.cost or 0.0, best_ev.z or 0.0))
                 else:
                     _reward(stats.cross_s, chosen, 0.0)
+                    if charged:
+                        _decay_cross_share(stats, chosen)
             rng_op.setstate(_same_rng[0])
             rng_des.setstate(_same_rng[1])
             rng_acc.setstate(_same_rng[2])
@@ -1235,6 +1254,9 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
         stats.counts["j_champion"] = float(stats.j_champion_j)
         cross_j = getattr(stats, "j_cross_champion_j", None)
         stats.counts["j_cross_champion"] = None if cross_j is None else float(cross_j)
+    if getattr(stats, "cross_weights", None):
+        stats.counts["cross_charged"] = int(getattr(stats, "cross_charged", 0) or 0)
+        stats.counts["cross_accepted"] = int(getattr(stats, "cross_accepted", 0) or 0)
     status = "FEASIBLE_LIMIT"
     if stats.stop_reason in ("EVAL_LIMIT", "WALLCLOCK", "MAX_ROUNDS") and best_ev.feasible:
         status = "FEASIBLE_LIMIT"
@@ -1316,6 +1338,15 @@ def _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg, variant="full") -> 
                          (1 - alg.weight_reaction) * w_c[k] + alg.weight_reaction * s_c[k] / n_c[k])
         n_c[k] = 0
         s_c[k] = 0.0
+
+
+def _decay_cross_share(stats, chosen: str) -> None:
+    """X only. A charged cross that does not improve J loses share immediately."""
+    w = stats.cross_weights
+    stats.cross_fail_streak = int(getattr(stats, "cross_fail_streak", 0) or 0) + 1
+    if chosen in w and chosen != "SKIP":
+        w[chosen] = max(0.02, float(w[chosen]) * 0.25)
+    w["SKIP"] = float(w.get("SKIP", 1.0)) + 2.0
 
 
 def _ensure_cross_weights(stats) -> None:
