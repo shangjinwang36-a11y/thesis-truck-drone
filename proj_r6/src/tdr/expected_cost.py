@@ -89,12 +89,51 @@ def recourse_terms(plan, inst, phys, p: float) -> tuple[float, float]:
     return single, pair
 
 
-def expected_j(cost: float | None, plan, inst, phys, p: float, v13: bool = False) -> float | None:
+def _q_with_cross_rescue(plan, inst, phys, sortie, q: float) -> float:
+    """X only. Q_i is the cheaper of ground insertion and a reachable other truck.
+
+    The weights stay 3/(2N) and 1/(N(N-1)). S does not call this.
+    """
+    from .evaluate import is_cross_sortie
+    if q <= 0 or plan is None or not sortie.air or is_cross_sortie(plan, sortie):
+        return q
+    if sortie.launch_vid not in plan.visits:
+        return q
+    launch = plan.visits[sortie.launch_vid].truck
+    end = inst.customer(inst.parcel_to_customer[sortie.air[-1]])
+    mass = sum(inst.parcel_mass[p] for p in sortie.air)
+    near = []
+    for truck, route in plan.routes.items():
+        if truck == launch:
+            continue
+        for vid in route:
+            c = inst.customer(plan.visits[vid].customer)
+            dist = math.hypot(c.x - end.x, c.y - end.y)
+            near.append((dist, vid))
+    near.sort()
+    best = q
+    for dist, _vid in near[:3]:
+        e = phys.fly_energy_kwh(dist, mass) + phys.hover_energy_kwh(phys.recovery_s, mass)
+        if e > phys.e_cap - phys.e_min:
+            continue
+        # The other truck is already visiting this customer, so the truck detour is 0.
+        meet = phys.cost_depot_kwh * e + phys.wage_per_s * phys.recovery_s
+        # Keep half the ground-failure cost. A free meeting would otherwise
+        # dominate J and accept a much more expensive nominal plan.
+        best = min(best, 0.5 * q + 0.5 * meet)
+    return best
+
+
+def expected_j(cost: float | None, plan, inst, phys, p: float, v13: bool = False,
+               rescue_aware: bool = False) -> float | None:
     """Search objective. v1.3 uses 3/(2N) and 1/(N(N-1)), not p=0.2 and p²."""
     if cost is None:
         return None
     rows = _recourse_rows(plan, inst, phys)
-    singles = sum(q for _, q in rows)
+    if rescue_aware and v13:
+        singles = sum(_q_with_cross_rescue(plan, inst, phys, s, q) for s, q in rows)
+    else:
+        singles = sum(q for _, q in rows)
     inter = sum(_interactions(plan, inst, phys, rows))
     n = int(getattr(inst, "n", 0) or 0)
     if v13 and n >= 2:

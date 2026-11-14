@@ -417,37 +417,6 @@ def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_
     return SolveResult(best_plan, best_ev, "FEASIBLE_LIMIT", stats2)
 
 
-def _v13_cross_round(base_plan, base_ev, ctx, budget, stats, rounds: int = 8) -> None:
-    """Try a few cross moves on a copy. The same-truck plan is left as it is.
-
-    A move is kept only when v1.3 J improves and the plan still has a cross sortie.
-    Evaluations count toward the shared 1000. They are not same-truck evaluations.
-    """
-    from .alns import _better_air, _nominal_cross_intact
-    from .cross_nominal import try_cross_convert
-    from .evaluate import is_cross_sortie
-    champ_p = getattr(stats, "cross_champ_plan", None)
-    champ_e = getattr(stats, "cross_champ_ev", None)
-    if champ_e is not None and _better_air(champ_e, champ_p, base_ev, base_plan, ctx.alg, ctx):
-        cur_p, cur_e = champ_p, champ_e
-    else:
-        cur_p, cur_e = base_plan, base_ev
-    ctx.cross_tried = set()
-    for _ in range(rounds):
-        if budget.evals_left() <= 0:
-            break
-        p_x, e_x = try_cross_convert(cur_p, ctx, budget, stats)
-        if p_x is None or e_x is None:
-            break
-        if (_better_air(e_x, p_x, cur_e, cur_p, ctx.alg, ctx)
-                and _nominal_cross_intact(p_x, e_x, ctx)
-                and any(is_cross_sortie(p_x, s) for s in p_x.sorties.values())):
-            cur_p, cur_e = p_x, e_x
-            stats.cross_champ_plan = p_x.clone()
-            stats.cross_champ_ev = e_x
-        # A rejected move stays in cross_tried, so the next call tries another one.
-
-
 def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                   rngs: dict[str, random.Random], eval_budget: int | None = None,
                   variant: str = "full", n_used: int | None = None,
@@ -462,11 +431,8 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                                 alt_start=alt_start if cross_launch else None)
     t0 = time.perf_counter()
     state = initial_state(inst, phys)
-    # Same-truck search uses S's flags. Cross moves are tried afterwards on the
-    # evaluations that search did not spend, so they cannot change its path.
-    want_cross = bool(cross_launch and getattr(alg, "v13_rules", False)
-                      and getattr(alg, "v13_x_nominal", True))
-    state.nominal_cross = bool(cross_launch and getattr(alg, "v13_x_nominal", True) and not want_cross)
+    # X's cross neighbourhood is on from the first descent and the first ALNS iteration.
+    state.nominal_cross = bool(cross_launch and getattr(alg, "v13_x_nominal", True))
     state.defer_cross_repair = False
     state.allow_support = bool(state.nominal_cross and getattr(alg, "support_rendezvous", False))
     stats = SearchStats()
@@ -487,53 +453,58 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
         total = budget.eval_limit
         pA, eA, nA = descent_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
                                   max_eval=alg.nominal_descent_eval_budget,
-                                  allow_cross=bool(getattr(state, "nominal_cross", False))
-                                  and not getattr(alg, "v13_rules", False))
+                                  allow_cross=bool(getattr(state, "nominal_cross", False)
+                                                   and not getattr(alg, "v13_rules", False)))
         pB, eB, nB = conversion_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
                                      max_eval=alg.nominal_air_bootstrap_eval_budget)
         best = None
-        same_anchor = None
-        v13_cross = bool(getattr(state, "nominal_cross", False) and getattr(alg, "v13_rules", False))
-        from .alns import _same_clock
-        for p0, e0 in ((pA, eA), (pB, eB)):
+        # S and X cool and stop each slice by iteration count, not by evaluations.
+        # A cross evaluation therefore cannot shorten X's slice or cool it faster.
+        use_iters = bool(getattr(alg, "v13_rules", False))
+        slice_iters = max(8, int(alg.nominal_start_slice) // 5)
+        # The main repair stays same-truck. The cross operator runs beside it.
+        state.defer_cross_repair = bool(use_iters and getattr(state, "nominal_cross", False))
+        for i, (p0, e0) in enumerate(((pA, eA), (pB, eB))):
             if e0 is None or not e0.feasible:
                 continue
-            if v13_cross:
-                stats.slice_same_cap = _same_clock(stats) + alg.nominal_start_slice
+            if use_iters:
+                stats.iter_cap = slice_iters * (i + 1)
                 budget.eval_limit = total
             else:
                 budget.eval_limit = min(total, budget.used + alg.nominal_start_slice)
             r0 = optimize(p0, ctx, budget, variant=variant, stats=stats)
-            stats.slice_same_cap = None
+            stats.iter_cap = None
             budget.eval_limit = total
             if r0.plan is not None and r0.evaluation is not None and r0.evaluation.feasible:
                 other_ev = None if best is None else best[1]
                 other_plan = None if best is None else best[0]
                 if best is None or _better_air(r0.evaluation, r0.plan, other_ev, other_plan, alg, ctx):
                     best = (r0.plan, r0.evaluation)
-            if v13_cross:
-                sp, se = getattr(stats, "same_plan", None), getattr(stats, "same_ev", None)
-                if se is not None and sp is not None and (
-                        same_anchor is None or _better_air(se, sp, same_anchor[1], same_anchor[0], alg, ctx)):
-                    same_anchor = (sp, se)
         if best is not None:
             best_plan, best_ev = best
         n_conv = nA + nB
         reserve = int(alg.nominal_final_descent_frac * total) if variant == "full" else 0
-        if v13_cross:
-            stats.slice_same_cap = total - reserve
-            budget.eval_limit = total
+        if use_iters:
+            stats.iter_cap = slice_iters * 2 + 120
+            budget.eval_limit = total - reserve
         else:
             budget.eval_limit = total - reserve
-        # Same hand-off S uses. A cross found during a slice stays in cross_champ
-        # and is not the plan the rest of the same-truck search starts from.
-        cont_plan = best_plan
-        res = optimize(cont_plan, ctx, budget, variant=variant, stats=stats)
-        stats.slice_same_cap = None
+        long_start = best_plan
+        if getattr(state, "nominal_cross", False):
+            sp, se = getattr(stats, "same_plan", None), getattr(stats, "same_ev", None)
+            if sp is not None and se is not None:
+                long_start = sp
+        res = optimize(long_start, ctx, budget, variant=variant, stats=stats)
+        stats.iter_cap = None
         budget.eval_limit = total
+        state.defer_cross_repair = False
         if res.plan is not None and res.evaluation is not None and res.evaluation.feasible:
             if best_plan is None or _better_air(res.evaluation, res.plan, best_ev, best_plan, alg, ctx):
                 best_plan, best_ev = res.plan, res.evaluation
+        if getattr(state, "nominal_cross", False):
+            sp, se = getattr(stats, "same_plan", None), getattr(stats, "same_ev", None)
+            if sp is not None and se is not None and _better_air(se, sp, best_ev, best_plan, alg, ctx):
+                best_plan, best_ev = sp, se
         if reserve > 0 and budget.evals_left() > 0:
             # 第三轮：ALNS 后收尾的成本驱动下降（诊断：贪心单步转空送仍能再降 1–1.4% 成本）
             p4, e4, n4 = descent_pass(best_plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
@@ -547,35 +518,6 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
             if p3 is not None and e3 is not None and _better_air(e3, p3, best_ev, best_plan, alg, ctx) \
                     and _nominal_cross_intact(p3, e3, ctx):
                 best_plan, best_ev = p3, e3
-        if want_cross and budget.evals_left() > 0:
-            from .evaluate import is_cross_sortie as _isc
-            state.nominal_cross = True
-            state.allow_support = bool(getattr(alg, "support_rendezvous", False))
-            state.defer_cross_repair = False
-            _v13_cross_round(best_plan, best_ev, ctx, budget, stats, rounds=8)
-            room = min(60, int(budget.evals_left()))
-            if room >= 12:
-                saved_limit = budget.eval_limit
-                budget.eval_limit = budget.used + room
-                stats.slice_same_cap = None
-                resx = optimize(best_plan.clone(), ctx, budget, variant=variant, stats=stats, init_ev=best_ev)
-                budget.eval_limit = total
-                if (resx.plan is not None and resx.evaluation is not None and resx.evaluation.feasible
-                        and any(_isc(resx.plan, s) for s in resx.plan.sorties.values())
-                        and _better_air(resx.evaluation, resx.plan, best_ev, best_plan, alg, ctx)
-                        and _nominal_cross_intact(resx.plan, resx.evaluation, ctx)):
-                    prev_p = getattr(stats, "cross_champ_plan", None)
-                    prev_e = getattr(stats, "cross_champ_ev", None)
-                    if prev_e is None or _better_air(resx.evaluation, resx.plan, prev_e, prev_p, alg, ctx):
-                        stats.cross_champ_plan = resx.plan
-                        stats.cross_champ_ev = resx.evaluation
-            cp = getattr(stats, "cross_champ_plan", None)
-            ce = getattr(stats, "cross_champ_ev", None)
-            if (cp is not None and ce is not None
-                    and any(_isc(cp, s) for s in cp.sorties.values())
-                    and _better_air(ce, cp, best_ev, best_plan, alg, ctx)
-                    and _nominal_cross_intact(cp, ce, ctx)):
-                best_plan, best_ev = cp, ce
         stats.stop_reason = res.stats.stop_reason or "BUDGET"
         stats.wall_s = time.perf_counter() - t0
         stats.counts = dict(res.stats.counts)
@@ -585,8 +527,7 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
     if alg.nominal_descent:
         plan2, ev2, n_conv = descent_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
                                           max_eval=alg.nominal_descent_eval_budget,
-                                          allow_cross=bool(getattr(state, "nominal_cross", False))
-                                          and not getattr(alg, "v13_rules", False))
+                                          allow_cross=bool(getattr(state, "nominal_cross", False)))
     else:
         plan2, ev2, n_conv = conversion_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
                                              max_eval=alg.nominal_air_bootstrap_eval_budget)

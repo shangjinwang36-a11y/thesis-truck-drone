@@ -649,8 +649,9 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
         if budget.evals_left() <= 0:
             stats.stop_reason = "EVAL_LIMIT"
             break
-        slice_cap = getattr(stats, "slice_same_cap", None)
-        if slice_cap is not None and _same_clock(stats) >= int(slice_cap):
+        # Iteration cap, shared by S and X. A cross evaluation does not end the slice.
+        iter_cap = getattr(stats, "iter_cap", None)
+        if iter_cap is not None and stats.iterations >= int(iter_cap):
             stats.stop_reason = "EVAL_LIMIT"
             break
         if budget.wall_limit is not None and budget.time_left() <= 0:
@@ -936,18 +937,37 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                 and getattr(alg, "scenario_aware", False) and best_plan is not None
                 and best_ev is not None and best_ev.feasible):
             every = int(getattr(alg, "expected_reeval_every", 80) or 80)
-            clock = _same_clock(stats) if getattr(stats, "slice_same_cap", None) else stats.eval_requests
-            mark = clock // every if every > 0 else 0
+            if getattr(stats, "iter_cap", None):
+                mark = stats.iterations // 20 if every > 0 else 0
+            else:
+                mark = stats.eval_requests // every if every > 0 else 0
             if mark > getattr(ctx, "_expected_reeval_mark", 0):
                 ctx._expected_reeval_mark = mark
                 from .hybrid import scenario_score
                 scenario_score(best_plan, best_ev, ctx)
                 stats.aud("EXPECTED", "true_reeval")
         # 第 11 轮：只动离电量上限不到 0.05 kWh 的跨车航次。没有这种航次就不评价。
-        # v1.3 keeps these operators out of the same-truck loop. They were moving the
-        # iteration clock, so X's same-truck search left S's and published a different
-        # same-truck plan. Cross moves run on the finished same-truck plan, on the
-        # evaluations that search did not spend.
+        # One cross move per iteration, from iteration 1. It does not replace the
+        # same-truck repair above. Temperature depends on the iteration, not on this eval.
+        if (getattr(ctx.state, "nominal_cross", False) and ctx.mode == "nominal"
+                and getattr(alg, "v13_rules", False) and budget.evals_left() > 0):
+            from .cross_nominal import try_integrated_cross
+            from .evaluate import is_cross_sortie as _isc_now
+            base_i = cur_plan
+            if (stats.iterations % 4 == 0 and best_plan is not None
+                    and any(_isc_now(best_plan, s) for s in best_plan.sorties.values())):
+                base_i = best_plan
+            p_i, e_i = try_integrated_cross(base_i, ctx, budget, stats, stats.iterations)
+            from .expected_cost import expected_j as _ej
+            j_i = None if e_i is None else _ej(e_i.cost, p_i, inst, phys, failure_prob(alg) if False else 0.0, v13=True, rescue_aware=True)
+            j_b = None if best_ev is None else _ej(best_ev.cost, best_plan, inst, phys, 0.0, v13=True, rescue_aware=True)
+            if (p_i is not None and e_i is not None and j_i is not None and j_b is not None
+                    and j_i < j_b - alg.cost_tolerance_yuan
+                    and _within_makespan_cap(e_i, ctx)
+                    and _nominal_cross_intact(p_i, e_i, ctx)):
+                stats.aud("CROSS_INSERT", "best")
+                best_ev, best_plan = e_i, p_i.clone()
+                stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         cross_room = not getattr(alg, "v13_rules", False)
         if (getattr(alg, "x_energy_retarget", False) and getattr(ctx.state, "nominal_cross", False)
                 and ctx.mode == "nominal"
@@ -1159,12 +1179,13 @@ def _same_clock(stats: SearchStats) -> int:
 
 
 def _progress(stats: SearchStats, budget: Budget) -> float:
-    if budget.wall_limit is not None:
+    """Cooling follows iterations. S and X share this, so a cross evaluation does not change it."""
+    if budget.wall_limit is not None and getattr(stats, "iter_cap", None) is None:
         used = time.perf_counter() - budget.start
         return max(0.0, min(1.0, used / budget.wall_limit))
-    cap = getattr(stats, "slice_same_cap", None)
+    cap = getattr(stats, "iter_cap", None)
     if cap:
-        return max(0.0, min(1.0, _same_clock(stats) / max(1, int(cap))))
+        return max(0.0, min(1.0, stats.iterations / max(1, int(cap))))
     return max(0.0, min(1.0, stats.eval_requests / max(1, budget.eval_limit)))
 
 

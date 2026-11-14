@@ -342,3 +342,188 @@ def try_cross_exchange(plan, ctx, budget, stats, n: int | None = None):
         if best_ev is None or (ev.cost is not None and (best_ev.cost is None or ev.cost < best_ev.cost - 1e-9)):
             best_p, best_ev = cand, ev
     return best_p, best_ev
+
+
+def _route_length(inst, plan, truck) -> float:
+    route = plan.routes.get(truck, [])
+    depot = (inst.depot_x, inst.depot_y)
+    prev = depot
+    total = 0.0
+    for vid in route:
+        c = _pos(inst, plan, vid)
+        total += math.hypot(c[0] - prev[0], c[1] - prev[1])
+        prev = c
+    total += math.hypot(depot[0] - prev[0], depot[1] - prev[1])
+    return total
+
+
+def _apply_rec(plan, sid, vid, removable_old: bool) -> bool:
+    so = plan.sorties.get(sid)
+    if so is None:
+        return False
+    old = so.rec_vid
+    so.rec_vid = vid
+    if removable_old and old in plan.visits:
+        ov = plan.visits[old]
+        if not ov.ground and not any(o.launch_vid == old or o.rec_vid == old for o in plan.sorties.values()):
+            plan.remove_visit(old)
+    from .evaluate import has_wait_cycle
+    return not has_wait_cycle(plan)
+
+
+def propose_integrated(plan, ctx, kind: int):
+    """One cross neighbourhood move. No full evaluation.
+
+    kind 0: reassign several same-truck recoveries onto other trucks at once.
+    kind 1: take ground customers off the longest truck and hand them to a drone
+    that recovers on a shorter truck.
+    kind 2: the single best recovery retarget.
+    """
+    if not getattr(getattr(ctx, "state", None), "nominal_cross", False):
+        return None
+    inst, phys = ctx.inst, ctx.phys
+    if kind % 3 == 1:
+        return _relieve_slow_truck(plan, inst, phys)
+    moves = []
+    rt_cache = {}
+
+    def rt(truck):
+        if truck not in rt_cache:
+            rt_cache[truck] = route_times(plan, inst, phys, truck)
+        return rt_cache[truck]
+
+    tails = []
+    for sids in plan.drone_sorties.values():
+        if not sids:
+            continue
+        s = plan.sorties[sids[-1]]
+        if s.started or not s.air or s.launch_vid not in plan.visits or s.rec_vid not in plan.visits:
+            continue
+        if plan.visits[s.launch_vid].truck != plan.visits[s.rec_vid].truck:
+            continue
+        tails.append(s)
+    for s in tails:
+        ta = plan.visits[s.launch_vid].truck
+        rv_old = plan.visits[s.rec_vid]
+        removable = (not rv_old.ground and not any(
+            o.sid != s.sid and (o.launch_vid == rv_old.vid or o.rec_vid == rv_old.vid)
+            for o in plan.sorties.values()))
+        save = 0.0
+        if removable:
+            det = _detour(inst, plan, ta, rv_old.vid)
+            save = phys.c_km * det / 1000.0 + phys.wage_per_s * det / phys.truck_speed_m_s
+        sp = sortie_start(inst, plan, s)
+        _, dep_a = rt(ta)
+        if s.launch_vid not in plan.routes.get(ta, []):
+            continue
+        la = plan.routes[ta].index(s.launch_vid)
+        best = None
+        for tb, route in plan.routes.items():
+            if tb == ta:
+                continue
+            arr_b, _ = rt(tb)
+            for bi, vid in enumerate(route):
+                rp = _pos(inst, plan, vid)
+                try:
+                    e = air_energy(inst, phys, sp, s.air, rp)
+                except KeyError:
+                    continue
+                if e > phys.e_cap - phys.e_min + phys.energy_tol:
+                    continue
+                tt = arr_b[bi] - dep_a[la]
+                mass = sum(inst.parcel_mass[p] for p in s.air)
+                t_air = air_time(inst, phys, sp, s.air, rp)
+                if e + phys.hover_energy_kwh(max(0.0, tt - t_air), 0.0) > phys.e_cap - phys.e_min:
+                    continue
+                sc = save - sync_cost(phys, t_air, tt, mass) - phys.cost_depot_kwh * e
+                if best is None or sc > best[0]:
+                    best = (sc, vid, removable)
+        if best is not None and best[0] > 1e-6:
+            moves.append((best[0], s.sid, best[1], best[2]))
+    if kind % 3 == 2:
+        moves = [(sid, vid, removable) for _sc, sid, vid, removable in moves[:1]]
+    else:
+        moves.sort(reverse=True)
+        # One move per launch truck, at most three, so the trucks do not fight over a visit.
+        chosen = []
+        used_trucks = set()
+        used_vids = set()
+        for sc, sid, vid, removable in moves:
+            truck = plan.visits[plan.sorties[sid].launch_vid].truck
+            if truck in used_trucks or vid in used_vids:
+                continue
+            used_trucks.add(truck)
+            used_vids.add(vid)
+            chosen.append((sid, vid, removable))
+            if len(chosen) >= 3:
+                break
+        moves = chosen
+    if not moves:
+        return _relieve_slow_truck(plan, inst, phys) if kind % 3 == 0 else None
+    cand = plan.clone()
+    applied = 0
+    for item in moves:
+        sid, vid, removable = item[0], item[1], item[2]
+        if _apply_rec(cand, sid, vid, removable):
+            applied += 1
+        else:
+            return None
+    if applied == 0:
+        return None
+    return cand
+
+
+def _relieve_slow_truck(plan, inst, phys):
+    """Hand ground customers on the longest truck to a drone that meets a shorter truck."""
+    from .moves import apply_air, cross_air_candidates, remove_parcel
+    lengths = [( _route_length(inst, plan, t), t) for t in plan.routes]
+    if len(lengths) < 2:
+        return None
+    lengths.sort(reverse=True)
+    slow = lengths[0][1]
+    route = plan.routes.get(slow, [])
+    depot = (inst.depot_x, inst.depot_y)
+    best_det = None
+    for i, vid in enumerate(route):
+        v = plan.visits[vid]
+        if len(v.ground) != 1:
+            continue
+        if any(s.launch_vid == vid or s.rec_vid == vid for s in plan.sorties.values()):
+            continue
+        cc = inst.customer(v.customer)
+        prv = depot if i == 0 else _pos(inst, plan, route[i - 1])
+        nxt = depot if i + 1 == len(route) else _pos(inst, plan, route[i + 1])
+        det = (math.hypot(cc.x - prv[0], cc.y - prv[1]) + math.hypot(nxt[0] - cc.x, nxt[1] - cc.y)
+               - math.hypot(nxt[0] - prv[0], nxt[1] - prv[1]))
+        if best_det is None or det > best_det[0]:
+            best_det = (det, v.ground[0])
+    if best_det is None or best_det[0] <= 0:
+        return None
+    parcel = best_det[1]
+    cand = plan.clone()
+    remove_parcel(cand, parcel)
+    acs = [a for a in cross_air_candidates(cand, inst, phys, parcel, max_cross=4, allow_support=True) if a.cross]
+    if not acs:
+        return None
+    acs.sort(key=lambda a: a.proxy)
+    trial = cand.clone()
+    if not apply_air(trial, inst, parcel, acs[0]):
+        return None
+    return trial
+
+
+def try_integrated_cross(plan, ctx, budget, stats, iteration: int):
+    """One full evaluation of a cross move. Runs from iteration 1 of X's nominal search."""
+    from .alns import eval_counted
+    cand = propose_integrated(plan, ctx, iteration)
+    if cand is None or budget is None or budget.evals_left() <= 0:
+        return None, None
+    ev = eval_counted(cand, ctx.inst, ctx.phys, ctx.state, ctx.H, "CROSS_INSERT", stats, budget)
+    stats.aud("CROSS_INSERT", "calls")
+    if ev is None:
+        return None, None
+    if not ev.feasible:
+        stats.aud("CROSS_INSERT", "infeasible")
+        return None, None
+    stats.aud("CROSS_INSERT", "feasible")
+    return cand, ev
