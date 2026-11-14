@@ -164,10 +164,10 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         champ_p = getattr(res.stats, "j_champion_plan", None)
         champ_e = getattr(res.stats, "j_champion_ev", None)
         if champ_p is not None and champ_e is not None and champ_e.cost is not None and ev.cost is not None:
-            from .expected_cost import expected_j
+            from .expected_cost import planning_j
             from .alns import _nominal_cross_intact, SolveContext
-            j_now = expected_j(ev.cost, res.plan, inst, phys, 0.0, v13=True) if ev.feasible else None
-            j_ch = expected_j(champ_e.cost, champ_p, inst, phys, 0.0, v13=True)
+            j_now = planning_j(ev.cost, res.plan, inst, phys, alg) if ev.feasible else None
+            j_ch = planning_j(champ_e.cost, champ_p, inst, phys, alg)
             ctx_pub = SolveContext(inst, phys, alg, initial_state(inst, phys), None, "nominal")
             ctx_pub.state.nominal_cross = True
             if (j_ch is not None and (j_now is None or j_ch < j_now - alg.cost_tolerance_yuan)

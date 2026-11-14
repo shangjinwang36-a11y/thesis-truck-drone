@@ -1,0 +1,232 @@
+{
+ "case_id": "R50",
+ "status": "FEASIBLE",
+ "plan_id": "R50-nominal-1.0.0",
+ "H_s": 6467.47546599012,
+ "cost": 448.5420949373863,
+ "z_s": 4130.041171767285,
+ "n_sorties": 17,
+ "n_air_parcels": 36,
+ "n_visits": 27,
+ "eval_requests": 242,
+ "wall_s": 12.180527587999677,
+ "verified": true,
+ "verified_plan": true,
+ "start_trucks": null,
+ "start_costs": {
+  "None": 448.5420949373863
+ },
+ "distance_km": 121.20228237438162,
+ "cost_breakdown": {
+  "truck_km": 121.20228237438162,
+  "c_km": 203.24774338207177,
+  "driver_s": 17163.63207048556,
+  "c_driver": 241.98236913337826,
+  "ac_kwh": 0.0,
+  "net_kwh": 0.0,
+  "c_vehicle": 0.0,
+  "depot_refill_kwh": 4.077613198884018,
+  "c_depot": 3.3119824219362264,
+  "swaps": 3.0,
+  "overtime_s": 0.0,
+  "c_overtime": 0.0
+ },
+ "n_cross_sorties": 0,
+ "cross_cand_emin": 75,
+ "cross_cand_floor": 56,
+ "cross_cand_emin_enter": null,
+ "cross_cand_floor_enter": null,
+ "cross_weights": null,
+ "cross_selects": null,
+ "schedule_rejects": null,
+ "j_champion": 466.05193923117474,
+ "j_cross_champion": null,
+ "cross_charged": null,
+ "cross_accepted": null,
+ "cross_evals": null,
+ "n_screens": 2216,
+ "cross_launch": false,
+ "audit": {
+  "SCREEN": {
+   "skip": 1168
+  },
+  "RENDEZVOUS_RESOURCE": {
+   "calls": 31,
+   "infeasible": 29,
+   "feasible": 2,
+   "best": 2,
+   "accepted": 2
+  },
+  "R:GREEDY_PROXY": {
+   "calls": 53,
+   "infeasible": 49,
+   "feasible": 4,
+   "best": 4,
+   "accepted": 4
+  },
+  "SUPPORT_VISIT": {
+   "calls": 30,
+   "infeasible": 29,
+   "feasible": 1,
+   "best": 1,
+   "accepted": 1
+  },
+  "SORTIE_REGROUP": {
+   "calls": 57,
+   "infeasible": 54,
+   "feasible": 3,
+   "best": 3,
+   "accepted": 3
+  },
+  "AFFECTED_SORTIE": {
+   "calls": 16,
+   "infeasible": 16
+  },
+  "GROUND_TO_AIR": {
+   "calls": 16,
+   "infeasible": 15,
+   "feasible": 1,
+   "best": 1,
+   "accepted": 1
+  },
+  "R:AIR_FIRST": {
+   "calls": 46,
+   "infeasible": 45,
+   "feasible": 1,
+   "best": 1,
+   "accepted": 1
+  },
+  "ENERGY_CHAIN": {
+   "calls": 14,
+   "infeasible": 14
+  },
+  "R:REGRET2_PROXY": {
+   "calls": 81,
+   "infeasible": 79,
+   "feasible": 2,
+   "best": 2,
+   "accepted": 2
+  },
+  "RANDOM_DEPENDENCY": {
+   "calls": 16,
+   "infeasible": 16
+  },
+  "SCENARIO": {
+   "evaluated": 6,
+   "infeasible": 4
+  },
+  "EXPECTED": {
+   "true_reeval": 4
+  }
+ },
+ "reject": {
+  "NOMINAL_AIR_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 22,
+  "SCENARIO_RECOURSE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 4
+ },
+ "last_improvement_iter": 159,
+ "n_iterations": 180,
+ "best_trace": [
+  [
+   0,
+   471.6529670790026,
+   4130.750098351933
+  ],
+  [
+   100,
+   469.16448305534016,
+   4232.5819797961
+  ],
+  [
+   112,
+   468.5037498316354,
+   4232.5819797961
+  ],
+  [
+   116,
+   468.29935891642356,
+   4223.484080473643
+  ],
+  [
+   129,
+   467.2516983664488,
+   4249.707699803829
+  ],
+  [
+   0,
+   566.6746988273336,
+   5517.215388443566
+  ],
+  [
+   0,
+   467.2516983664488,
+   4249.707699803829
+  ],
+  [
+   133,
+   459.30343283402647,
+   4272.569802680125
+  ],
+  [
+   145,
+   457.87937905915084,
+   4267.755157862921
+  ],
+  [
+   147,
+   455.68703790191176,
+   4267.755157862921
+  ],
+  [
+   159,
+   455.43402989574474,
+   4267.222943430792
+  ],
+  [
+   160,
+   453.75694888464767,
+   4236.9474879209065
+  ],
+  [
+   172,
+   451.27702262096085,
+   4132.818811054194
+  ],
+  [
+   175,
+   450.50379332855084,
+   4132.818811054194
+  ],
+  [
+   187,
+   448.83194864989065,
+   4132.818811054194
+  ],
+  [
+   189,
+   448.78295478965754,
+   4132.818811054194
+  ],
+  [
+   201,
+   448.5573759898975,
+   4130.4777140127935
+  ]
+ ],
+ "two_phase_b": null,
+ "phase1_evals": null,
+ "phase1_cost": null,
+ "phase1_cross": null,
+ "phase1_makespan": null,
+ "makespan_cap_effective": null,
+ "phase1_audit": null,
+ "n_route_columns": null,
+ "n_link_columns": null,
+ "n_sync_columns": null,
+ "adopted_s_nominal": false,
+ "adopt_reason": null,
+ "n_cross_before_repair": null,
+ "cross_repair": [],
+ "makespan_cap": null,
+ "cap_basis": "makespan",
+ "makespan_s": 4130.041171767285
+}

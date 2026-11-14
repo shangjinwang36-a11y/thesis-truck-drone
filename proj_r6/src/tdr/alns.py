@@ -171,13 +171,11 @@ def _better_air(ev: Evaluation | None, plan: Plan | None,
     # 情景分本身更低的方案。阶段2从该方案出发，只有情景分变好才接受。
     if (ctx.mode == "nominal" and getattr(alg, "expected_accept", False)
             and plan is not None and ev.feasible and ev.cost is not None):
-        from .expected_cost import expected_j, failure_prob
-        p = failure_prob(alg)
-        v13 = bool(getattr(alg, "v13_rules", False))
-        j_new = expected_j(ev.cost, plan, ctx.inst, ctx.phys, p, v13=v13)
+        from .expected_cost import planning_j
+        j_new = planning_j(ev.cost, plan, ctx.inst, ctx.phys, alg)
         j_old = None
         if other is not None and other.feasible and other.cost is not None and other_plan is not None:
-            j_old = expected_j(other.cost, other_plan, ctx.inst, ctx.phys, p, v13=v13)
+            j_old = planning_j(other.cost, other_plan, ctx.inst, ctx.phys, alg)
         if j_new is not None and (j_old is None or j_new < j_old - alg.cost_tolerance_yuan):
             return True
         if j_new is not None and j_old is not None and abs(j_new - j_old) <= alg.cost_tolerance_yuan:
@@ -226,11 +224,10 @@ def _better_air(ev: Evaluation | None, plan: Plan | None,
 
 def _incubate_cross(cand_plan, cur_plan, cand_ev, cur_ev, inst, phys, alg) -> bool:
     """新跨车组件可以先留在当前解里，升高不超过它自己的期望补救。不改全局最优。"""
-    from .expected_cost import expected_j, failure_prob, insurance_room
+    from .expected_cost import failure_prob, insurance_room, planning_j
     p_fail = failure_prob(alg)
-    v13 = bool(getattr(alg, "v13_rules", False))
-    j_new = expected_j(cand_ev.cost, cand_plan, inst, phys, p_fail, v13=v13)
-    j_cur = expected_j(cur_ev.cost, cur_plan, inst, phys, p_fail, v13=v13)
+    j_new = planning_j(cand_ev.cost, cand_plan, inst, phys, alg)
+    j_cur = planning_j(cur_ev.cost, cur_plan, inst, phys, alg)
     if j_new is None or j_cur is None:
         return False
     return j_new <= j_cur + insurance_room(cand_plan, cur_plan, inst, phys, p_fail) + alg.cost_tolerance_yuan
@@ -320,8 +317,8 @@ def _note_j_champion(stats, plan, ev, alg, ctx) -> None:
         return
     if not _nominal_cross_intact(plan, ev, ctx):
         return
-    from .expected_cost import expected_j
-    j = expected_j(ev.cost, plan, ctx.inst, ctx.phys, 0.0, v13=True)
+    from .expected_cost import planning_j
+    j = planning_j(ev.cost, plan, ctx.inst, ctx.phys, alg)
     if j is None:
         return
     old = getattr(stats, "j_champion_j", None)
@@ -872,11 +869,9 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                 stagnation += 1
             elif cand_ev.feasible:
                 if ctx.mode == "nominal" and getattr(alg, "expected_accept", False):
-                    from .expected_cost import expected_j, failure_prob
-                    p_fail = failure_prob(alg)
-                    v13 = bool(getattr(alg, "v13_rules", False))
-                    j_new = expected_j(cand_ev.cost, cand_plan, inst, phys, p_fail, v13=v13)
-                    j_cur = expected_j(cur_ev.cost, cur_plan, inst, phys, p_fail, v13=v13) if cur_ev is not None else None
+                    from .expected_cost import planning_j
+                    j_new = planning_j(cand_ev.cost, cand_plan, inst, phys, alg)
+                    j_cur = planning_j(cur_ev.cost, cur_plan, inst, phys, alg) if cur_ev is not None else None
                     dc = 0.0 if j_new is None or j_cur is None else j_new - j_cur
                 else:
                     from .hybrid import cached_scenario_cost
@@ -1459,7 +1454,8 @@ def _geometry_evaluate(plan: Plan, ctx: SolveContext, stats: SearchStats, reason
             slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0)
             tol = float(getattr(ctx.alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
             if screen_nominal_j(
-                    p, inst, phys, ctx.H, slack, getattr(stats, "j_champion_j", None), tol, stats) is None:
+                    p, inst, phys, ctx.H, slack, getattr(stats, "j_champion_j", None), tol, stats,
+                    alg=ctx.alg) is None:
                 stats.aud("SCREEN", "skip")
                 continue
         ev = eval_counted(p, inst, phys, ctx.state, ctx.H, reason, stats, budget) if budget else \
@@ -1510,7 +1506,7 @@ def coordinate_polish(plan: Plan, ctx: SolveContext, stats: SearchStats,
                     tol = float(getattr(alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
                     if screen_nominal_j(
                             cand, inst, phys, ctx.H, slack,
-                            getattr(stats, "j_champion_j", None), tol, stats) is None:
+                            getattr(stats, "j_champion_j", None), tol, stats, alg=alg) is None:
                         continue
                 extra += 1
                 ev = eval_counted(cand, inst, phys, ctx.state, ctx.H, "COORDINATE", stats, budget)

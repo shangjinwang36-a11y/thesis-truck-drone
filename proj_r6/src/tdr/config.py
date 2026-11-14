@@ -330,6 +330,10 @@ class AlgorithmConfig:
     # 只进入 X 的修复代理和接受准则；写入结果的仍是真实 C_res。S 不读这两个字段。
     x_risk_price_air: bool = False
     failure_prob: float = 0.0
+    # v1.3 default is the K∈{1,2} model. bernoulli_p is the optional independent model;
+    # its probability is bernoulli_p and is also the planning weight. No separate weight.
+    failure_model: str = "v13_k12"
+    bernoulli_p: float | None = None
     # 两阶段名义：阶段2 预算 b（None=不启用；与 build 参数 two_phase_b 二选一，参数优先）
     nominal_two_phase_b: int | None = None
     crn_per_iteration: bool = False          # 共同随机数：按(种子,算例,重规划,轮次)重置随机流（S/X 对称）

@@ -91,8 +91,25 @@ def _alg(cfg, case_id, ablation: str = "full"):
     return phys, alg
 
 
+def _bind_failure(alg, failure_model: str, bernoulli_p):
+    """Default stays the K∈{1,2} model. Bernoulli uses p as the only failure weight."""
+    alg.failure_model = failure_model or "v13_k12"
+    if alg.failure_model == "bernoulli_p":
+        if bernoulli_p is None or not (0.0 < float(bernoulli_p) < 1.0):
+            raise SystemExit("bernoulli_p needs a probability in (0, 1)")
+        alg.bernoulli_p = float(bernoulli_p)
+    return alg
+
+
+def _world(inst, case, seed, failure_model, bernoulli_p):
+    from tdr.hidden_world import make_world
+    if failure_model == "bernoulli_p":
+        return make_world(inst, case, seed, "bernoulli", float(bernoulli_p))
+    return make_world(inst, case, seed, "default")
+
+
 def _nominal_one(args):
-    cfg, case, strategy, out_root, ablation = args
+    cfg, case, strategy, out_root, ablation, failure_model, bernoulli_p = args
     from tdr.data import load_instance
     from tdr.config import load_package
     from tdr.experiment import build_case_nominal
@@ -100,6 +117,7 @@ def _nominal_one(args):
     del assert_seed_allowed
     pkg = load_package(ROOT / "data" / "package_light.json")
     phys, alg = _alg(cfg, case, ablation)
+    _bind_failure(alg, failure_model, bernoulli_p)
     inst = load_instance(pkg, case)
     dest = Path(out_root) / "nominal" / strategy / case
     t0 = time.perf_counter()
@@ -115,25 +133,25 @@ def _nominal_one(args):
 
 
 def _episode_one(args):
-    cfg, case, seed, nom_root, ablation = args
+    cfg, case, seed, nom_root, ablation, failure_model, bernoulli_p = args
     from tdr.config import load_package
     from tdr.data import load_instance
     from tdr.evaluate import evaluate_plan, is_cross_sortie
     from tdr.experiment import load_case_nominal
-    from tdr.hidden_world import HiddenWorld
     from tdr.schedule import initial_state
     from tdr import simulate
     from tdr.v13 import assert_seed_allowed, planner_log_record
     assert_seed_allowed(seed, formal=False)
     pkg = load_package(ROOT / "data" / "package_light.json")
     phys, alg = _alg(cfg, case, ablation)
+    _bind_failure(alg, failure_model, bernoulli_p)
     inst = load_instance(pkg, case)
     H = float(cfg["cases"][case]["H_case_s"])
     plan_s, _, _ = load_case_nominal(inst, Path(nom_root) / "nominal" / "S" / case)
     plan_x, _, _ = load_case_nominal(inst, Path(nom_root) / "nominal" / "X" / case)
     # Audit-only hidden set, built after the plans are fixed and not passed to the planner.
-    hidden = list(HiddenWorld(inst, case, seed).finish_episode().hidden_failure_parcels)
-    out = {"case": case, "seed": seed, "H": H}
+    hidden = list(_world(inst, case, seed, failure_model, bernoulli_p).finish_episode().hidden_failure_parcels)
+    out = {"case": case, "seed": seed, "H": H, "n_hidden_failures": len(hidden)}
     plans = {"S": (plan_s, "S"), "R": (plan_s, "X"), "X": (plan_x, "X")}
     for strat, (plan, recovery) in plans.items():
         nom = evaluate_plan(plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
@@ -144,7 +162,7 @@ def _episode_one(args):
             rec.update(status="NO_LEGAL_COMPLETION_FOUND", cost=None, notes=nom.violations[:3])
             out[strat] = rec
             continue
-        world = HiddenWorld(inst, case, seed)
+        world = _world(inst, case, seed, failure_model, bernoulli_p)
         rngs = simulate.derive_rngs(alg.base_algorithm_seed, case, "recovery", 0, public_history=())
         t0 = time.perf_counter()
         ep = simulate.run_episode(inst, plan, nom, H, phys, world, recovery, alg, rngs,
@@ -269,7 +287,11 @@ def main():
     parser.add_argument("--which", choices=("tune", "dev", "both"), default="both")
     parser.add_argument("--ablation", default="full",
                         choices=("full", "norescue", "norank", "nonominal", "nosync"))
+    parser.add_argument("--failure-model", default="v13_k12", choices=("v13_k12", "bernoulli_p"))
+    parser.add_argument("--p", type=float, default=None)
     args = parser.parse_args()
+    if args.failure_model == "bernoulli_p" and (args.p is None or not (0.0 < args.p < 1.0)):
+        raise SystemExit("bernoulli_p needs --p in (0, 1)")
     from tdr.v13 import git_run_metadata, load_run_config
     cfg, view, digest = load_run_config(formal=False, m1=M1, m2=M2)
     out = Path(args.out)
@@ -285,16 +307,19 @@ def main():
     else:
         seeds = list(range(101, 111)) + list(range(1, 11))
     t0 = time.perf_counter()
-    nom_jobs = [(cfg, c, s, str(out), args.ablation) for c in cases for s in ("S", "X")]
+    fail = (args.failure_model, args.p)
+    nom_jobs = [(cfg, c, s, str(out), args.ablation, *fail) for c in cases for s in ("S", "X")]
     with Pool(args.workers) as pool:
         nominals = pool.map(_nominal_one, nom_jobs)
     print("nominal done", time.perf_counter() - t0, flush=True)
-    ep_jobs = [(cfg, c, seed, str(out), args.ablation) for c in cases for seed in seeds]
+    ep_jobs = [(cfg, c, seed, str(out), args.ablation, *fail) for c in cases for seed in seeds]
     with Pool(args.workers) as pool:
         episodes = pool.map(_episode_one, ep_jobs)
     print("episodes done", time.perf_counter() - t0, flush=True)
     summary = _summarize(episodes, nominals)
     summary["ablation"] = args.ablation
+    summary["failure_model"] = args.failure_model
+    summary["bernoulli_p"] = args.p
     summary["m1"] = M1
     summary["m2"] = M2
     summary["resolved_sha256"] = digest

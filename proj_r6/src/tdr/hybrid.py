@@ -111,11 +111,22 @@ def _scenarios_of(ctx):
             if store is None:
                 store = {}
                 alg._v13_scenario_store = store
-            if inst.case_id not in store:
+            if getattr(alg, "failure_model", "v13_k12") == "bernoulli_p":
+                from .v13 import bernoulli_training_scenarios
+                key = (inst.case_id, "bernoulli", float(alg.bernoulli_p))
+                if key not in store:
+                    ids = [c.parcel_id for c in inst.customers]
+                    n_sc = int(alg.v13_m1 or 0) + int(alg.v13_m2 or 0)
+                    store[key] = bernoulli_training_scenarios(
+                        inst.case_id, ids, n_sc, float(alg.bernoulli_p), int(alg.base_algorithm_seed))
+                ready = store[key]
+            elif inst.case_id not in store:
                 ids = [c.parcel_id for c in inst.customers]
                 store[inst.case_id] = training_scenarios(
                     inst.case_id, ids, int(alg.v13_m1), int(alg.v13_m2), int(alg.base_algorithm_seed))
-            ready = store[inst.case_id]
+                ready = store[inst.case_id]
+            else:
+                ready = store[inst.case_id]
         else:
             ready = sample_failure_scenarios(
                 inst.case_id, [c.parcel_id for c in inst.customers],
@@ -234,7 +245,12 @@ def scenario_score(plan, ev, ctx) -> float | None:
                 buckets[kind].append(float(ev.cost) + float(penalty))
             else:
                 buckets[kind].append(float(rev.cost))
-    if getattr(alg, "v13_rules", False):
+    if getattr(alg, "failure_model", "v13_k12") == "bernoulli_p":
+        costs = buckets["flat"]
+        if not costs:
+            return None
+        score = sum(costs) / len(costs)
+    elif getattr(alg, "v13_rules", False):
         from .v13 import j_hat
         if not buckets["single"] or not buckets["pair"]:
             return None

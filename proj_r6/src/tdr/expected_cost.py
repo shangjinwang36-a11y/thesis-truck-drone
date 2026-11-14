@@ -125,8 +125,12 @@ def _q_with_cross_rescue(plan, inst, phys, sortie, q: float) -> float:
 
 
 def expected_j(cost: float | None, plan, inst, phys, p: float, v13: bool = False,
-               rescue_aware: bool = False) -> float | None:
-    """Search objective. v1.3 uses 3/(2N) and 1/(N(N-1)), not p=0.2 and p²."""
+               rescue_aware: bool = False, weight_pair: float | None = None) -> float | None:
+    """Search objective. v1.3 uses 3/(2N) and 1/(N(N-1)), not p=0.2 and p².
+
+    weight_pair is set only for the Bernoulli model: then the weights are p and p².
+    Leaving it unset keeps the v1.3 formula even if p is passed in.
+    """
     if cost is None:
         return None
     rows = _recourse_rows(plan, inst, phys)
@@ -136,14 +140,20 @@ def expected_j(cost: float | None, plan, inst, phys, p: float, v13: bool = False
         singles = sum(q for _, q in rows)
     inter = sum(_interactions(plan, inst, phys, rows))
     n = int(getattr(inst, "n", 0) or 0)
-    if v13 and n >= 2:
+    if v13 and n >= 2 and weight_pair is None:
         return float(cost) + (3.0 / (2.0 * n)) * singles + (1.0 / (n * (n - 1))) * inter
     p = float(p or 0.0)
-    return float(cost) + p * singles + (p * p) * inter
+    pair = p * p if weight_pair is None else float(weight_pair)
+    return float(cost) + p * singles + pair * inter
 
 
 def failure_prob(alg) -> float:
-    """Main-experiment planning weight. v1.3 is 3/(2N). There is no 0.2 default."""
+    """Planning failure probability. v1.3 is 3/(2N). Bernoulli uses its own p. There is no 0.2 default."""
+    if getattr(alg, "failure_model", "v13_k12") == "bernoulli_p":
+        p = getattr(alg, "bernoulli_p", None)
+        if p is None or not (0.0 < float(p) < 1.0):
+            raise RuntimeError("bernoulli_p is the failure model and needs a probability in (0, 1)")
+        return float(p)
     if getattr(alg, "v13_rules", False):
         n = int(getattr(alg, "v13_n", 0) or 0)
         if n < 2:
@@ -151,6 +161,16 @@ def failure_prob(alg) -> float:
         return 3.0 / (2.0 * n)
     p = float(getattr(alg, "failure_prob", 0.0) or 0.0)
     return p
+
+
+def planning_j(cost, plan, inst, phys, alg, rescue_aware: bool = False):
+    """Objective for the active failure model. S and X call this with the same alg fields."""
+    p = failure_prob(alg)
+    v13 = bool(getattr(alg, "v13_rules", False))
+    pair = None
+    if getattr(alg, "failure_model", "v13_k12") == "bernoulli_p":
+        pair = p * p
+    return expected_j(cost, plan, inst, phys, p, v13=v13, rescue_aware=rescue_aware, weight_pair=pair)
 
 
 def cost_gap_discards_nominal(expected_accept: bool, nominal_is_worse: bool) -> bool:

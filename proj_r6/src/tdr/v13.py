@@ -456,6 +456,20 @@ def scenario_rng(case_id: str, base_algorithm_seed: int) -> random.Random:
     return random.Random(seed)
 
 
+def bernoulli_training_scenarios(case_id: str, eligible_ids: Sequence[str], n_scenarios: int,
+                                 p: float, base_algorithm_seed: int) -> list[frozenset]:
+    """Independent Bernoulli draws. Same isolated stream for S and X. Not the K∈{1,2} sampler."""
+    if n_scenarios <= 0:
+        raise ConfigError("Bernoulli scenario count must be positive")
+    if not 0.0 < float(p) < 1.0:
+        raise ConfigError("bernoulli_p must lie in (0, 1)")
+    payload = json.dumps(["tdr-plan-scenarios-bernoulli-v1.4", case_id, int(base_algorithm_seed), float(p)],
+                         ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    rng = random.Random(int.from_bytes(hashlib.sha256(payload).digest(), "big"))
+    ids = sorted(eligible_ids)
+    return [frozenset(i for i in ids if rng.random() < float(p)) for _ in range(int(n_scenarios))]
+
+
 def training_scenarios(case_id: str, eligible_ids: Sequence[str], m1: int, m2: int,
                        base_algorithm_seed: int) -> tuple[list[frozenset], list[frozenset]]:
     """M1 uniform singletons and M2 uniform pairs. Shared by S and X. Independent draws."""

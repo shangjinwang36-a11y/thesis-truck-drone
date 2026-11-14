@@ -445,12 +445,17 @@ def scheduled_execution_cost(plan, inst, phys, H, slack_s: float, state=None,
             + phys.cost_depot_kwh * refill)
 
 
-def scheduled_plain_j(plan, inst, phys, H, slack_s: float, state=None):
-    """Plain v1.3 J from the scheduler timeline. None when the plan is infeasible."""
-    from .expected_cost import expected_j
+def scheduled_plain_j(plan, inst, phys, H, slack_s: float, state=None, alg=None):
+    """Plain planning J from the scheduler timeline. None when the plan is infeasible.
+
+    The default is the v1.3 formula. Bernoulli uses p and p² when alg says so.
+    """
+    from .expected_cost import expected_j, planning_j
     cost = scheduled_execution_cost(plan, inst, phys, H, slack_s, state=state, nominal_floor=True)
     if cost is None:
         return None
+    if alg is not None:
+        return planning_j(cost, plan, inst, phys, alg)
     return expected_j(cost, plan, inst, phys, 0.0, v13=True, rescue_aware=False)
 
 
@@ -468,10 +473,10 @@ def _beats(value, champion, tol: float) -> bool:
     return float(value) < float(champion) - tol
 
 
-def screen_nominal_j(plan, inst, phys, H, slack_s: float, champion, tol: float, stats):
+def screen_nominal_j(plan, inst, phys, H, slack_s: float, champion, tol: float, stats, alg=None):
     """Shared nominal screen. S and X both call this before a charged evaluation."""
     _count_screen(stats)
-    j = scheduled_plain_j(plan, inst, phys, H, slack_s)
+    j = scheduled_plain_j(plan, inst, phys, H, slack_s, alg=alg)
     if not _beats(j, champion, tol):
         return None
     return j
@@ -632,7 +637,10 @@ def propose_integrated(plan, ctx, kind: int):
         la = plan.routes[ta].index(s.launch_vid)
         floor = _floor_kwh(phys, float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0))
         n_el = max(2, int(getattr(inst, "n", 0) or 0))
-        p_single = 3.0 / (2.0 * n_el)
+        if getattr(ctx.alg, "failure_model", "v13_k12") == "bernoulli_p":
+            p_single = float(ctx.alg.bernoulli_p)
+        else:
+            p_single = 3.0 / (2.0 * n_el)
         end = inst.customer(inst.parcel_to_customer[s.air[-1]])
         best = None
         for tb, route in plan.routes.items():
@@ -746,7 +754,10 @@ def _relieve_slow_truck(plan, ctx):
         return None
     floor = _floor_kwh(phys, float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0))
     n_el = max(2, int(getattr(inst, "n", 0) or 0))
-    p_single = 3.0 / (2.0 * n_el)
+    if getattr(ctx.alg, "failure_model", "v13_k12") == "bernoulli_p":
+        p_single = float(ctx.alg.bernoulli_p)
+    else:
+        p_single = 3.0 / (2.0 * n_el)
     route = plan.routes.get(slow, [])
     depot = (inst.depot_x, inst.depot_y)
     ranked = []
@@ -816,7 +827,8 @@ def try_integrated_cross(plan, ctx, budget, stats, kind: int, j_ref: float | Non
         return None, None
     slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0)
     tol = float(getattr(ctx.alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
-    j_new = screen_nominal_j(cand, ctx.inst, ctx.phys, getattr(ctx, "H", None), slack, j_ref, tol, stats)
+    j_new = screen_nominal_j(cand, ctx.inst, ctx.phys, getattr(ctx, "H", None), slack, j_ref, tol, stats,
+                             alg=ctx.alg)
     if j_new is None:
         stats.aud("CROSS_INSERT", "proxy_skip")
         return None, None
