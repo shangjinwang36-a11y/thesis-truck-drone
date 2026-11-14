@@ -159,6 +159,22 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         slack_s = float(getattr(alg, "x_rendezvous_slack_s", 0.0) or 0.0)
         res.plan, repair_actions = repair_nominal_cross(res.plan, inst, phys, slack_s)
         ev = evaluate_plan(res.plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+        # Repair may delete a cross that was the best plain J. Publish that champion
+        # when it is still legal. S has the same archive; a same-truck champion is unchanged.
+        champ_p = getattr(res.stats, "j_champion_plan", None)
+        champ_e = getattr(res.stats, "j_champion_ev", None)
+        if champ_p is not None and champ_e is not None and champ_e.cost is not None and ev.cost is not None:
+            from .expected_cost import expected_j
+            from .alns import _nominal_cross_intact, SolveContext
+            j_now = expected_j(ev.cost, res.plan, inst, phys, 0.0, v13=True) if ev.feasible else None
+            j_ch = expected_j(champ_e.cost, champ_p, inst, phys, 0.0, v13=True)
+            ctx_pub = SolveContext(inst, phys, alg, initial_state(inst, phys), None, "nominal")
+            ctx_pub.state.nominal_cross = True
+            if (j_ch is not None and (j_now is None or j_ch < j_now - alg.cost_tolerance_yuan)
+                    and _nominal_cross_intact(champ_p, champ_e, ctx_pub)):
+                res.plan = champ_p.clone()
+                ev = evaluate_plan(res.plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+                repair_actions = list(repair_actions) + ["kept_best_j"]
     adopted_s = False
     adopt_reason = None
     if (adopt_from and cross_launch and ev is not None
@@ -441,6 +457,8 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         "cross_weights": res.stats.counts.get("cross_weights"),
         "cross_selects": res.stats.counts.get("cross_selects"),
         "schedule_rejects": res.stats.counts.get("schedule_rejects"),
+        "j_champion": res.stats.counts.get("j_champion"),
+        "j_cross_champion": res.stats.counts.get("j_cross_champion"),
         "cross_launch": bool(cross_launch),
         "audit": res.stats.counts.get("audit"), "reject": res.stats.counts.get("reject"),
         "last_improvement_iter": res.stats.counts.get("last_improvement_iter"),

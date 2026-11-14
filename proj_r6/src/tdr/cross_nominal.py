@@ -526,7 +526,7 @@ def propose_integrated(plan, ctx, kind: int):
     if not getattr(getattr(ctx, "state", None), "nominal_cross", False):
         return None
     inst, phys = ctx.inst, ctx.phys
-    if kind % 3 == 1:
+    if kind % 4 == 1:
         return _relieve_slow_truck(plan, ctx)
     moves = []
     rt_cache = {}
@@ -597,34 +597,30 @@ def propose_integrated(plan, ctx, kind: int):
                     best = (sc, vid, removable)
         if best is not None and best[0] > 1e-6:
             moves.append((best[0], s.sid, best[1], best[2]))
-    if kind % 3 == 2:
-        moves = [(sid, vid, removable) for _sc, sid, vid, removable in moves[:1]]
-    else:
-        moves.sort(reverse=True)
-        # One move per launch truck, at most three, so the trucks do not fight over a visit.
-        chosen = []
-        used_trucks = set()
-        used_vids = set()
-        for sc, sid, vid, removable in moves:
-            truck = plan.visits[plan.sorties[sid].launch_vid].truck
-            if truck in used_trucks or vid in used_vids:
-                continue
-            used_trucks.add(truck)
-            used_vids.add(vid)
-            chosen.append((sid, vid, removable))
-            if len(chosen) >= 3:
-                break
-        moves = chosen
+    width = 1 if kind % 4 == 2 else (2 if kind % 4 == 3 else 3)
+    moves.sort(reverse=True)
+    # One move per launch truck. Width 2 is the pair insertion the ceiling found useful.
+    chosen = []
+    used_trucks = set()
+    used_vids = set()
+    for sc, sid, vid, removable in moves:
+        truck = plan.visits[plan.sorties[sid].launch_vid].truck
+        if truck in used_trucks or vid in used_vids:
+            continue
+        used_trucks.add(truck)
+        used_vids.add(vid)
+        chosen.append((sid, vid, removable))
+        if len(chosen) >= width:
+            break
+    moves = chosen
     bundles = []
-    if moves and kind % 3 != 2:
+    if len(moves) >= 2:
         bundles.append(moves)
-        bundles.extend([[item] for item in moves])
-    elif moves:
-        bundles.append(moves)
+    bundles.extend([[item] for item in moves])
     found = _first_on_schedule(plan, ctx, bundles)
     if found is not None:
         return found
-    if kind % 3 == 0:
+    if kind % 4 == 0:
         return _relieve_slow_truck(plan, ctx)
     return None
 

@@ -527,6 +527,8 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
         stats.wall_s = time.perf_counter() - t0
         stats.counts = dict(res.stats.counts)
         stats.counts["n_conversion_evals"] = n_conv
+        from .alns import publish_j_champion
+        best_plan, best_ev = publish_j_champion(best_plan, best_ev, stats, alg, ctx)
         _stamp_cross_census(stats, best_plan, inst, phys, alg, "")
         return SolveResult(best_plan, best_ev, "FEASIBLE_LIMIT", stats)
     # 转换启动
@@ -557,6 +559,8 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
     stats.counts = dict(res.stats.counts)
     stats.counts.update({k: v for k, v in res.stats.counts.items() if k not in stats.counts})
     stats.counts["n_conversion_evals"] = n_conv
+    from .alns import publish_j_champion
+    best_plan, best_ev = publish_j_champion(best_plan, best_ev, stats, alg, ctx)
     _stamp_cross_census(stats, best_plan, inst, phys, alg, "")
     return SolveResult(best_plan, best_ev, "FEASIBLE_LIMIT", stats)
 

@@ -300,6 +300,41 @@ def _nominal_cross_intact(plan: Plan, ev: Evaluation | None, ctx: "SolveContext"
 _ACTIVE_CTX: contextvars.ContextVar = contextvars.ContextVar("tdr_active_ctx", default=None)
 
 
+def publish_j_champion(plan, ev, stats, alg, ctx):
+    """Return the stored best-J plan when the caller is about to publish something worse."""
+    _note_j_champion(stats, plan, ev, alg, ctx)
+    champ_p = getattr(stats, "j_champion_plan", None)
+    champ_e = getattr(stats, "j_champion_ev", None)
+    if champ_p is None or champ_e is None:
+        return plan, ev
+    if _better_air(champ_e, champ_p, ev, plan, alg, ctx):
+        return champ_p.clone(), champ_e
+    return plan, ev
+
+
+def _note_j_champion(stats, plan, ev, alg, ctx) -> None:
+    """Remember the best plain v1.3 J seen. S and X both call this. A later stage cannot drop it."""
+    if ctx is None or not getattr(alg, "v13_rules", False) or getattr(ctx, "mode", None) != "nominal":
+        return
+    if plan is None or ev is None or not ev.feasible or ev.cost is None:
+        return
+    if not _nominal_cross_intact(plan, ev, ctx):
+        return
+    from .expected_cost import expected_j
+    j = expected_j(ev.cost, plan, ctx.inst, ctx.phys, 0.0, v13=True)
+    if j is None:
+        return
+    old = getattr(stats, "j_champion_j", None)
+    if old is not None and j >= old - float(getattr(alg, "cost_tolerance_yuan", 1e-6) or 1e-6):
+        return
+    stats.j_champion_j = j
+    stats.j_champion_plan = plan.clone()
+    stats.j_champion_ev = ev
+    from .evaluate import is_cross_sortie
+    if any(is_cross_sortie(plan, s) for s in plan.sorties.values()):
+        stats.j_cross_champion_j = j
+
+
 def eval_counted(plan: Plan, inst: Instance, phys: PhysicalConfig, state: StartState,
                  H: float | None, reason: str, stats: SearchStats, budget: Budget,
                  allow_wait_repair: bool = True) -> Evaluation | None:
@@ -319,6 +354,8 @@ def eval_counted(plan: Plan, inst: Instance, phys: PhysicalConfig, state: StartS
                        "PAIR_HANDOFF", "CROSS_INSERT"):
             stats.cross_evals = int(getattr(stats, "cross_evals", 0)) + 1
     holder = _ACTIVE_CTX.get()
+    if holder is not None and ev.feasible and ev.cost is not None:
+        _note_j_champion(stats, plan, ev, holder.alg, holder)
     if (holder is not None and ev.feasible and ev.cost is not None
             and holder.mode == "nominal"
             and reason not in ("SCENARIO_RECOURSE", "SET_PARTITION")
@@ -880,6 +917,22 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                 same_plan, same_ev = best_plan.clone(), best_ev
         if sel is not None:
             pend = (skey, sact, reward / alg.score_global_best)
+        # Shared local search, S and X. A new same-truck champion spends at most four
+        # evaluations on a deterministic descent. Infeasible trials are not reached here.
+        if (became_same_best and getattr(alg, "v13_rules", False) and ctx.mode == "nominal"
+                and budget.evals_left() > 4):
+            from .nominal import descent_pass
+            p_d, e_d, _spent = descent_pass(
+                cur_plan.clone(), inst, phys, alg, ctx.state, stats, cur_ev, budget,
+                max_eval=4, allow_cross=False)
+            if (e_d is not None and e_d.feasible
+                    and _better_air(e_d, p_d, cur_ev, cur_plan, alg, ctx)):
+                cur_plan, cur_ev = p_d, e_d
+                if _no_cross(cur_plan) and (
+                        same_ev is None or _better_air(cur_ev, cur_plan, same_ev, same_plan, alg, ctx)):
+                    same_plan, same_ev = cur_plan.clone(), cur_ev
+                if _better_air(e_d, p_d, best_ev, best_plan, alg, ctx):
+                    best_ev, best_plan = e_d, p_d.clone()
         # 连续位置细化：新最好解，或每 10 轮
         do_polish = variant != "no_coordinate_polish" and (
             (best_ev is cand_ev) or became_same_best
@@ -975,7 +1028,7 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
             if chosen == "SKIP":
                 _reward(stats.cross_s, "SKIP", reward)
             else:
-                kind = {"MULTI": 0, "RELIEVE": 1, "RETARGET": 2}[chosen]
+                kind = {"MULTI": 0, "RELIEVE": 1, "RETARGET": 2, "PAIR": 3}[chosen]
                 base_i = cur_plan
                 if (stats.iterations % 4 == 0 and best_plan is not None
                         and any(_isc_now(best_plan, s) for s in best_plan.sorties.values())):
@@ -1178,6 +1231,10 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
         stats.counts["cross_selects"] = dict(stats.cross_selects)
     if getattr(ctx, "schedule_rejects", None):
         stats.counts["schedule_rejects"] = int(ctx.schedule_rejects)
+    if getattr(stats, "j_champion_j", None) is not None:
+        stats.counts["j_champion"] = float(stats.j_champion_j)
+        cross_j = getattr(stats, "j_cross_champion_j", None)
+        stats.counts["j_cross_champion"] = None if cross_j is None else float(cross_j)
     status = "FEASIBLE_LIMIT"
     if stats.stop_reason in ("EVAL_LIMIT", "WALLCLOCK", "MAX_ROUNDS") and best_ev.feasible:
         status = "FEASIBLE_LIMIT"
@@ -1265,7 +1322,7 @@ def _ensure_cross_weights(stats) -> None:
     """X nominal only. Same reaction, segment, and floor as the destroy/repair weights."""
     if getattr(stats, "cross_weights", None):
         return
-    names = ("SKIP", "MULTI", "RELIEVE", "RETARGET")
+    names = ("SKIP", "MULTI", "RELIEVE", "RETARGET", "PAIR")
     stats.cross_weights = {k: 1.0 for k in names}
     stats.cross_n = {k: 0 for k in names}
     stats.cross_s = {k: 0.0 for k in names}
@@ -1333,6 +1390,14 @@ def _geometry_evaluate(plan: Plan, ctx: SolveContext, stats: SearchStats, reason
         p = plan.clone()
         for s, lam in zip(adj, vec):
             p.sorties[s.sid].lam = lam
+        # v1.3, S and X: an infeasible schedule does not spend an evaluation.
+        if (budget is not None and getattr(ctx.alg, "v13_rules", False)
+                and ctx.mode == "nominal"):
+            from .cross_nominal import scheduler_feasible
+            slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+            if not scheduler_feasible(p, inst, phys, ctx.H, slack):
+                stats.aud("SCREEN", "skip")
+                continue
         ev = eval_counted(p, inst, phys, ctx.state, ctx.H, reason, stats, budget) if budget else \
             evaluate_plan(p, inst, phys, ctx.state, ctx.H, reason)
         if ev is None:
