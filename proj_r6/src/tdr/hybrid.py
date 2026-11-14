@@ -61,6 +61,28 @@ def _cache(alg) -> dict:
     return box
 
 
+def _scenario_cache_key(plan, ctx, allow: bool) -> tuple:
+    """Public fields only. The true unrevealed failure set is not part of the key."""
+    from .v13 import cache_key, plan_fingerprint
+    history = tuple(getattr(ctx, "public_history", ()) or ())
+    spares = tuple(sorted((k, round(float(v), 6))
+                          for k, v in (getattr(ctx.state, "truck_ac", {}) or {}).items()))
+    state_fp = (round(float(getattr(ctx.state, "t0", 0.0)), 6),
+                tuple(sorted(getattr(ctx.state, "delivered", ()) or ())))
+    model = "v13" if getattr(ctx.alg, "v13_rules", False) else "legacy"
+    raw = _scenarios_of(ctx) or []
+    if isinstance(raw, tuple) and len(raw) == 2 and isinstance(raw[0], list):
+        scenarios = ("split",
+                     tuple(tuple(sorted(s)) for s in raw[0]),
+                     tuple(tuple(sorted(s)) for s in raw[1]))
+    else:
+        scenarios = tuple(sorted(tuple(sorted(s)) for s in raw))
+    return cache_key(plan_fingerprint=plan_fingerprint(plan), public_history=history,
+                     state_fingerprint=state_fp, spares=spares, strategy=("X" if allow else "S"),
+                     probability_model=model, recovery_version="v13" if model == "v13" else "r11",
+                     scenario_set=scenarios)
+
+
 def _fingerprint(plan) -> tuple:
     routes = tuple((t, tuple(plan.route_customers(t))) for t in sorted(plan.routes))
     ground = tuple(sorted(
@@ -78,16 +100,39 @@ def _allow_cross(ctx) -> bool:
     return bool(getattr(getattr(ctx, "state", None), "nominal_cross", False))
 
 
-def _scenarios_of(ctx) -> list[frozenset]:
+def _scenarios_of(ctx):
     ready = getattr(ctx, "scenarios", None)
     if ready is None:
         inst = ctx.inst
         alg = ctx.alg
-        ready = sample_failure_scenarios(
-            inst.case_id, [c.parcel_id for c in inst.customers],
-            float(getattr(alg, "scenario_p", 0.2) or 0.0),
-            int(getattr(alg, "scenario_count", 2) or 0),
-            int(getattr(alg, "scenario_stream", 0) or 0))
+        if getattr(alg, "v13_rules", False):
+            from .v13 import training_scenarios
+            store = getattr(alg, "_v13_scenario_store", None)
+            if store is None:
+                store = {}
+                alg._v13_scenario_store = store
+            if getattr(alg, "failure_model", "v13_k12") == "bernoulli_p":
+                from .v13 import bernoulli_training_scenarios
+                key = (inst.case_id, "bernoulli", float(alg.bernoulli_p))
+                if key not in store:
+                    ids = [c.parcel_id for c in inst.customers]
+                    n_sc = int(alg.v13_m1 or 0) + int(alg.v13_m2 or 0)
+                    store[key] = bernoulli_training_scenarios(
+                        inst.case_id, ids, n_sc, float(alg.bernoulli_p), int(alg.base_algorithm_seed))
+                ready = store[key]
+            elif inst.case_id not in store:
+                ids = [c.parcel_id for c in inst.customers]
+                store[inst.case_id] = training_scenarios(
+                    inst.case_id, ids, int(alg.v13_m1), int(alg.v13_m2), int(alg.base_algorithm_seed))
+                ready = store[inst.case_id]
+            else:
+                ready = store[inst.case_id]
+        else:
+            ready = sample_failure_scenarios(
+                inst.case_id, [c.parcel_id for c in inst.customers],
+                float(getattr(alg, "scenario_p", 0.0) or 0.0),
+                int(getattr(alg, "scenario_count", 2) or 0),
+                int(getattr(alg, "scenario_stream", 0) or 0))
         ctx.scenarios = ready
     return ready
 
@@ -96,7 +141,8 @@ def _pool(ctx, allow_cross: bool) -> "ColumnPool":
     """列池挂在算法配置上，阶段1和阶段2共用。S 与 X 用 allow_cross 分开。"""
     alg = getattr(ctx, "alg", None)
     case_id = getattr(getattr(ctx, "inst", None), "case_id", "")
-    key = (case_id, bool(allow_cross))
+    from .v13 import column_pool_key
+    key = column_pool_key(case_id, allow_cross)
     pools = getattr(alg, "_column_pools", None) if alg is not None else None
     if pools is None:
         pools = {}
@@ -151,7 +197,7 @@ def scenario_score(plan, ev, ctx) -> float | None:
     if plan is None or ev is None or not ev.feasible or ev.cost is None:
         return None
     allow = _allow_cross(ctx)
-    key = (plan.case_id, allow, _fingerprint(plan))
+    key = _scenario_cache_key(plan, ctx, allow)
     cache = _cache(alg)
     hit = cache.get(key)
     if hit is not None:
@@ -161,31 +207,59 @@ def scenario_score(plan, ev, ctx) -> float | None:
     if physical is None or stats is None:
         return None
     from .scenario_eval import scenario_budget_for
-    budget = scenario_budget_for(alg, plan.case_id, allow, physical)
+    if getattr(alg, "v13_rules", False):
+        budget = physical
+    else:
+        budget = scenario_budget_for(alg, plan.case_id, allow, physical)
     air = frozenset(p for s in plan.sorties.values() for p in s.air)
-    costs = []
+    raw = _scenarios_of(ctx)
+    if isinstance(raw, tuple) and len(raw) == 2 and isinstance(raw[0], list):
+        groups = (("single", raw[0]), ("pair", raw[1]))
+    else:
+        groups = (("flat", list(raw)),)
+    buckets = {"single": [], "pair": [], "flat": []}
     from .alns import eval_counted
-    for sc in _scenarios_of(ctx):
-        failed = sc & air
-        if not failed:
-            costs.append(float(ev.cost))
-            continue
-        if budget.evals_left() <= 0:
+    import copy
+    for kind, group in groups:
+        for sc in group:
+            failed = sc & air
+            if not failed:
+                buckets[kind].append(float(ev.cost))
+                continue
+            if budget.evals_left() <= 0:
+                return None
+            repaired = build_recourse(plan, failed, ctx.inst, ctx.phys, allow)
+            st = copy.copy(ctx.state)
+            st.known_air_failures = set(getattr(ctx.state, "known_air_failures", ()) or ()) | set(failed)
+            rev = eval_counted(repaired, ctx.inst, ctx.phys, st, ctx.H,
+                               "SCENARIO_RECOURSE", stats, budget)
+            if rev is None:
+                return None
+            stats.aud("SCENARIO", "evaluated")
+            if not rev.feasible or rev.cost is None:
+                stats.aud("SCENARIO", "infeasible")
+                penalty = getattr(alg, "scenario_infeasible_penalty", None)
+                if penalty is None or getattr(alg, "v13_rules", False):
+                    # No finite execution cost. Do not substitute 0 or a penalty.
+                    return None
+                buckets[kind].append(float(ev.cost) + float(penalty))
+            else:
+                buckets[kind].append(float(rev.cost))
+    if getattr(alg, "failure_model", "v13_k12") == "bernoulli_p":
+        costs = buckets["flat"]
+        if not costs:
             return None
-        repaired = build_recourse(plan, failed, ctx.inst, ctx.phys, allow)
-        rev = eval_counted(repaired, ctx.inst, ctx.phys, ctx.state, ctx.H,
-                           "SCENARIO_RECOURSE", stats, budget)
-        if rev is None:
+        score = sum(costs) / len(costs)
+    elif getattr(alg, "v13_rules", False):
+        from .v13 import j_hat
+        if not buckets["single"] or not buckets["pair"]:
             return None
-        stats.aud("SCENARIO", "evaluated")
-        if not rev.feasible or rev.cost is None:
-            stats.aud("SCENARIO", "infeasible")
-            costs.append(float(ev.cost) + float(getattr(alg, "scenario_infeasible_penalty", 400.0) or 0.0))
-        else:
-            costs.append(float(rev.cost))
-    if not costs:
-        return None
-    score = sum(costs) / len(costs)
+        score = j_hat(buckets["single"], buckets["pair"])
+    else:
+        costs = buckets["flat"]
+        if not costs:
+            return None
+        score = sum(costs) / len(costs)
     cache[key] = score
     _pool(ctx, allow).add_plan(plan, ctx.inst, ctx.phys)
     return score
@@ -196,7 +270,7 @@ def cached_scenario_cost(plan, ctx) -> float | None:
     if plan is None or not getattr(ctx.alg, "scenario_aware", False) or getattr(ctx, "mode", None) != "nominal":
         return None
     allow = _allow_cross(ctx)
-    return _cache(ctx.alg).get((plan.case_id, allow, _fingerprint(plan)))
+    return _cache(ctx.alg).get(_scenario_cache_key(plan, ctx, allow))
 
 
 @dataclass

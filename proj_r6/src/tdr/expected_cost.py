@@ -53,18 +53,20 @@ def _consecutive(plan, left, right) -> bool:
     return abs(chain.index(left.sid) - chain.index(right.sid)) == 1
 
 
-def recourse_terms(plan, inst, phys, p: float) -> tuple[float, float]:
-    """返回 (Σ p Q_i, Σ p² Q_ij)。p 越界时按 0 处理。"""
-    p = float(p or 0.0)
-    if p <= 0 or plan is None:
-        return 0.0, 0.0
+def _recourse_rows(plan, inst, phys):
     rows = []
+    if plan is None:
+        return rows
     for sortie in plan.sorties.values():
         if sortie.started or not sortie.air or sortie.rec_vid not in plan.visits:
             continue
         rows.append((sortie, _failure_cost(plan, inst, phys, sortie)))
-    single = p * sum(cost for _, cost in rows)
-    pair = 0.0
+    return rows
+
+
+def _interactions(plan, inst, phys, rows) -> list[float]:
+    """Proxy I_ij for sorties that compete for one recovery truck. Not truncated."""
+    out = []
     for i, (left, cl) in enumerate(rows):
         for right, cr in rows[i + 1:]:
             if plan.visits[left.rec_vid].truck != plan.visits[right.rec_vid].truck:
@@ -72,22 +74,103 @@ def recourse_terms(plan, inst, phys, p: float) -> tuple[float, float]:
             if not (_consecutive(plan, left, right) or left.rec_vid == right.rec_vid
                     or _overlap(plan, inst, phys, left, right)):
                 continue
-            pair += p * p * min(cl, cr)
+            out.append(min(cl, cr))
+    return out
+
+
+def recourse_terms(plan, inst, phys, p: float) -> tuple[float, float]:
+    """返回 (Σ p Q_i, Σ p² I_ij)。p 越界时按 0 处理。"""
+    p = float(p or 0.0)
+    if p <= 0 or plan is None:
+        return 0.0, 0.0
+    rows = _recourse_rows(plan, inst, phys)
+    single = p * sum(cost for _, cost in rows)
+    pair = p * p * sum(_interactions(plan, inst, phys, rows))
     return single, pair
 
 
-def expected_j(cost: float | None, plan, inst, phys, p: float) -> float | None:
+def _q_with_cross_rescue(plan, inst, phys, sortie, q: float) -> float:
+    """X only. Q_i is the cheaper of ground insertion and a reachable other truck.
+
+    The weights stay 3/(2N) and 1/(N(N-1)). S does not call this.
+    """
+    from .evaluate import is_cross_sortie
+    if q <= 0 or plan is None or not sortie.air or is_cross_sortie(plan, sortie):
+        return q
+    if sortie.launch_vid not in plan.visits:
+        return q
+    launch = plan.visits[sortie.launch_vid].truck
+    end = inst.customer(inst.parcel_to_customer[sortie.air[-1]])
+    mass = sum(inst.parcel_mass[p] for p in sortie.air)
+    near = []
+    for truck, route in plan.routes.items():
+        if truck == launch:
+            continue
+        for vid in route:
+            c = inst.customer(plan.visits[vid].customer)
+            dist = math.hypot(c.x - end.x, c.y - end.y)
+            near.append((dist, vid))
+    near.sort()
+    best = q
+    for dist, _vid in near[:3]:
+        e = phys.fly_energy_kwh(dist, mass) + phys.hover_energy_kwh(phys.recovery_s, mass)
+        if e > phys.e_cap - phys.e_min:
+            continue
+        # The other truck is already visiting this customer, so the truck detour is 0.
+        meet = phys.cost_depot_kwh * e + phys.wage_per_s * phys.recovery_s
+        # Keep half the ground-failure cost. A free meeting would otherwise
+        # dominate J and accept a much more expensive nominal plan.
+        best = min(best, 0.5 * q + 0.5 * meet)
+    return best
+
+
+def expected_j(cost: float | None, plan, inst, phys, p: float, v13: bool = False,
+               rescue_aware: bool = False, weight_pair: float | None = None) -> float | None:
+    """Search objective. v1.3 uses 3/(2N) and 1/(N(N-1)), not p=0.2 and p².
+
+    weight_pair is set only for the Bernoulli model: then the weights are p and p².
+    Leaving it unset keeps the v1.3 formula even if p is passed in.
+    """
     if cost is None:
         return None
-    single, pair = recourse_terms(plan, inst, phys, p)
-    return float(cost) + single + pair
+    rows = _recourse_rows(plan, inst, phys)
+    if rescue_aware and v13:
+        singles = sum(_q_with_cross_rescue(plan, inst, phys, s, q) for s, q in rows)
+    else:
+        singles = sum(q for _, q in rows)
+    inter = sum(_interactions(plan, inst, phys, rows))
+    n = int(getattr(inst, "n", 0) or 0)
+    if v13 and n >= 2 and weight_pair is None:
+        return float(cost) + (3.0 / (2.0 * n)) * singles + (1.0 / (n * (n - 1))) * inter
+    p = float(p or 0.0)
+    pair = p * p if weight_pair is None else float(weight_pair)
+    return float(cost) + p * singles + pair * inter
 
 
 def failure_prob(alg) -> float:
-    p = float(getattr(alg, "scenario_p", 0.0) or 0.0)
-    if p <= 0:
-        p = float(getattr(alg, "failure_prob", 0.0) or 0.0)
+    """Planning failure probability. v1.3 is 3/(2N). Bernoulli uses its own p. There is no 0.2 default."""
+    if getattr(alg, "failure_model", "v13_k12") == "bernoulli_p":
+        p = getattr(alg, "bernoulli_p", None)
+        if p is None or not (0.0 < float(p) < 1.0):
+            raise RuntimeError("bernoulli_p is the failure model and needs a probability in (0, 1)")
+        return float(p)
+    if getattr(alg, "v13_rules", False):
+        n = int(getattr(alg, "v13_n", 0) or 0)
+        if n < 2:
+            raise RuntimeError("v1.3 planning has no N and will not fall back to another failure weight")
+        return 3.0 / (2.0 * n)
+    p = float(getattr(alg, "failure_prob", 0.0) or 0.0)
     return p
+
+
+def planning_j(cost, plan, inst, phys, alg, rescue_aware: bool = False):
+    """Objective for the active failure model. S and X call this with the same alg fields."""
+    p = failure_prob(alg)
+    v13 = bool(getattr(alg, "v13_rules", False))
+    pair = None
+    if getattr(alg, "failure_model", "v13_k12") == "bernoulli_p":
+        pair = p * p
+    return expected_j(cost, plan, inst, phys, p, v13=v13, rescue_aware=rescue_aware, weight_pair=pair)
 
 
 def cost_gap_discards_nominal(expected_accept: bool, nominal_is_worse: bool) -> bool:

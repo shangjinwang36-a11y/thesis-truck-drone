@@ -99,6 +99,13 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
                        adopt_from: str | Path | None = None) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    if getattr(alg, "v13_rules", False) and cross_launch and (
+            adopt_from or getattr(alg, "x_s_second_start", False)
+            or getattr(alg, "x_adopt_s_nominal", False)
+            or getattr(alg, "x_adopt_s_if_cross", False)):
+        from .v13 import WarmStartForbidden
+        raise WarmStartForbidden(
+            "v1.3 forbids X reading an independent S search (adopt_from / x_s_second_start / x_adopt_s_nominal)")
     rngs = derive_rngs(alg.base_algorithm_seed, inst.case_id, "nominal", 0)
     t = time.perf_counter()
     starts = [alg.nominal_start_trucks]
@@ -152,6 +159,22 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         slack_s = float(getattr(alg, "x_rendezvous_slack_s", 0.0) or 0.0)
         res.plan, repair_actions = repair_nominal_cross(res.plan, inst, phys, slack_s)
         ev = evaluate_plan(res.plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+        # Repair may delete a cross that was the best plain J. Publish that champion
+        # when it is still legal. S has the same archive; a same-truck champion is unchanged.
+        champ_p = getattr(res.stats, "j_champion_plan", None)
+        champ_e = getattr(res.stats, "j_champion_ev", None)
+        if champ_p is not None and champ_e is not None and champ_e.cost is not None and ev.cost is not None:
+            from .expected_cost import planning_j
+            from .alns import _nominal_cross_intact, SolveContext
+            j_now = planning_j(ev.cost, res.plan, inst, phys, alg) if ev.feasible else None
+            j_ch = planning_j(champ_e.cost, champ_p, inst, phys, alg)
+            ctx_pub = SolveContext(inst, phys, alg, initial_state(inst, phys), None, "nominal")
+            ctx_pub.state.nominal_cross = True
+            if (j_ch is not None and (j_now is None or j_ch < j_now - alg.cost_tolerance_yuan)
+                    and _nominal_cross_intact(champ_p, champ_e, ctx_pub)):
+                res.plan = champ_p.clone()
+                ev = evaluate_plan(res.plan, inst, phys, initial_state(inst, phys), None, "NOMINAL")
+                repair_actions = list(repair_actions) + ["kept_best_j"]
     adopted_s = False
     adopt_reason = None
     if (adopt_from and cross_launch and ev is not None
@@ -359,7 +382,17 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
                 res.plan, ev = s_plan_cap.clone(), s_ev_cap
                 adopted_s = True
                 adopt_reason = "expected_cross"
-    H = max(ev.timeline.truck_finish.values()) + phys.shift_slack_s
+    if getattr(alg, "v13_rules", False) and getattr(alg, "v13_H", None) is not None:
+        H = float(alg.v13_H)
+        ev = evaluate_plan(res.plan, inst, phys, initial_state(inst, phys), H, "NOMINAL")
+        if not ev.feasible:
+            meta = {"case_id": inst.case_id, "status": "NO_FEASIBLE_NOMINAL",
+                    "solver_status": ev.status, "violations": (ev.violations or [])[:5],
+                    "H_s": H, "wall_s": wall}
+            _write_json(out / "result.json", meta)
+            return meta
+    else:
+        H = max(ev.timeline.truck_finish.values()) + phys.shift_slack_s
     from .evaluate import is_cross_sortie as is_cross_sortie_
     if not cross_launch:   # S：名义阶段不得出现跨车航次
         from .evaluate import is_cross_sortie
@@ -417,6 +450,19 @@ def build_case_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfi
         "distance_km": ev.cost_breakdown.get("truck_km"),
         "cost_breakdown": ev.cost_breakdown,
         "n_cross_sorties": sum(1 for s_ in res.plan.sorties.values() if is_cross_sortie_(res.plan, s_)),
+        "cross_cand_emin": res.stats.counts.get("cross_cand_emin"),
+        "cross_cand_floor": res.stats.counts.get("cross_cand_floor"),
+        "cross_cand_emin_enter": res.stats.counts.get("cross_cand_emin_enter"),
+        "cross_cand_floor_enter": res.stats.counts.get("cross_cand_floor_enter"),
+        "cross_weights": res.stats.counts.get("cross_weights"),
+        "cross_selects": res.stats.counts.get("cross_selects"),
+        "schedule_rejects": res.stats.counts.get("schedule_rejects"),
+        "j_champion": res.stats.counts.get("j_champion"),
+        "j_cross_champion": res.stats.counts.get("j_cross_champion"),
+        "cross_charged": res.stats.counts.get("cross_charged"),
+        "cross_accepted": res.stats.counts.get("cross_accepted"),
+        "cross_evals": res.stats.counts.get("cross_evals"),
+        "n_screens": res.stats.counts.get("n_screens"),
         "cross_launch": bool(cross_launch),
         "audit": res.stats.counts.get("audit"), "reject": res.stats.counts.get("reject"),
         "last_improvement_iter": res.stats.counts.get("last_improvement_iter"),

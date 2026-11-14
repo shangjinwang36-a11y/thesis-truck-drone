@@ -20,16 +20,24 @@ from .plan import Plan
 from .schedule import Timeline, initial_state
 
 
+def x_cross_energy_floor_kwh(phys: PhysicalConfig, slack_s: float = 90.0) -> float:
+    """E_endR >= E_min + max(0.05 E_cap, E_hover(slack, 0 kg)).
+
+    slack seconds are only the empty-hover equivalent of the margin. They are not
+    an extra wait that is subtracted again.
+    """
+    hover = phys.hover_energy_kwh(slack_s, 0.0) if slack_s > 0 else 0.0
+    return phys.e_min + max(0.05 * phys.e_cap, hover)
+
+
 def reserve_kwh(phys: PhysicalConfig) -> float:
-    """5% 裕度：E_min + 0.05·E_cap。"""
-    return phys.e_min + 0.05 * phys.e_cap
+    """Kept name. The v1.3 gate is the single formula, not 0.075 kWh."""
+    return x_cross_energy_floor_kwh(phys, 90.0)
 
 
 def slack_floor_kwh(phys: PhysicalConfig, slack_s: float) -> float:
-    """回收结束电量至少还能再空载悬停 slack 秒，并且仍不低于 E_min。"""
-    if slack_s <= 0:
-        return phys.e_min
-    return phys.e_min + phys.hover_energy_kwh(slack_s, 0.0)
+    """Same gate as reserve_kwh. The two checks are not stacked."""
+    return x_cross_energy_floor_kwh(phys, slack_s if slack_s > 0 else 90.0)
 
 
 def recovery_energy(tl: Timeline, drone: str, sid: int) -> float | None:
@@ -128,10 +136,9 @@ def cross_robust_violations(plan: Plan, inst: Instance, phys: PhysicalConfig, tl
         if e is None:
             tags.append("NO_RECOVERY_ENERGY")
         else:
-            if e < need_margin - phys.energy_tol:
-                tags.append(f"MARGIN:{e:.6f}<{need_margin:.6f}")
-            if e < need_slack - phys.energy_tol:
-                tags.append(f"SLACK:{e:.6f}<{need_slack:.6f}")
+            need = max(need_margin, need_slack)
+            if e < need - phys.energy_tol:
+                tags.append(f"X_CROSS_FLOOR:{e:.6f}<{need:.6f}")
         rt = tl.rec_times.get(s.sid)
         if rt is None:
             tags.append("NO_REC_TIME")

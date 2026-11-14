@@ -683,7 +683,8 @@ def try_support_rendezvous(plan, ctx, budget, stats):
         ctx.support_tried = set()
     allow = bool(getattr(ctx.state, "nominal_cross", False))
     best_p, best_ev = None, None
-    for _, cand in propose_support_rendezvous(plan, ctx, ctx.alg.cross_n, ctx.support_tried, allow):
+    n_prop = 1 if getattr(ctx.alg, "v13_rules", False) else ctx.alg.cross_n
+    for _, cand in propose_support_rendezvous(plan, ctx, n_prop, ctx.support_tried, allow):
         if budget.evals_left() <= 0:
             break
         ev = eval_counted(cand, ctx.inst, ctx.phys, ctx.state, ctx.H, "SUPPORT_RENDEZVOUS", stats, budget)

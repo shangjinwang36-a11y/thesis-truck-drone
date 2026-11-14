@@ -78,7 +78,12 @@ def propose_convert(plan, ctx, n: int, tried: set):
                 cands.append((-sc, s.sid, vid, bool(removable)))
     cands.sort()
     out = []
-    for _, sid, vid, removable in cands[:n]:
+    keep = 1 if getattr(getattr(ctx, "alg", None), "v13_rules", False) else n
+    for neg_sc, sid, vid, removable in cands:
+        if getattr(getattr(ctx, "alg", None), "v13_rules", False) and -neg_sc <= 1e-6:
+            break
+        if len(out) >= keep:
+            break
         tried.add((sid, vid))
         cand = plan.clone()
         so = cand.sorties[sid]
@@ -337,3 +342,509 @@ def try_cross_exchange(plan, ctx, budget, stats, n: int | None = None):
         if best_ev is None or (ev.cost is not None and (best_ev.cost is None or ev.cost < best_ev.cost - 1e-9)):
             best_p, best_ev = cand, ev
     return best_p, best_ev
+
+
+def _route_length(inst, plan, truck) -> float:
+    route = plan.routes.get(truck, [])
+    depot = (inst.depot_x, inst.depot_y)
+    prev = depot
+    total = 0.0
+    for vid in route:
+        c = _pos(inst, plan, vid)
+        total += math.hypot(c[0] - prev[0], c[1] - prev[1])
+        prev = c
+    total += math.hypot(depot[0] - prev[0], depot[1] - prev[1])
+    return total
+
+
+def _apply_rec(plan, sid, vid, removable_old: bool) -> bool:
+    so = plan.sorties.get(sid)
+    if so is None:
+        return False
+    old = so.rec_vid
+    so.rec_vid = vid
+    if removable_old and old in plan.visits:
+        ov = plan.visits[old]
+        if not ov.ground and not any(o.launch_vid == old or o.rec_vid == old for o in plan.sorties.values()):
+            plan.remove_visit(old)
+    from .evaluate import has_wait_cycle
+    return not has_wait_cycle(plan)
+
+
+def _floor_kwh(phys, slack_s: float) -> float:
+    from .cross_robust import x_cross_energy_floor_kwh
+    return x_cross_energy_floor_kwh(phys, slack_s)
+
+
+def _clears(phys, consumed: float, reserve: float) -> bool:
+    return consumed <= phys.e_cap - reserve + phys.energy_tol
+
+
+def _schedule_ok(plan, inst, phys, H, slack_s: float, state=None, nominal_floor: bool = True):
+    """The evaluator's schedule and checks, without charging a search evaluation.
+
+    Returns the timeline when the plan would be feasible, else None. Moving one
+    recovery visit changes other drones' waits; those waits are in the timeline.
+    Nominal planning applies the cross floor. Recovery passes the live state and
+    does not, because the recovery evaluator does not apply that floor either.
+    """
+    from .evaluate import channel_check, has_wait_cycle, is_cross_sortie, truck_slot_check
+    from .schedule import allocate_charging, initial_state, schedule_plan
+    from .cross_robust import cross_robust_violations
+    if any(is_cross_sortie(plan, s) for s in plan.sorties.values()) and has_wait_cycle(plan):
+        return None
+    if state is None:
+        state = initial_state(inst, phys)
+    try:
+        tl = schedule_plan(plan, inst, phys, state)
+    except (KeyError, ValueError):
+        # A retarget can drop a visit another sortie still names. That plan is not schedulable.
+        return None
+    if not tl.converged or tl.swap_msg:
+        return None
+    ok, _, _ = allocate_charging(tl, phys, state)
+    if not ok or tl.custody_violations:
+        return None
+    if H is not None and any(f > float(H) + 1e-6 for f in tl.truck_finish.values()):
+        return None
+    if truck_slot_check(plan, inst, phys, tl, state) or channel_check(plan, phys, tl):
+        return None
+    for energies in tl.drone_energy.values():
+        if any(e < phys.e_min - phys.energy_tol for e in energies):
+            return None
+    if nominal_floor and any(is_cross_sortie(plan, s) for s in plan.sorties.values()):
+        if cross_robust_violations(plan, inst, phys, tl, slack_s):
+            return None
+    if abs(getattr(state, "prefix_ac_kwh", 0.0) + tl.q_total) > phys.energy_tol:
+        return None
+    return tl, state
+
+
+def scheduler_feasible(plan, inst, phys, H, slack_s: float) -> bool:
+    """The real schedule, without charging a search evaluation."""
+    return _schedule_ok(plan, inst, phys, H, slack_s) is not None
+
+
+def scheduled_execution_cost(plan, inst, phys, H, slack_s: float, state=None,
+                             nominal_floor: bool = True):
+    """Execution cost from the scheduler timeline, or None when the plan is infeasible.
+
+    Truck distance, driver time (including waits), and depot refill are the cost
+    the evaluator would record. This does not take a budget evaluation.
+    """
+    got = _schedule_ok(plan, inst, phys, H, slack_s, state=state, nominal_floor=nominal_floor)
+    if got is None:
+        return None
+    tl, st = got
+    distance = float(getattr(st, "prefix_distance_m", 0.0) or 0.0) + sum(tl.truck_distance_m.values())
+    driver_s = sum(tl.truck_finish.values())
+    drones = [f"d{i + 1}" for i in range(phys.drone_count)]
+    refill = sum(phys.e_cap - tl.e_return.get(d, phys.e_cap) for d in drones)
+    refill += float(getattr(st, "prefix_refill_kwh", 0.0) or 0.0) + tl.swap_refill_kwh
+    return (phys.c_km * distance / 1000.0 + phys.wage_per_s * driver_s
+            + phys.cost_depot_kwh * refill)
+
+
+def scheduled_plain_j(plan, inst, phys, H, slack_s: float, state=None, alg=None):
+    """Plain planning J from the scheduler timeline. None when the plan is infeasible.
+
+    The default is the v1.3 formula. Bernoulli uses p and p² when alg says so.
+    """
+    from .expected_cost import expected_j, planning_j
+    cost = scheduled_execution_cost(plan, inst, phys, H, slack_s, state=state, nominal_floor=True)
+    if cost is None:
+        return None
+    if alg is not None:
+        return planning_j(cost, plan, inst, phys, alg)
+    return expected_j(cost, plan, inst, phys, 0.0, v13=True, rescue_aware=False)
+
+
+def _count_screen(stats) -> None:
+    if stats is None:
+        return
+    stats.n_screens = int(getattr(stats, "n_screens", 0) or 0) + 1
+
+
+def _beats(value, champion, tol: float) -> bool:
+    if value is None:
+        return False
+    if champion is None:
+        return True
+    return float(value) < float(champion) - tol
+
+
+def screen_nominal_j(plan, inst, phys, H, slack_s: float, champion, tol: float, stats, alg=None):
+    """Shared nominal screen. S and X both call this before a charged evaluation."""
+    _count_screen(stats)
+    j = scheduled_plain_j(plan, inst, phys, H, slack_s, alg=alg)
+    if not _beats(j, champion, tol):
+        return None
+    return j
+
+
+def screen_recovery_cost(plan, inst, phys, H, slack_s: float, state, champion, tol: float, stats):
+    """Shared recovery screen. Same threshold rule, priced as execution cost."""
+    _count_screen(stats)
+    cost = scheduled_execution_cost(plan, inst, phys, H, slack_s, state=state, nominal_floor=False)
+    if not _beats(cost, champion, tol):
+        return None
+    return cost
+
+
+def _rescue_open(plan, inst, phys, customer_xy, mass: float, launch: str, rec: str, floor: float) -> bool:
+    """A truck other than the launch and the chosen recovery can still meet this customer."""
+    for truck, route in plan.routes.items():
+        if truck == launch or truck == rec:
+            continue
+        for vid in route:
+            pos = _pos(inst, plan, vid)
+            dist = math.hypot(pos[0] - customer_xy[0], pos[1] - customer_xy[1])
+            need = phys.fly_energy_kwh(dist, mass) + phys.hover_energy_kwh(phys.recovery_s, mass)
+            if _clears(phys, need, floor):
+                return True
+    return False
+
+
+def census_cross_candidates(plan, inst, phys, slack_s: float = 90.0) -> dict[str, int]:
+    """Cheap count of cross meetings. emin clears E_min; floor clears the 0.08333 kWh margin.
+
+    No full evaluation. The two counts are the neighbourhood before and after that margin.
+    """
+    floor = _floor_kwh(phys, slack_s)
+    emin = 0
+    legal = 0
+    if plan is None or len(plan.routes) < 2:
+        return {"emin": 0, "floor": 0}
+    rt_cache = {}
+
+    def rt(truck):
+        if truck not in rt_cache:
+            rt_cache[truck] = route_times(plan, inst, phys, truck)
+        return rt_cache[truck]
+
+    for sids in plan.drone_sorties.values():
+        if not sids:
+            continue
+        s = plan.sorties[sids[-1]]
+        if s.started or not s.air or s.launch_vid not in plan.visits or s.rec_vid not in plan.visits:
+            continue
+        if plan.visits[s.launch_vid].truck != plan.visits[s.rec_vid].truck:
+            continue
+        ta = plan.visits[s.launch_vid].truck
+        if s.launch_vid not in plan.routes.get(ta, []):
+            continue
+        sp = sortie_start(inst, plan, s)
+        _, dep_a = rt(ta)
+        la = plan.routes[ta].index(s.launch_vid)
+        mass = sum(inst.parcel_mass[p] for p in s.air)
+        for tb, route in plan.routes.items():
+            if tb == ta:
+                continue
+            arr_b, _ = rt(tb)
+            for bi, vid in enumerate(route):
+                rp = _pos(inst, plan, vid)
+                try:
+                    e = air_energy(inst, phys, sp, s.air, rp)
+                except KeyError:
+                    continue
+                tt = arr_b[bi] - dep_a[la]
+                hover = phys.hover_energy_kwh(max(0.0, tt - air_time(inst, phys, sp, s.air, rp)), mass)
+                consumed = e + hover
+                if not _clears(phys, consumed, phys.e_min):
+                    continue
+                emin += 1
+                if _clears(phys, consumed, floor):
+                    legal += 1
+    # Ground hand-offs off the critical truck. cross_air_candidates already drops E_min failures.
+    from .moves import cross_air_candidates
+    slow = _critical_truck(inst, plan, phys, None)
+    if slow is not None:
+        depot = (inst.depot_x, inst.depot_y)
+        route = plan.routes.get(slow, [])
+        parcels = []
+        for i, vid in enumerate(route):
+            v = plan.visits[vid]
+            if len(v.ground) != 1:
+                continue
+            if any(s.launch_vid == vid or s.rec_vid == vid for s in plan.sorties.values()):
+                continue
+            cc = inst.customer(v.customer)
+            prv = depot if i == 0 else _pos(inst, plan, route[i - 1])
+            nxt = depot if i + 1 == len(route) else _pos(inst, plan, route[i + 1])
+            det = (math.hypot(cc.x - prv[0], cc.y - prv[1]) + math.hypot(nxt[0] - cc.x, nxt[1] - cc.y)
+                   - math.hypot(nxt[0] - prv[0], nxt[1] - prv[1]))
+            if det > 0:
+                parcels.append(v.ground[0])
+        for parcel in parcels[:2]:
+            mass = inst.parcel_mass[parcel]
+            for cand in cross_air_candidates(plan, inst, phys, parcel, max_cross=4, allow_support=True):
+                if not cand.cross:
+                    continue
+                emin += 1
+                hover = phys.hover_energy_kwh(phys.recovery_s, mass)
+                if _clears(phys, cand.energy + hover, floor):
+                    legal += 1
+    return {"emin": emin, "floor": legal}
+
+
+def propose_integrated(plan, ctx, kind: int):
+    """One cross neighbourhood move. No full evaluation.
+
+    kind 0: reassign several same-truck recoveries onto other trucks at once.
+    kind 1: move a ground cluster off the critical truck onto drones that meet
+    another truck, shortening that truck inside H.
+    kind 2: the single best recovery retarget.
+    A meeting that does not clear the 0.08333 kWh floor is not returned, so the
+    caller does not spend an evaluation on it.
+    """
+    if not getattr(getattr(ctx, "state", None), "nominal_cross", False):
+        return None
+    inst, phys = ctx.inst, ctx.phys
+    if kind % 4 == 1:
+        return _relieve_slow_truck(plan, ctx)
+    moves = []
+    rt_cache = {}
+
+    def rt(truck):
+        if truck not in rt_cache:
+            rt_cache[truck] = route_times(plan, inst, phys, truck)
+        return rt_cache[truck]
+
+    tails = []
+    for sids in plan.drone_sorties.values():
+        if not sids:
+            continue
+        s = plan.sorties[sids[-1]]
+        if s.started or not s.air or s.launch_vid not in plan.visits or s.rec_vid not in plan.visits:
+            continue
+        if plan.visits[s.launch_vid].truck != plan.visits[s.rec_vid].truck:
+            continue
+        tails.append(s)
+    for s in tails:
+        ta = plan.visits[s.launch_vid].truck
+        rv_old = plan.visits[s.rec_vid]
+        removable = (not rv_old.ground and not any(
+            o.sid != s.sid and (o.launch_vid == rv_old.vid or o.rec_vid == rv_old.vid)
+            for o in plan.sorties.values()))
+        save = 0.0
+        if removable:
+            det = _detour(inst, plan, ta, rv_old.vid)
+            save = phys.c_km * det / 1000.0 + phys.wage_per_s * det / phys.truck_speed_m_s
+        sp = sortie_start(inst, plan, s)
+        _, dep_a = rt(ta)
+        if s.launch_vid not in plan.routes.get(ta, []):
+            continue
+        la = plan.routes[ta].index(s.launch_vid)
+        floor = _floor_kwh(phys, float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0))
+        n_el = max(2, int(getattr(inst, "n", 0) or 0))
+        if getattr(ctx.alg, "failure_model", "v13_k12") == "bernoulli_p":
+            p_single = float(ctx.alg.bernoulli_p)
+        else:
+            p_single = 3.0 / (2.0 * n_el)
+        end = inst.customer(inst.parcel_to_customer[s.air[-1]])
+        best = None
+        for tb, route in plan.routes.items():
+            if tb == ta:
+                continue
+            arr_b, _ = rt(tb)
+            for bi, vid in enumerate(route):
+                rp = _pos(inst, plan, vid)
+                try:
+                    e = air_energy(inst, phys, sp, s.air, rp)
+                except KeyError:
+                    continue
+                tt = arr_b[bi] - dep_a[la]
+                mass = sum(inst.parcel_mass[p] for p in s.air)
+                t_air = air_time(inst, phys, sp, s.air, rp)
+                hover = phys.hover_energy_kwh(max(0.0, tt - t_air), mass)
+                # Launch, one service, and recovery are always flown. The geometric
+                # check is still only this sortie; the scheduler below prices the others.
+                necessary = (e + hover
+                             + phys.hover_energy_kwh(phys.launch_s, mass)
+                             + phys.hover_energy_kwh(phys.air_service_s, mass)
+                             + phys.hover_energy_kwh(phys.recovery_s, mass))
+                if not _clears(phys, necessary, floor):
+                    continue
+                sc = save - sync_cost(phys, t_air, tt, mass) - phys.cost_depot_kwh * e
+                # Plain v1.3 failure weight. A second truck that can still meet the customer
+                # leaves a cross rescue open, so this placement is worth 3/(2N) of the failure cost.
+                if _rescue_open(plan, inst, phys, (end.x, end.y), mass, ta, tb, floor):
+                    sc += p_single * max(save, phys.wage_per_s * phys.recovery_s)
+                if best is None or sc > best[0]:
+                    best = (sc, vid, removable)
+        if best is not None and best[0] > 1e-6:
+            moves.append((best[0], s.sid, best[1], best[2]))
+    width = 1 if kind % 4 == 2 else (2 if kind % 4 == 3 else 3)
+    moves.sort(reverse=True)
+    # One move per launch truck. Width 2 is the pair insertion the ceiling found useful.
+    chosen = []
+    used_trucks = set()
+    used_vids = set()
+    for sc, sid, vid, removable in moves:
+        truck = plan.visits[plan.sorties[sid].launch_vid].truck
+        if truck in used_trucks or vid in used_vids:
+            continue
+        used_trucks.add(truck)
+        used_vids.add(vid)
+        chosen.append((sid, vid, removable))
+        if len(chosen) >= width:
+            break
+    moves = chosen
+    bundles = []
+    if len(moves) >= 2:
+        bundles.append(moves)
+    bundles.extend([[item] for item in moves])
+    found = _first_on_schedule(plan, ctx, bundles)
+    if found is not None:
+        return found
+    if kind % 4 == 0:
+        return _relieve_slow_truck(plan, ctx)
+    return None
+
+
+def _first_on_schedule(plan, ctx, bundles):
+    """Return the first bundle the real scheduler accepts. No search evaluation."""
+    if not bundles:
+        return None
+    inst, phys = ctx.inst, ctx.phys
+    H = getattr(ctx, "H", None)
+    slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+    tried = 0
+    for bundle in bundles:
+        if tried >= 6:
+            break
+        cand = plan.clone()
+        applied = 0
+        ok = True
+        for item in bundle:
+            if not _apply_rec(cand, item[0], item[1], item[2]):
+                ok = False
+                break
+            applied += 1
+        if not ok or applied == 0:
+            continue
+        tried += 1
+        if scheduler_feasible(cand, inst, phys, H, slack):
+            return cand
+        ctx.schedule_rejects = int(getattr(ctx, "schedule_rejects", 0) or 0) + 1
+    return None
+
+
+def _critical_truck(inst, plan, phys, H: float | None) -> str | None:
+    """Truck whose route is longest, with anyone already past H ranked first."""
+    best = None
+    speed = phys.truck_speed_m_s or 1.0
+    for truck in plan.routes:
+        est = _route_length(inst, plan, truck) / speed
+        score = est + (1.0e6 if H is not None and est > float(H) else 0.0)
+        if best is None or score > best[0]:
+            best = (score, truck)
+    return None if best is None else best[1]
+
+
+def _relieve_slow_truck(plan, ctx):
+    """Hand a cluster off the critical truck to drones that still clear the energy floor."""
+    from .moves import apply_air, cross_air_candidates, remove_parcel
+    inst, phys = ctx.inst, ctx.phys
+    H = getattr(ctx, "H", None)
+    if len(plan.routes) < 2:
+        return None
+    slow = _critical_truck(inst, plan, phys, H)
+    if slow is None:
+        return None
+    floor = _floor_kwh(phys, float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0))
+    n_el = max(2, int(getattr(inst, "n", 0) or 0))
+    if getattr(ctx.alg, "failure_model", "v13_k12") == "bernoulli_p":
+        p_single = float(ctx.alg.bernoulli_p)
+    else:
+        p_single = 3.0 / (2.0 * n_el)
+    route = plan.routes.get(slow, [])
+    depot = (inst.depot_x, inst.depot_y)
+    ranked = []
+    for i, vid in enumerate(route):
+        v = plan.visits[vid]
+        if len(v.ground) != 1:
+            continue
+        if any(s.launch_vid == vid or s.rec_vid == vid for s in plan.sorties.values()):
+            continue
+        cc = inst.customer(v.customer)
+        prv = depot if i == 0 else _pos(inst, plan, route[i - 1])
+        nxt = depot if i + 1 == len(route) else _pos(inst, plan, route[i + 1])
+        det = (math.hypot(cc.x - prv[0], cc.y - prv[1]) + math.hypot(nxt[0] - cc.x, nxt[1] - cc.y)
+               - math.hypot(nxt[0] - prv[0], nxt[1] - prv[1]))
+        if det > 0:
+            yuan = phys.c_km * det / 1000.0 + phys.wage_per_s * det / phys.truck_speed_m_s
+            ranked.append((yuan, v.ground[0], (cc.x, cc.y)))
+    ranked.sort(reverse=True)
+    if not ranked:
+        return None
+    cand = plan.clone()
+    placed = 0
+    for yuan, parcel, xy in ranked[:2]:
+        trial = cand.clone()
+        remove_parcel(trial, parcel)
+        mass = inst.parcel_mass[parcel]
+        acs = []
+        for a in cross_air_candidates(trial, inst, phys, parcel, max_cross=4, allow_support=True):
+            if not a.cross:
+                continue
+            hover = phys.hover_energy_kwh(phys.recovery_s, mass)
+            if not _clears(phys, a.energy + hover, floor):
+                continue
+            rec = a.rec_truck or trial.visits[a.rec_vid].truck
+            bonus = 0.0
+            if _rescue_open(trial, inst, phys, xy, mass, a.truck, rec, floor):
+                bonus = p_single * max(yuan, phys.wage_per_s * phys.recovery_s)
+            acs.append((a.proxy - bonus, a))
+        if not acs:
+            continue
+        acs.sort(key=lambda row: row[0])
+        if apply_air(trial, inst, parcel, acs[0][1]):
+            cand = trial
+            placed += 1
+    if placed == 0:
+        return None
+    H = getattr(ctx, "H", None)
+    slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+    if scheduler_feasible(cand, inst, phys, H, slack):
+        return cand
+    ctx.schedule_rejects = int(getattr(ctx, "schedule_rejects", 0) or 0) + 1
+    return None
+
+
+def try_integrated_cross(plan, ctx, budget, stats, kind: int, j_ref: float | None = None):
+    """Charge one cross only when the uncharged scheduler delta beats plain J.
+
+    propose_integrated already drops meetings the scheduler cannot fly. The delta
+    prices that same timeline (distance, driver time including waits, depot refill,
+    and the v1.3 failure terms). eval_counted runs only if that J beats j_ref.
+    """
+    from .alns import eval_counted
+    from .expected_cost import expected_j as _ej
+    cand = propose_integrated(plan, ctx, kind)
+    if cand is None:
+        stats.aud("CROSS_INSERT", "no_floor")
+        return None, None
+    slack = float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+    tol = float(getattr(ctx.alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
+    j_new = screen_nominal_j(cand, ctx.inst, ctx.phys, getattr(ctx, "H", None), slack, j_ref, tol, stats,
+                             alg=ctx.alg)
+    if j_new is None:
+        stats.aud("CROSS_INSERT", "proxy_skip")
+        return None, None
+    if budget is None or budget.evals_left() <= 0:
+        return None, None
+    stats.cross_charged = int(getattr(stats, "cross_charged", 0) or 0) + 1
+    ev = eval_counted(cand, ctx.inst, ctx.phys, ctx.state, ctx.H, "CROSS_INSERT", stats, budget)
+    if ev is not None and ev.feasible and ev.cost is not None:
+        j_eval = _ej(ev.cost, cand, ctx.inst, ctx.phys, 0.0, v13=True, rescue_aware=False)
+        if j_eval is None or abs(j_eval - j_new) > 1e-4:
+            stats.aud("CROSS_INSERT", "delta_mismatch")
+    stats.aud("CROSS_INSERT", "calls")
+    if ev is None:
+        return None, None
+    if not ev.feasible:
+        stats.aud("CROSS_INSERT", "infeasible")
+        return None, None
+    stats.aud("CROSS_INSERT", "feasible")
+    return cand, ev

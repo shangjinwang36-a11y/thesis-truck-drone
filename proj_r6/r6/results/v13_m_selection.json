@@ -1,0 +1,186 @@
+{
+  "M1": 10,
+  "M2": 10,
+  "rule": "smallest equal M where J_hat ranking matches M=40 and worst relative SE <= 0.02; else smallest ranking match. Tune seeds 101-110 are a check, not the sample.",
+  "grid": [
+    {
+      "M": 2,
+      "agree_with_M40": false,
+      "worst_rel_se": 0.012719513489305737,
+      "ranks": {
+        "C50": "X",
+        "R50": "S",
+        "RC50": "X",
+        "C100": "X",
+        "R100": "S",
+        "RC100": "X"
+      },
+      "ok": true
+    },
+    {
+      "M": 4,
+      "agree_with_M40": false,
+      "worst_rel_se": 0.008996986418078744,
+      "ranks": {
+        "C50": "X",
+        "R50": "S",
+        "RC50": "X",
+        "C100": "X",
+        "R100": "X",
+        "RC100": "X"
+      },
+      "ok": true
+    },
+    {
+      "M": 6,
+      "agree_with_M40": false,
+      "worst_rel_se": 0.007332014897041935,
+      "ranks": {
+        "C50": "X",
+        "R50": "S",
+        "RC50": "X",
+        "C100": "X",
+        "R100": "X",
+        "RC100": "X"
+      },
+      "ok": true
+    },
+    {
+      "M": 8,
+      "agree_with_M40": false,
+      "worst_rel_se": 0.0063521355102618615,
+      "ranks": {
+        "C50": "X",
+        "R50": "S",
+        "RC50": "X",
+        "C100": "X",
+        "R100": "X",
+        "RC100": "X"
+      },
+      "ok": true
+    },
+    {
+      "M": 10,
+      "agree_with_M40": true,
+      "worst_rel_se": 0.005685088172518521,
+      "ranks": {
+        "C50": "X",
+        "R50": "X",
+        "RC50": "X",
+        "C100": "X",
+        "R100": "X",
+        "RC100": "X"
+      },
+      "ok": true
+    },
+    {
+      "M": 15,
+      "agree_with_M40": true,
+      "worst_rel_se": 0.004619717464092788,
+      "ranks": {
+        "C50": "X",
+        "R50": "X",
+        "RC50": "X",
+        "C100": "X",
+        "R100": "X",
+        "RC100": "X"
+      },
+      "ok": true
+    },
+    {
+      "M": 20,
+      "agree_with_M40": true,
+      "worst_rel_se": 0.003994089477981836,
+      "ranks": {
+        "C50": "X",
+        "R50": "X",
+        "RC50": "X",
+        "C100": "X",
+        "R100": "X",
+        "RC100": "X"
+      },
+      "ok": true
+    },
+    {
+      "M": 30,
+      "agree_with_M40": true,
+      "worst_rel_se": 0.0032625960295129004,
+      "ranks": {
+        "C50": "X",
+        "R50": "X",
+        "RC50": "X",
+        "C100": "X",
+        "R100": "X",
+        "RC100": "X"
+      },
+      "ok": true
+    },
+    {
+      "M": 40,
+      "agree_with_M40": true,
+      "worst_rel_se": 0.0028190554196249316,
+      "ranks": {
+        "C50": "X",
+        "R50": "X",
+        "RC50": "X",
+        "C100": "X",
+        "R100": "X",
+        "RC100": "X"
+      },
+      "ok": true
+    }
+  ],
+  "tune_seed_means": [
+    {
+      "case": "C50",
+      "tune_mean": {
+        "S": 196.1354786509391,
+        "X": 177.1929451294987
+      }
+    },
+    {
+      "case": "R50",
+      "tune_mean": {
+        "S": null,
+        "X": 447.52820029396827
+      }
+    },
+    {
+      "case": "RC50",
+      "tune_mean": {
+        "S": null,
+        "X": null
+      }
+    },
+    {
+      "case": "C100",
+      "tune_mean": {
+        "S": 456.6190808414928,
+        "X": 425.8185215979494
+      }
+    },
+    {
+      "case": "R100",
+      "tune_mean": {
+        "S": null,
+        "X": null
+      }
+    },
+    {
+      "case": "RC100",
+      "tune_mean": {
+        "S": 666.0366602633807,
+        "X": 656.8427957597181
+      }
+    }
+  ],
+  "seeds_used": "101-110 only, plus the scenario stream of base_algorithm_seed (no environment seed)",
+  "seeds_not_used": [
+    "1-10",
+    "2001-2010",
+    "1001-1010",
+    "3001-3030",
+    "4001-4030"
+  ],
+  "policy": "deterministic ground recourse of the published round-11 nominal plans; not the episode ALNS. Used only to size M."
+}

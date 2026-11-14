@@ -208,9 +208,22 @@ def _descent_loop(plan, inst, phys, alg, state, stats, best_ev, budget, max_eval
                 continue                      # 已被前面的接受改走
             base = plan.clone()
             remove_parcel(base, p)
+            cross_later = []
             if allow_cross and getattr(state, "nominal_cross", False):
-                _all = air_candidates(base, inst, phys, p, max_new=3, state=state)
-                acs = [x for x in _all if not x.cross][:3] + [x for x in _all if x.cross][:2]
+                # Same three same-truck candidates S tries, in S's order. Cross
+                # candidates are a separate list and are charged only later.
+                if getattr(alg, "v13_rules", False):
+                    acs = air_candidates(base, inst, phys, p, max_new=3, state=None)[:3]
+                    from .moves import cross_air_candidates
+                    cross_later = [a for a in cross_air_candidates(
+                        base, inst, phys, p,
+                        allow_support=bool(getattr(state, "allow_support", False)))
+                        if a.cross][:2]
+                else:
+                    _all = air_candidates(base, inst, phys, p, max_new=3, state=state)
+                    same = [x for x in _all if not x.cross][:3]
+                    crossed = [x for x in _all if x.cross][:2]
+                    acs = same + crossed
             else:
                 acs = air_candidates(base, inst, phys, p, max_new=3, state=None)[:3]
             win = None
@@ -220,6 +233,14 @@ def _descent_loop(plan, inst, phys, alg, state, stats, best_ev, budget, max_eval
                 cand = base.clone()
                 if not apply_air(cand, inst, p, ac):
                     continue
+                if getattr(alg, "v13_rules", False):
+                    from .cross_nominal import screen_nominal_j
+                    slack = float(getattr(alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+                    tol = float(getattr(alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
+                    if screen_nominal_j(cand, inst, phys, ctx.H, slack,
+                                        getattr(stats, "j_champion_j", None), tol, stats, alg=alg) is None:
+                        stats.aud("SCREEN", "skip")
+                        continue
                 before = budget.used
                 ev = eval_counted(cand, inst, phys, state, None, "NOMINAL_AIR_BASE", stats, budget)
                 if ev is not None and ev.feasible and _better_air(ev, cand, best_ev, plan, alg, ctx) \
@@ -229,6 +250,45 @@ def _descent_loop(plan, inst, phys, alg, state, stats, best_ev, budget, max_eval
                 spent += budget.used - before
                 if ev is None:
                     break
+            if win is None and cross_later:
+                # X only. Same-truck moves above already ran in S's order. A cross
+                # is charged only when the scheduler accepts it and the admissible
+                # bound can beat the best plain J already stored.
+                from .cross_nominal import screen_nominal_j
+                from .expected_cost import expected_j as _ej
+                j_here = None if best_ev is None or best_ev.cost is None else _ej(
+                    best_ev.cost, plan, inst, phys, 0.0, v13=True, rescue_aware=False)
+                j_arch = getattr(stats, "j_champion_j", None)
+                j_ref = j_here if j_arch is None else (
+                    min(j_here, j_arch) if j_here is not None else j_arch)
+                tol = float(getattr(alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
+                slack = float(getattr(alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+                for ac in cross_later:
+                    if not room():
+                        break
+                    cand = base.clone()
+                    if not apply_air(cand, inst, p, ac):
+                        continue
+                    if screen_nominal_j(cand, inst, phys, ctx.H, slack, j_ref, tol, stats, alg=alg) is None:
+                        stats.aud("CROSS_INSERT", "proxy_skip")
+                        continue
+                    before = budget.used
+                    stats.cross_charged = int(getattr(stats, "cross_charged", 0) or 0) + 1
+                    ev = eval_counted(cand, inst, phys, state, None, "CROSS_INSERT", stats, budget)
+                    j_new = None if ev is None or ev.cost is None else _ej(
+                        ev.cost, cand, inst, phys, 0.0, v13=True, rescue_aware=False)
+                    beats = (j_new is not None and j_ref is not None
+                             and j_new < j_ref - tol)
+                    if beats:
+                        stats.cross_accepted = int(getattr(stats, "cross_accepted", 0) or 0) + 1
+                    if (beats and ev is not None and ev.feasible
+                            and _better_air(ev, cand, best_ev, plan, alg, ctx)
+                            and _nominal_cross_intact(cand, ev, ctx)
+                            and (win is None or _better_air(ev, cand, win[1], win[0], alg, ctx))):
+                        win = (cand, ev, ac)
+                    spent += budget.used - before
+                    if ev is None:
+                        break
             if win is None:
                 continue
             cand, ev, ac = win
@@ -306,7 +366,7 @@ def _build_two_phase(inst, phys, alg, rngs, eval_budget, variant, n_used, cross_
     cap = None
     if cross_launch and (makespan_cap is not None or getattr(alg, "x_cross_hs_cap", False)):
         cap = p1_finish if makespan_cap is None else max(makespan_cap, p1_finish or makespan_cap)
-    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=None, mode="nominal", rngs=rngs,
+    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=getattr(alg, "v13_H", None), mode="nominal", rngs=rngs,
                        makespan_cap=cap)
     ctx.scenario_on = bool(getattr(alg, "scenario_aware", False))
     ctx.live_budget = budget2
@@ -405,9 +465,15 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
                                 two_phase_b, makespan_cap=makespan_cap if cross_launch else None,
                                 alt_start=alt_start if cross_launch else None)
     t0 = time.perf_counter()
+    # Same-truck draws are reseeded every iteration from the case and the iteration,
+    # identically for S and X. Cross draws use another stream.
+    if getattr(alg, "v13_rules", False):
+        alg.crn_per_iteration = True
     state = initial_state(inst, phys)
-    state.nominal_cross = bool(cross_launch)     # 第六轮：True=X（名义阶段允许跨车航次）；False=S（行为与之前完全一致）
-    state.allow_support = bool(cross_launch and getattr(alg, "support_rendezvous", False))
+    # X's cross neighbourhood is on from the first descent and the first ALNS iteration.
+    state.nominal_cross = bool(cross_launch and getattr(alg, "v13_x_nominal", True))
+    state.defer_cross_repair = False
+    state.allow_support = bool(state.nominal_cross and getattr(alg, "support_rendezvous", False))
     stats = SearchStats()
     budget = Budget(eval_budget if eval_budget is not None else alg.nominal_eval_budget, None)
     plan = ground_only_plan(inst, n_used or phys.truck_count, phys.truck_count)
@@ -415,7 +481,7 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
     if ev is None or not ev.feasible:
         return SolveResult(plan, ev, "INVALID_INPUT", stats)
     best_plan, best_ev = plan.clone(), ev
-    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=None, mode="nominal",
+    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=getattr(alg, "v13_H", None), mode="nominal",
                        rngs=rngs)
     ctx.live_budget = budget
     ctx.live_stats = stats
@@ -426,15 +492,27 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
         total = budget.eval_limit
         pA, eA, nA = descent_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
                                   max_eval=alg.nominal_descent_eval_budget,
-                                  allow_cross=bool(getattr(state, "nominal_cross", False)))
+                                  allow_cross=bool(getattr(state, "nominal_cross", False)
+                                                   and not getattr(alg, "v13_rules", False)))
         pB, eB, nB = conversion_pass(plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
                                      max_eval=alg.nominal_air_bootstrap_eval_budget)
         best = None
-        for p0, e0 in ((pA, eA), (pB, eB)):
+        # S and X cool and stop each slice by iteration count, not by evaluations.
+        # A cross evaluation therefore cannot shorten X's slice or cool it faster.
+        use_iters = bool(getattr(alg, "v13_rules", False))
+        slice_iters = max(8, int(alg.nominal_start_slice) // 5)
+        # The main repair stays same-truck. The cross operator runs beside it.
+        state.defer_cross_repair = bool(use_iters and getattr(state, "nominal_cross", False))
+        for i, (p0, e0) in enumerate(((pA, eA), (pB, eB))):
             if e0 is None or not e0.feasible:
                 continue
-            budget.eval_limit = min(total, budget.used + alg.nominal_start_slice)
+            if use_iters:
+                stats.iter_cap = slice_iters * (i + 1)
+                budget.eval_limit = total
+            else:
+                budget.eval_limit = min(total, budget.used + alg.nominal_start_slice)
             r0 = optimize(p0, ctx, budget, variant=variant, stats=stats)
+            stats.iter_cap = None
             budget.eval_limit = total
             if r0.plan is not None and r0.evaluation is not None and r0.evaluation.feasible:
                 other_ev = None if best is None else best[1]
@@ -445,11 +523,28 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
             best_plan, best_ev = best
         n_conv = nA + nB
         reserve = int(alg.nominal_final_descent_frac * total) if variant == "full" else 0
-        budget.eval_limit = total - reserve
-        res = optimize(best_plan, ctx, budget, variant=variant, stats=stats)
+        if use_iters:
+            stats.iter_cap = slice_iters * 2 + 120
+            budget.eval_limit = total - reserve
+        else:
+            budget.eval_limit = total - reserve
+        long_start = best_plan
+        _stamp_cross_census(stats, long_start, inst, phys, alg, "_enter")
+        res = optimize(long_start, ctx, budget, variant=variant, stats=stats)
+        stats.iter_cap = None
         budget.eval_limit = total
+        state.defer_cross_repair = False
+        # The shared final descent is the same operator S runs. Support hand-offs stay
+        # inside X's cross operator, so this descent does not grow a different candidate list.
+        if getattr(state, "nominal_cross", False):
+            state.allow_support = False
         if res.plan is not None and res.evaluation is not None and res.evaluation.feasible:
-            best_plan, best_ev = res.plan, res.evaluation
+            if best_plan is None or _better_air(res.evaluation, res.plan, best_ev, best_plan, alg, ctx):
+                best_plan, best_ev = res.plan, res.evaluation
+        if getattr(state, "nominal_cross", False):
+            sp, se = getattr(stats, "same_plan", None), getattr(stats, "same_ev", None)
+            if sp is not None and se is not None and _better_air(se, sp, best_ev, best_plan, alg, ctx):
+                best_plan, best_ev = sp, se
         if reserve > 0 and budget.evals_left() > 0:
             # 第三轮：ALNS 后收尾的成本驱动下降（诊断：贪心单步转空送仍能再降 1–1.4% 成本）
             p4, e4, n4 = descent_pass(best_plan.clone(), inst, phys, alg, state, stats, best_ev, budget,
@@ -466,7 +561,15 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
         stats.stop_reason = res.stats.stop_reason or "BUDGET"
         stats.wall_s = time.perf_counter() - t0
         stats.counts = dict(res.stats.counts)
+        if getattr(state, "nominal_cross", False):
+            stats.counts["cross_charged"] = int(getattr(stats, "cross_charged", 0) or 0)
+            stats.counts["cross_accepted"] = int(getattr(stats, "cross_accepted", 0) or 0)
+            stats.counts["cross_evals"] = int(getattr(stats, "cross_evals", 0) or 0)
+        stats.counts["n_screens"] = int(getattr(stats, "n_screens", 0) or 0)
         stats.counts["n_conversion_evals"] = n_conv
+        from .alns import publish_j_champion
+        best_plan, best_ev = publish_j_champion(best_plan, best_ev, stats, alg, ctx)
+        _stamp_cross_census(stats, best_plan, inst, phys, alg, "")
         return SolveResult(best_plan, best_ev, "FEASIBLE_LIMIT", stats)
     # 转换启动
     if alg.nominal_descent:
@@ -479,7 +582,7 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
     if ev2 is not None and ev2.feasible:
         best_plan, best_ev = plan2, ev2
     # ALNS
-    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=None, mode="nominal",
+    ctx = SolveContext(inst=inst, phys=phys, alg=alg, state=state, H=getattr(alg, "v13_H", None), mode="nominal",
                        rngs=rngs)
     res = optimize(best_plan, ctx, budget, variant=variant, stats=stats)
     if res.plan is not None and res.evaluation is not None and res.evaluation.feasible:
@@ -496,4 +599,16 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
     stats.counts = dict(res.stats.counts)
     stats.counts.update({k: v for k, v in res.stats.counts.items() if k not in stats.counts})
     stats.counts["n_conversion_evals"] = n_conv
+    from .alns import publish_j_champion
+    best_plan, best_ev = publish_j_champion(best_plan, best_ev, stats, alg, ctx)
+    _stamp_cross_census(stats, best_plan, inst, phys, alg, "")
     return SolveResult(best_plan, best_ev, "FEASIBLE_LIMIT", stats)
+
+
+def _stamp_cross_census(stats, plan, inst, phys, alg, suffix: str) -> None:
+    """Record cross meetings before and after the 0.08333 kWh floor. No evaluation."""
+    from .cross_nominal import census_cross_candidates
+    slack = float(getattr(alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+    got = census_cross_candidates(plan, inst, phys, slack)
+    stats.counts[f"cross_cand_emin{suffix}"] = int(got["emin"])
+    stats.counts[f"cross_cand_floor{suffix}"] = int(got["floor"])

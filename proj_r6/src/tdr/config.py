@@ -146,7 +146,10 @@ class PhysicalConfig:
         return self.beta_cruise * self.battery_kwh * distance_m / self.reference_range_m(mass_kg)
 
     def hover_energy_kwh(self, seconds: float, mass_kg: float) -> float:
-        return self.hover_power(mass_kg) * seconds / 3600.0
+        # Negative duration would credit energy. That is an infeasible truncation, not a charge.
+        if seconds < -self.tolerance_energy_kwh:
+            return float("inf")
+        return self.hover_power(mass_kg) * max(0.0, seconds) / 3600.0
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "PhysicalConfig":
@@ -254,7 +257,7 @@ class AlgorithmConfig:
     # 每个情景的补救评价都计入同一份名义预算。S 与 X 同一套；S 的补救只能回到放飞车。
     scenario_aware: bool = False
     scenario_count: int = 2
-    scenario_p: float = 0.2
+    scenario_p: float = 0.0
     scenario_stream: int = 0
     # 情景补救不可行时，这一情景的成本按名义成本再加这么多。不是在评价种子上拟合的。
     scenario_infeasible_penalty: float = 400.0
@@ -309,6 +312,11 @@ class AlgorithmConfig:
     x_cross_j_gate: bool = False
     # 第 11 轮，只在 X 的恢复目录里用：S 的前若干个候选保持原顺序，其后的能量不可行条目不再占用评价。
     x_recovery_wider: bool = False
+    # v1.3 experiment switch. Physics fixes apply either way; this turns on the
+    # shared J scenario set, the warm-start ban and the 60 s default wall.
+    v13_rules: bool = False
+    v13_m1: int | None = None
+    v13_m2: int | None = None
     # X 专属：新出现/改回收点的跨车航次，回收后余电须 ≥ E_min + 该比例×E_cap，避免贴着换电下限
     x_cross_energy_margin_frac: float = 0.0
     # X 专属：恢复时不把残差里尚未空送的票新开成空中服务（已有空送可以改回收车）
@@ -322,6 +330,10 @@ class AlgorithmConfig:
     # 只进入 X 的修复代理和接受准则；写入结果的仍是真实 C_res。S 不读这两个字段。
     x_risk_price_air: bool = False
     failure_prob: float = 0.0
+    # v1.3 default is the K∈{1,2} model. bernoulli_p is the optional independent model;
+    # its probability is bernoulli_p and is also the planning weight. No separate weight.
+    failure_model: str = "v13_k12"
+    bernoulli_p: float | None = None
     # 两阶段名义：阶段2 预算 b（None=不启用；与 build 参数 two_phase_b 二选一，参数优先）
     nominal_two_phase_b: int | None = None
     crn_per_iteration: bool = False          # 共同随机数：按(种子,算例,重规划,轮次)重置随机流（S/X 对称）

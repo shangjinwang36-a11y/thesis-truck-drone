@@ -1,8 +1,7 @@
 """停止回合的应急收尾：剩下的客户改由卡车地面送达。
 
-不另加每客户罚金。失败是随机事件。超出班次的时间只按模型里的加班工资计价
-（soft_h，倍率 overtime_mult，基础工资已经按 1 倍计入，加班再加 (mult-1) 倍）。
-S、R、X 用同一套规则，函数不接收策略。
+不另加罚金，不把班次改成加班，也不把储备清零。无人机仍在空中且没有合法回收时，
+不生成有限成本。S、R、X 用同一套规则，函数不接收策略。
 """
 from __future__ import annotations
 
@@ -109,30 +108,31 @@ def _build(plan, state, inst, phys, mode: str, land: bool = False):
                     s.handover.append(parcel)
             s.air = []
     if land:
-        # 只改已经在飞的残段。降落等待的电耗规则在 schedule.stage_energy：
-        # 落地后的等待和回收不再悬停耗电，飞到接机点的航程仍按原电耗计。
-        for s in p.sorties.values():
-            if s.started:
-                s.landed = True
+        raise AssertionError("landed wait/recovery branch must never trigger")
     # 失败票已经在交接清单里，但停止时的计划还没给它地送访问。三种收尾都补上。
     _place_handover_after_recovery(p, inst, st)
     left = _insert(p, inst, phys, st, _pool(p, st, inst, freed))
     return p, st, left
 
 
-def _evaluate(plan, state, inst, phys, H):
-    # 规划储备是搜索用的余量。应急收尾只拒绝电量真正为负的飞行，班次之外按加班计价。
-    priced = dataclasses.replace(phys, soft_h=True, reserve_fraction=0.0)
-    return evaluate_plan(plan, inst, priced, state, H, "GROUND_FINISH")
+def _evaluate(plan, state, inst, phys, H, budget=None):
+    # 硬 H、硬 E_min。不切换 soft_h，不清零储备。评价计入调用方传来的同一份预算。
+    if phys.soft_h or phys.reserve_fraction <= 0.0:
+        raise AssertionError("ground finish must not relax H or the energy floor")
+    return evaluate_plan(plan, inst, phys, state, H, "GROUND_FINISH", budget=budget)
 
 
-def _attempt(plan, state, inst, phys, H, mode: str, land: bool) -> tuple[float | None, str]:
-    tag = f"{mode}:landed" if land else mode
+def _attempt(plan, state, inst, phys, H, mode: str, land: bool, budget=None) -> tuple[float | None, str]:
+    tag = mode
     try:
         built, st, left = _build(plan, state, inst, phys, mode, land=land)
         if left:
             return None, f"UNPLACED:{tag}:{len(left)}"
-        ev = _evaluate(built, st, inst, phys, H)
+        # 仍在空中的航次必须留有回收访问。没有合法回收就不能把货直接算成地面完成。
+        for s in built.sorties.values():
+            if s.started and s.rec_vid not in built.visits:
+                return None, f"AIRBORNE_WITHOUT_RECOVERY:{tag}:{s.sid}"
+        ev = _evaluate(built, st, inst, phys, H, budget=budget)
     except Exception as exc:
         return None, f"{tag}:EXC:{type(exc).__name__}"
     if ev is not None and ev.feasible and ev.cost is not None:
@@ -141,17 +141,12 @@ def _attempt(plan, state, inst, phys, H, mode: str, land: bool) -> tuple[float |
     return None, f"{tag}:{str(note)[:160]}"
 
 
-def ground_finish_cost(plan, state, inst, phys, H) -> tuple[float | None, str]:
-    """返回 (真实成本, 状态)。成本含里程、工时、能耗和加班，不含每客户罚金。
-
-    前三种收尾都不可行时，才允许已在飞的残段改成降落等待。这只去掉接机点上的悬停耗电，
-    不改已经由前三种收尾定过价的回合，也不加每客户罚金。飞到接机点的电耗仍照计。
-    """
+def ground_finish_cost(plan, state, inst, phys, H, budget=None) -> tuple[float | None, str]:
+    """返回 (真实地面配送成本, 状态)。没有合法完整收尾时成本是 None，不加罚分。"""
     notes = []
-    for land in (False, True):
-        for mode in ("truck", "keep_inflight", "overtime_only"):
-            cost, note = _attempt(plan, state, inst, phys, H, mode, land)
-            if cost is not None:
-                return cost, note
-            notes.append(note)
-    return None, " | ".join(notes) or "NO_ATTEMPT"
+    for mode in ("truck", "keep_inflight", "overtime_only"):
+        cost, note = _attempt(plan, state, inst, phys, H, mode, False, budget=budget)
+        if cost is not None:
+            return cost, note
+        notes.append(note)
+    return None, " | ".join(notes) or "NO_LEGAL_COMPLETION_FOUND"

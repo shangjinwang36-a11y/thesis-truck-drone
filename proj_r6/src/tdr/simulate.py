@@ -365,17 +365,38 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
                 elif st.start < td(d):
                     q_prefix[st.truck] = q_prefix.get(st.truck, 0.0) + q * (td(d) - st.start) / (st.end - st.start)
     swap_refill_prefix = 0.0
+    swap_ledger = None
+    spare_left: dict[str, float] | None = None
     if phys.swap_mode:
-        # 换电：q_prefix[卡车] 改记"已用备用电池块数"；换下电池的待补电量计入 prefix_refill_kwh
+        # One debit per swap. An in-progress swap stays reserved and is not debited again
+        # when a later cut sees it complete. Inventory is the previous cut's remainder,
+        # not a second subtraction of every swap since the depot.
+        from .v13 import SwapLedger
+        prev_ledger = getattr(prev_state, "swap_ledger", None) if prev_state is not None else None
+        if isinstance(prev_ledger, SwapLedger):
+            swap_ledger = SwapLedger(dict(prev_ledger.completed), dict(prev_ledger.reserved))
+        else:
+            swap_ledger = SwapLedger()
+        spare_left = {}
+        for truck in plan.routes:
+            ac0 = float(phys.spare_batteries)
+            spare_left[truck] = (prev_state.truck_ac.get(truck, ac0) if prev_state is not None else ac0)
         for d, stages in tl.drone_stages.items():
             energies = tl.drone_energy.get(d, [])
             for i, st_ in enumerate(stages):
-                if st_.kind != "SWAP" or st_.end > td(d) + 1e-9:
+                if st_.kind != "SWAP":
                     continue
                 if d == failed_drone and st_.start >= t_fail - 1e-6:
                     continue
-                q_prefix[st_.truck] = q_prefix.get(st_.truck, 0.0) + 1.0
-                swap_refill_prefix += phys.e_cap - energies[i]
+                key = (d, round(float(st_.start), 6))
+                if st_.end <= td(d) + 1e-9:
+                    was_done = key in swap_ledger.completed
+                    swap_ledger.debit_completed(key, st_.truck, spare_left)
+                    if not was_done:
+                        before = energies[i] if i < len(energies) else phys.e_cap
+                        swap_refill_prefix += max(0.0, phys.e_cap - before)
+                elif st_.start < td(d) + 1e-9:
+                    swap_ledger.debit_reserved(key, st_.truck, spare_left)
     base_dist = prev_state.prefix_distance_m if prev_state is not None else 0.0
     base_ac = prev_state.prefix_ac_kwh if prev_state is not None else 0.0
     st = StartState(t0=t_cut, delivered=set(all_delivered),
@@ -393,12 +414,19 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
         st.truck_ready_time[truck] = tk(truck)
         _ac0 = float(phys.spare_batteries) if phys.swap_mode else phys.truck_initial_ac_kwh
         prev_ac = prev_state.truck_ac.get(truck, _ac0) if prev_state else _ac0
-        st.truck_ac[truck] = max(0.0, prev_ac - q_prefix.get(truck, 0.0))
+        if phys.swap_mode and spare_left is not None:
+            st.truck_ac[truck] = spare_left.get(truck, prev_ac)
+        else:
+            st.truck_ac[truck] = max(0.0, prev_ac - q_prefix.get(truck, 0.0))
+        st.swap_ledger = swap_ledger
         new.routes[truck] = [] if finished else list(plan.routes[truck][start_idx:])
         st.truck_fixed_first[truck] = (not finished) and _truck_is_driving(truck, tk(truck), tl)
         st.truck_min_insert[truck] = 1 if st.truck_fixed_first[truck] else 0
         if finished and truck in tl.truck_finish:
             st.truck_done[truck] = tl.truck_finish[truck]
+    st.swap_ledger = swap_ledger
+    if prev_state is not None:
+        st.known_air_failures = set(getattr(prev_state, "known_air_failures", ()) or ())
     keep_vids = {vid for r in new.routes.values() for vid in r}
     for vid in list(new.visits):
         if vid not in keep_vids:
@@ -790,11 +818,20 @@ class EpisodeResult:
     time_replay: float = 0.0
 
 
-def derive_rngs(base_seed: int, case_id: str, phase: str, replan_index: int) -> dict[str, random.Random]:
+def derive_rngs(base_seed: int, case_id: str, phase: str, replan_index: int,
+                public_history=None) -> dict[str, random.Random]:
+    """Algorithm RNG. public_history, when passed, is part of the seed.
+
+    The environment seed is not an input. Hashing it would still leak the test list.
+    """
     import hashlib
+    import json
     out = {}
+    extra = ""
+    if public_history is not None:
+        extra = "|" + json.dumps(list(public_history), ensure_ascii=False, separators=(",", ":"))
     for name in ("operator", "destroy", "accept"):
-        text = f"tdr_v61|{base_seed}|{case_id}|{phase}|{replan_index}|{name}"
+        text = f"tdr_v61|{base_seed}|{case_id}|{phase}|{replan_index}|{name}{extra}"
         seed = int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:8], "big")
         out[name] = random.Random(seed)
     return out
@@ -825,6 +862,8 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                 max_replans: int = 8, cut_mode: str = "snapshot",
                 ground_finish: bool = False) -> EpisodeResult:
     from .replay import verify_replay
+    from .v13 import reset_planner_episode_state
+    reset_planner_episode_state(alg)
     t_start = time.perf_counter()
     res = EpisodeResult(case_id=inst.case_id, strategy=strategy,
                         environment_seed=getattr(world, "_HiddenWorld__seed", -1), status="ERROR")
@@ -839,13 +878,17 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
     res.replans.append(ReplanRecord(0, 0.0, [], "NOMINAL", nominal_ev.cost, nominal_ev.z,
                                     {"n_eval_requests": 0}, 0.0, "NOMINAL"))
 
-    def _finish_stopped(plan_, state_) -> None:
+    def _finish_stopped(plan_, state_, budget=None) -> None:
         if not ground_finish or plan_ is None or state_ is None:
             return
         from .ground_finish import ground_finish_cost
-        cost, status = ground_finish_cost(plan_, state_, inst, phys, H)
+        if budget is not None:
+            budget.hold = 0
+        cost, status = ground_finish_cost(plan_, state_, inst, phys, H, budget=budget)
         res.ground_finish_cost = cost
         res.ground_finish_status = status
+        if budget is not None:
+            res.notes.append(f"FINISH_EVALS:{budget.used}:WALL_HITS:{budget.wall_hits}")
 
     while True:
         ev_now = evaluate_plan(plan, inst, phys, state, H, "SIMULATE")
@@ -856,24 +899,38 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             break
         tl = ev_now.timeline
         arrivals = air_arrivals(plan, tl, inst)
-        fail = None
+        pending = []
         for a in arrivals:
-            if a.time < state.t0 - 1e-9:
+            if a.time < state.t0 - 1e-9 or a.parcel in state.delivered:
                 continue
-            if a.parcel in state.delivered:
-                continue
-            key = (a.parcel, round(a.time, 3))
+            # Exact timestamp. Rounding to 0.001 s must not merge distinct events.
+            key = (a.parcel, a.time)
             if key in processed:
                 continue
-            obs = world.observe_air_arrival(a.parcel, a.time,
-                                            f"{a.sid}|{a.parcel}|{round(a.time, 3)}",
-                                            a.customer, a.drone)
-            res.observations.append(obs)
-            processed.add(key)
-            if not obs.air_delivery_available:
-                fail = (a, obs)
-                break
-        if fail is None:
+            pending.append(a)
+        if not pending:
+            fail_batch = []
+        else:
+            t_star = min(a.time for a in pending)
+            batch = [a for a in pending if a.time == t_star]
+            batch.sort(key=lambda a: (a.customer, a.parcel))
+            fail_batch = []
+            opened = []
+            for a in batch:
+                obs = world.observe_air_arrival(a.parcel, a.time,
+                                                f"{a.sid}|{a.parcel}|{a.time:.9f}",
+                                                a.customer, a.drone)
+                res.observations.append(obs)
+                processed.add((a.parcel, a.time))
+                opened.append({"kind": "failure" if not obs.air_delivery_available else "success",
+                               "customer_id": a.customer, "parcel_id": a.parcel, "time": a.time})
+                if not obs.air_delivery_available:
+                    fail_batch.append((a, obs))
+            from .v13 import batch_opens_recovery
+            if not batch_opens_recovery(opened):
+                # Successes at this instant update the public history and do not open a recovery.
+                continue
+        if not fail_batch:
             t_end = max(list(tl.truck_finish.values()) +
                         [st.end for lst in tl.drone_stages.values() for st in lst] + [state.t0])
             segments.append(collect_segment(plan, tl, inst, phys, state.t0, t_end, seg_start))
@@ -891,9 +948,11 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                 res.status = "INVALID_EXECUTION"
                 res.notes += ev.violations[:5] + rep.violations[:8]
             break
-        a, obs = fail
-        ground_required.add(a.parcel)
-        res.failed_sids.append(a.sid)
+        a, obs = fail_batch[0]
+        for a_i, _obs_i in fail_batch:
+            ground_required.add(a_i.parcel)
+            res.failed_sids.append(a_i.sid)
+        state.known_air_failures = set(getattr(state, "known_air_failures", ()) or ()) | set(ground_required)
         if cut_mode == "cascade":          # 旧口径(第三轮及以前)：对照用
             t_cut, T_truck, T_drone = compute_cut(tl, a.time, a.drone), {}, {}
         else:                              # 规范：快照取失败时刻，在途动作按各自剩余时长承诺完成
@@ -922,9 +981,16 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             break
         main_limit = (recovery_eval_budget if recovery_eval_budget is not None
                       else alg.deterministic_recovery_eval_budget)
-        # 修复2：初始化预算与 ALNS 主循环预算分开记账，S/X 使用相同的两份额度
+        # One cap for this recovery process: init, catalog, MILP checks, search and finish.
+        # The last few evaluations are held so contingency pricing can run inside the same cap.
+        wall_s = recovery_wall_s
+        if wall_s is None and getattr(alg, "v13_rules", False):
+            wall_s = float(alg.recovery_wallclock_seconds or 60.0)
         t_budget0 = time.perf_counter()
-        init_budget = Budget(alg.recovery_init_eval_budget, recovery_wall_s, start=t_budget0)
+        init_budget = Budget(main_limit, wall_s, start=t_budget0)
+        init_budget.hold = 4
+        init_budget.init_release_at = min(100, max(1, main_limit - 4))
+        x_integrated = bool(strategy == "X" and getattr(alg, "v13_rules", False))
         init_stats = SearchStats()
         init_info: dict[str, Any] = {}
         ceiling = set()
@@ -950,19 +1016,34 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                                                  keep_s_recovery=(strategy == "X" and alg.x_keep_s_recovery),
                                                  limit_new_air=(strategy == "X" and alg.x_limit_new_air),
                                                  new_air_penalty=(alg.x_new_air_penalty if strategy == "X" else 0.0),
-                                                 energy_screen=(strategy == "X" and bool(getattr(alg, "x_recovery_wider", False))),
-                                                 milp_top_k=(10 if strategy == "X" and bool(getattr(alg, "x_recovery_wider", False)) else 6))
+                                                 energy_screen=bool(getattr(alg, "x_recovery_wider", False)),
+                                                 milp_top_k=(10 if bool(getattr(alg, "x_recovery_wider", False)) else 6),
+                                                 integrated_rank=x_integrated and bool(getattr(alg, "v13_x_rank", True)),
+                                                 inject_rescue=x_integrated and bool(getattr(alg, "v13_x_rescue", True)),
+                                                 fair_screen=bool(getattr(alg, "v13_rules", False)),
+                                                 alg=alg)
         res.time_init += time.perf_counter() - t_budget0
         res.time_milp += float(init_info.get("milp_wall_s") or 0.0)
         if opt is None:
             res.status = "STOPPED_NO_FEASIBLE_SUFFIX"
             res.notes.append(f"STOP_CONTEXT:replan={replan_index + 1},t_fail={a.time:.1f},t_cut={t_cut:.1f},"
-                             f"drone={a.drone},parcel={a.parcel},n_candidate_reasons={len(reasons)}")
+                             f"drone={a.drone},parcel={a.parcel},n_candidate_reasons={len(reasons)},"
+                             f"evals={init_budget.used},wall_hits={init_budget.wall_hits}")
             res.notes.append("INITIAL_RECOVERY_FAILED:" + ",".join(reasons[:5]))
+            res.replans.append(ReplanRecord(replan_index + 1, a.time,
+                                            [x.parcel for x, _o in fail_batch], "NO_FEASIBLE",
+                                            None, None, {"n_eval_requests": init_budget.used,
+                                                         "wall_hits": init_budget.wall_hits,
+                                                         "budget_limit": main_limit}, t_cut))
             res.plan, res.evaluation = new_plan, None
-            _finish_stopped(new_plan, state2)
+            _finish_stopped(new_plan, state2, init_budget)
             break
-        rr = derive_rngs(alg.base_algorithm_seed, inst.case_id, "recovery", replan_index + 1)
+        history = tuple((o.customer_id, o.kind) for o in res.observations)
+        if getattr(alg, "v13_rules", False):
+            rr = derive_rngs(alg.base_algorithm_seed, inst.case_id, "recovery", replan_index + 1,
+                             public_history=history)
+        else:
+            rr = derive_rngs(alg.base_algorithm_seed, inst.case_id, "recovery", replan_index + 1)
         greq = set(ground_required)
         # 惩罚为 0 时，x_limit_new_air 仍是硬禁止：通用修复不能新开空送。
         # 风险价只约束再飞算子提出的那一票，不在这里把硬禁止关掉。
@@ -976,7 +1057,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                            rngs=rr, catalog=catalog, frag_sid=a.sid, strategy=strategy,
                            air_ceiling=air_ceiling)
         t_r = time.perf_counter()
-        budget = Budget(main_limit, recovery_wall_s, start=t_budget0)   # 主循环预算
+        budget = init_budget   # same cap; init evaluations are already counted
         stats = SearchStats()
         sol = optimize(opt.plan, ctx, budget, variant=variant, stats=stats, init_ev=opt.ev)
         dt = time.perf_counter() - t_r
@@ -989,13 +1070,23 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             res.notes.append("RESIDUAL_GUARD_TRIGGERED")
             rp, rev = init_info["_residual"]
             sol = SolveResult(rp, rev, "FEASIBLE_LIMIT", sol.stats)
+        def _recovery_is_cross(plan, sid) -> bool:
+            from .evaluate import recovery_is_cross
+            if plan is None or sid not in plan.sorties:
+                return False
+            return bool(recovery_is_cross(plan, plan.sorties[sid]))
+
         init_counts = {
             "n_init_evals": init_stats.eval_requests,
             "init_by_reason": dict(init_stats.eval_by_reason),
             "n_main_evals": stats.eval_requests,
             "n_main_iterations": stats.iterations,
             "main_by_reason": dict(stats.eval_by_reason),
-            "n_eval_requests": init_stats.eval_requests + stats.eval_requests,
+            "n_eval_requests": budget.used,
+            "n_screens": int(getattr(init_stats, "n_screens", 0) or 0) + int(getattr(stats, "n_screens", 0) or 0),
+            "wall_s": time.perf_counter() - t_budget0,
+            "wall_hits": int(getattr(budget, "wall_hits", 0)),
+            "budget_limit": main_limit,
             "init_budget_limit": alg.recovery_init_eval_budget,
             "main_budget_limit": main_limit,
             "init_rescue_used": init_info.get("rescue_used", False),
@@ -1017,6 +1108,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             "milp_surrogate_obj": init_info.get("milp_surrogate_obj"),
             "milp_true_costs": init_info.get("milp_true_costs"),
             "final_cost": sol.evaluation.cost if sol.evaluation is not None else None,
+            "cross_rescue": _recovery_is_cross(sol.plan, a.sid),
         }
         if init_counts["init_cost"] is not None and init_counts["final_cost"] is not None:
             init_counts["patch_back"] = init_counts["init_cost"] - init_counts["final_cost"]
@@ -1027,7 +1119,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             res.replans.append(ReplanRecord(replan_index + 1, a.time, [a.parcel], sol.status,
                                             None, None, dict(sol.stats.counts), t_cut))
             res.plan, res.evaluation = new_plan, None
-            _finish_stopped(new_plan, state2)
+            _finish_stopped(new_plan, state2, budget)
             break
         plan, state = sol.plan, state2
         seg_start = state2
@@ -1047,4 +1139,26 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
         res.audit = world.finish_episode()
     except Exception as exc:  # noqa: BLE001
         res.notes.append(f"AUDIT_ERROR:{exc}")
+    from .v13 import classify_episode
+    hard = res.status == "INVALID_EXECUTION"
+    verified = res.status == "COMPLETED_VERIFIED"
+    used_finish = res.ground_finish_cost is not None
+    if verified and res.evaluation is not None:
+        v13_status, v13_cost = classify_episode(
+            verified_complete=True, used_contingency_finish=False, hard_violation=False,
+            finish_cost=res.evaluation.cost)
+    elif used_finish:
+        v13_status, v13_cost = classify_episode(
+            verified_complete=False, used_contingency_finish=True, hard_violation=False,
+            finish_cost=res.ground_finish_cost)
+    elif hard:
+        v13_status, v13_cost = classify_episode(
+            verified_complete=False, used_contingency_finish=False, hard_violation=True,
+            finish_cost=None)
+    else:
+        v13_status, v13_cost = classify_episode(
+            verified_complete=False, used_contingency_finish=False, hard_violation=False,
+            finish_cost=None)
+    res.v13_status = v13_status
+    res.v13_cost = v13_cost
     return res

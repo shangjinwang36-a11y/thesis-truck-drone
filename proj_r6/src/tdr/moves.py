@@ -686,7 +686,8 @@ def air_candidates(plan: Plan, inst: Instance, phys: PhysicalConfig, parcel: str
         picked.append(cand_)
         if len(picked) >= max_new:
             break
-    if getattr(state, "nominal_cross", False) or allow_cross:
+    if ((getattr(state, "nominal_cross", False) or allow_cross)
+            and not getattr(state, "defer_cross_repair", False)):
         # 第六轮（仅 X 名义）以及第四轮 X 恢复的再飞算子：在同车候选之外追加跨车候选。
         # allow_cross 只由该算子显式打开；S 的修复不传这个参数。
         picked = picked + cross_air_candidates(

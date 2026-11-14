@@ -98,12 +98,10 @@ def verify_plan(inst: Instance, state: StartState | None, plan: Plan, strategy: 
     for d, stages in tl.drone_stages.items():
         energies = tl.drone_energy.get(d, [])
         for i, st in enumerate(stages):
-            if i + 1 < len(energies) and energies[i + 1] < -phys.energy_tol:
-                rep.violations.append(f"NEGATIVE_SOC:{d}@{st.start:.1f}")
-            # 降落等待的回收不要求备用电量，与 evaluate_plan 一致；电量仍须 ≥ 0。
-            if (st.kind == "R" and not st.landed and i + 1 < len(energies)
-                    and energies[i + 1] < phys.e_min - phys.energy_tol):
-                rep.violations.append(f"RESERVE_VIOLATION:{d}@{st.start:.1f}")
+            if st.landed:
+                raise AssertionError("landed wait/recovery branch must never trigger")
+            if i + 1 < len(energies) and energies[i + 1] < phys.e_min - phys.energy_tol:
+                rep.violations.append(f"E_MIN:{d}@{st.start:.1f}:{energies[i + 1]:.6f}")
     # ---- 交付与终端 ----
     delivered = set(state.delivered)
     for v in plan.visits.values():
