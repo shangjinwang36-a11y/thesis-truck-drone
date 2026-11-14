@@ -130,7 +130,8 @@ def _pool(ctx, allow_cross: bool) -> "ColumnPool":
     """列池挂在算法配置上，阶段1和阶段2共用。S 与 X 用 allow_cross 分开。"""
     alg = getattr(ctx, "alg", None)
     case_id = getattr(getattr(ctx, "inst", None), "case_id", "")
-    key = (case_id, bool(allow_cross))
+    from .v13 import column_pool_key
+    key = column_pool_key(case_id, allow_cross)
     pools = getattr(alg, "_column_pools", None) if alg is not None else None
     if pools is None:
         pools = {}

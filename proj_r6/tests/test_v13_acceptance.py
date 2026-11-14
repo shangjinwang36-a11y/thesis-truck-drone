@@ -5,6 +5,7 @@ These are the freeze checks. A green run of the older suite does not replace the
 from __future__ import annotations
 
 import inspect
+import json
 import math
 import random
 from pathlib import Path
@@ -97,6 +98,9 @@ def test_t_post_posterior_and_local_weights():
     e_after = w_after[0] * 1 + w_after[1] * 2
     assert e_after < e_prior
     assert unrevealed_failure_probability(50, 0, 10) == pytest.approx(e_after / 40.0)
+    # N=50, f=0, s=10: P(K=2) falls, and the next customer's failure probability rises to 0.03608.
+    assert w_after[1] < w_prior[1]
+    assert unrevealed_failure_probability(50, 0, 10) == pytest.approx(0.036079545454545454)
     assert unrevealed_failure_probability(50, 0, 0) == pytest.approx(3.0 / 100.0)
 
     rec = ObservationRecord()
@@ -144,6 +148,15 @@ def test_t_post_posterior_and_local_weights():
         assert local_subset_probability(n, 0, 0, m, b, observed=False) == pytest.approx(specific)
         assert closed[b] == pytest.approx(specific)
     assert local_subset_probability(n, 0, 0, m, 3, observed=False) == 0.0
+    # After ten successes the local sum is only over b the posterior can still produce.
+    from tdr.v13 import enumerate_local_world as _enum
+    support = _enum(50, 0, 10, 8, observed=True)
+    assert set(support) <= {0, 1, 2}
+    # Each value is one specific B. Summing C(8,b) copies of it covers the posterior support.
+    covered = sum(math.comb(8, b) * p for b, p in support.items())
+    assert covered == pytest.approx(1.0)
+    ruled_out = _enum(50, 2, 0, 6, observed=True)
+    assert set(ruled_out) == {0}
     # After one failure and no success the weights are no longer the prior 1/2, 1/2.
     w = posterior_weights(n, 1, 0)
     assert w[1] == pytest.approx(2.0 / 3.0)
@@ -165,6 +178,10 @@ def test_t_sim_exact_timestamp_batches():
     # Same timestamp: success and failure are one batch, ordered by customer id only.
     assert [e["customer_id"] for e in batches[1]] == ["c1", "c3"]
     assert {e["kind"] for e in batches[1]} == {"failure", "success"}
+    from tdr.v13 import batch_opens_recovery
+    assert batch_opens_recovery(batches[0]) is False
+    assert batch_opens_recovery(batches[1]) is True
+    assert batch_opens_recovery([{"kind": "success"}, {"kind": "success"}]) is False
 
 
 def test_t_iso_planner_cannot_see_hidden_world(draft):
@@ -192,6 +209,38 @@ def test_t_iso_planner_cannot_see_hidden_world(draft):
     # Posterior does not accept a world object.
     with pytest.raises(TypeError):
         posterior_weights(HiddenWorld)  # type: ignore[arg-type]
+
+
+def test_planner_whitelist_and_cross_episode_state(draft):
+    """The planner view is a whitelist, and caches do not carry another episode's hidden set."""
+    from tdr.config import AlgorithmConfig
+    from tdr.v13 import (
+        column_pool_key,
+        explicit_planner_whitelist,
+        reset_planner_episode_state,
+    )
+    _cfg, view = draft
+    clean = explicit_planner_whitelist(view)
+    blob = json.dumps(clean)
+    assert "101-110" not in blob
+    assert "2001-2010" not in blob
+    assert "4001-4030" not in blob
+    assert "generator_version" not in blob
+    assert "M_note" not in blob
+    assert column_pool_key("C50", True) == ("C50", True)
+    assert "p_hidden" not in repr(column_pool_key("C50", False))
+    alg = AlgorithmConfig(v13_rules=True)
+    alg._column_pools = {("C50", True): {"covers": ["p_hidden"]}}
+    alg._scenario_cache = {("true_F", "p_hidden"): 1.0}
+    reset_planner_episode_state(alg)
+    assert alg._column_pools == {}
+    assert alg._scenario_cache == {}
+    # A second episode starts empty even if the same object is reused.
+    alg._column_pools["leak"] = {"seed": 4001}
+    reset_planner_episode_state(alg)
+    assert alg._column_pools == {}
+    fresh = AlgorithmConfig()
+    assert getattr(fresh, "_column_pools", None) is None
 
 
 def test_t_inv_swap_debits_once_across_cuts():
@@ -370,6 +419,8 @@ def test_t_cfg_hash_formal_refusal_and_metadata(draft):
         load_run_config(formal=True, m1=4, m2=4, status="DRAFT_NOT_FROZEN")
     dev, dev_view, digest = load_run_config(formal=False, m1=4, m2=4)
     assert dev["planning_probability"]["M1"] == 4
+    handed = json.dumps(dev_view)
+    assert "101-110" not in handed and "generator_version" not in handed and "M_note" not in handed
     assert sha256_obj(dev) == digest
     assert digest != DRAFT_RESOLVED_SHA256
     with pytest.raises(Exception):

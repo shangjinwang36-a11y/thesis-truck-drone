@@ -862,6 +862,8 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
                 max_replans: int = 8, cut_mode: str = "snapshot",
                 ground_finish: bool = False) -> EpisodeResult:
     from .replay import verify_replay
+    from .v13 import reset_planner_episode_state
+    reset_planner_episode_state(alg)
     t_start = time.perf_counter()
     res = EpisodeResult(case_id=inst.case_id, strategy=strategy,
                         environment_seed=getattr(world, "_HiddenWorld__seed", -1), status="ERROR")
@@ -913,15 +915,19 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             batch = [a for a in pending if a.time == t_star]
             batch.sort(key=lambda a: (a.customer, a.parcel))
             fail_batch = []
+            opened = []
             for a in batch:
                 obs = world.observe_air_arrival(a.parcel, a.time,
                                                 f"{a.sid}|{a.parcel}|{a.time:.9f}",
                                                 a.customer, a.drone)
                 res.observations.append(obs)
                 processed.add((a.parcel, a.time))
+                opened.append({"kind": "failure" if not obs.air_delivery_available else "success",
+                               "customer_id": a.customer, "parcel_id": a.parcel, "time": a.time})
                 if not obs.air_delivery_available:
                     fail_batch.append((a, obs))
-            if not fail_batch:
+            from .v13 import batch_opens_recovery
+            if not batch_opens_recovery(opened):
                 # Successes at this instant update the public history and do not open a recovery.
                 continue
         if not fail_batch:

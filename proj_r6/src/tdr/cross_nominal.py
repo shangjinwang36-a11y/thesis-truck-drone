@@ -375,15 +375,17 @@ def propose_integrated(plan, ctx, kind: int):
     """One cross neighbourhood move. No full evaluation.
 
     kind 0: reassign several same-truck recoveries onto other trucks at once.
-    kind 1: take ground customers off the longest truck and hand them to a drone
-    that recovers on a shorter truck.
+    kind 1: move a ground cluster off the critical truck onto drones that meet
+    another truck inside H.
     kind 2: the single best recovery retarget.
+    A move that already clears the 0.08333 kWh floor is preferred over one that
+    only clears E_min, so an illegal cross does not spend the iteration's evaluation.
     """
     if not getattr(getattr(ctx, "state", None), "nominal_cross", False):
         return None
     inst, phys = ctx.inst, ctx.phys
     if kind % 3 == 1:
-        return _relieve_slow_truck(plan, inst, phys)
+        return _relieve_slow_truck(plan, inst, phys, getattr(ctx, "H", None))
     moves = []
     rt_cache = {}
 
@@ -417,7 +419,11 @@ def propose_integrated(plan, ctx, kind: int):
         if s.launch_vid not in plan.routes.get(ta, []):
             continue
         la = plan.routes[ta].index(s.launch_vid)
+        from .cross_robust import x_cross_energy_floor_kwh
+        floor = x_cross_energy_floor_kwh(
+            phys, float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0))
         best = None
+        best_raw = None
         for tb, route in plan.routes.items():
             if tb == ta:
                 continue
@@ -428,16 +434,21 @@ def propose_integrated(plan, ctx, kind: int):
                     e = air_energy(inst, phys, sp, s.air, rp)
                 except KeyError:
                     continue
-                if e > phys.e_cap - phys.e_min + phys.energy_tol:
-                    continue
                 tt = arr_b[bi] - dep_a[la]
                 mass = sum(inst.parcel_mass[p] for p in s.air)
                 t_air = air_time(inst, phys, sp, s.air, rp)
-                if e + phys.hover_energy_kwh(max(0.0, tt - t_air), 0.0) > phys.e_cap - phys.e_min:
+                hover = phys.hover_energy_kwh(max(0.0, tt - t_air), mass)
+                # Empty-hover against E_min let a margin-illegal meeting outrank a legal one.
+                clears_floor = e + hover <= phys.e_cap - floor + phys.energy_tol
+                if not clears_floor and e + hover > phys.e_cap - phys.e_min + phys.energy_tol:
                     continue
                 sc = save - sync_cost(phys, t_air, tt, mass) - phys.cost_depot_kwh * e
-                if best is None or sc > best[0]:
-                    best = (sc, vid, removable)
+                slot = (sc, vid, removable)
+                if best_raw is None or sc > best_raw[0]:
+                    best_raw = slot
+                if clears_floor and (best is None or sc > best[0]):
+                    best = slot
+        best = best if best is not None else best_raw
         if best is not None and best[0] > 1e-6:
             moves.append((best[0], s.sid, best[1], best[2]))
     if kind % 3 == 2:
@@ -459,7 +470,7 @@ def propose_integrated(plan, ctx, kind: int):
                 break
         moves = chosen
     if not moves:
-        return _relieve_slow_truck(plan, inst, phys) if kind % 3 == 0 else None
+        return _relieve_slow_truck(plan, inst, phys, getattr(ctx, "H", None)) if kind % 3 == 0 else None
     cand = plan.clone()
     applied = 0
     for item in moves:
@@ -473,17 +484,29 @@ def propose_integrated(plan, ctx, kind: int):
     return cand
 
 
-def _relieve_slow_truck(plan, inst, phys):
-    """Hand ground customers on the longest truck to a drone that meets a shorter truck."""
+def _critical_truck(inst, plan, phys, H: float | None) -> str | None:
+    """Truck whose route is longest, with anyone already past H ranked first."""
+    best = None
+    speed = phys.truck_speed_m_s or 1.0
+    for truck in plan.routes:
+        est = _route_length(inst, plan, truck) / speed
+        score = est + (1.0e6 if H is not None and est > float(H) else 0.0)
+        if best is None or score > best[0]:
+            best = (score, truck)
+    return None if best is None else best[1]
+
+
+def _relieve_slow_truck(plan, inst, phys, H: float | None = None):
+    """Hand a cluster of ground customers on the critical truck to drones that meet another truck."""
     from .moves import apply_air, cross_air_candidates, remove_parcel
-    lengths = [( _route_length(inst, plan, t), t) for t in plan.routes]
-    if len(lengths) < 2:
+    if len(plan.routes) < 2:
         return None
-    lengths.sort(reverse=True)
-    slow = lengths[0][1]
+    slow = _critical_truck(inst, plan, phys, H)
+    if slow is None:
+        return None
     route = plan.routes.get(slow, [])
     depot = (inst.depot_x, inst.depot_y)
-    best_det = None
+    ranked = []
     for i, vid in enumerate(route):
         v = plan.visits[vid]
         if len(v.ground) != 1:
@@ -495,21 +518,24 @@ def _relieve_slow_truck(plan, inst, phys):
         nxt = depot if i + 1 == len(route) else _pos(inst, plan, route[i + 1])
         det = (math.hypot(cc.x - prv[0], cc.y - prv[1]) + math.hypot(nxt[0] - cc.x, nxt[1] - cc.y)
                - math.hypot(nxt[0] - prv[0], nxt[1] - prv[1]))
-        if best_det is None or det > best_det[0]:
-            best_det = (det, v.ground[0])
-    if best_det is None or best_det[0] <= 0:
+        if det > 0:
+            ranked.append((det, v.ground[0]))
+    ranked.sort(reverse=True)
+    if not ranked:
         return None
-    parcel = best_det[1]
     cand = plan.clone()
-    remove_parcel(cand, parcel)
-    acs = [a for a in cross_air_candidates(cand, inst, phys, parcel, max_cross=4, allow_support=True) if a.cross]
-    if not acs:
-        return None
-    acs.sort(key=lambda a: a.proxy)
-    trial = cand.clone()
-    if not apply_air(trial, inst, parcel, acs[0]):
-        return None
-    return trial
+    placed = 0
+    for _det, parcel in ranked[:2]:
+        trial = cand.clone()
+        remove_parcel(trial, parcel)
+        acs = [a for a in cross_air_candidates(trial, inst, phys, parcel, max_cross=4, allow_support=True) if a.cross]
+        if not acs:
+            continue
+        acs.sort(key=lambda a: a.proxy)
+        if apply_air(trial, inst, parcel, acs[0]):
+            cand = trial
+            placed += 1
+    return cand if placed else None
 
 
 def try_integrated_cross(plan, ctx, budget, stats, iteration: int):

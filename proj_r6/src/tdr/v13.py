@@ -108,7 +108,9 @@ def load_run_config(*, formal: bool, m1: int | None = None, m2: int | None = Non
     view = dict(view)
     view["planning_probability"] = dict(cfg["planning_probability"])
     cfg["information_isolation"]["planner_view_sha256"] = sha256_obj(view)
-    return cfg, view, sha256_obj(cfg)
+    # The recorded hash is the manager's view, including the M note. The object
+    # the planner is given is the whitelist: no generator version and no seed notes.
+    return cfg, explicit_planner_whitelist(view), sha256_obj(cfg)
 
 
 def assert_seed_allowed(seed: int, *, formal: bool) -> None:
@@ -256,6 +258,29 @@ def bernoulli_unrevealed_failure_probability(p: float, customer_id: str,
     return float(p)
 
 
+def posterior_k_support(n_eligible: int, n_fail: int, n_success: int, *, observed: bool) -> tuple[int, ...]:
+    """K values with positive posterior weight. Unobserved history is the prior {1, 2}."""
+    if not observed:
+        return (1, 2)
+    w1, w2 = posterior_weights(n_eligible, n_fail, n_success)
+    out = []
+    if w1 > 0.0:
+        out.append(1)
+    if w2 > 0.0:
+        out.append(2)
+    return tuple(out)
+
+
+def local_branch_support(n_eligible: int, n_fail: int, n_success: int, subset_size: int,
+                         *, observed: bool) -> range:
+    """Local failure counts that the posterior can still produce. K≤2, so b≥3 is out."""
+    hi = 0
+    revealed = n_fail if observed else 0
+    for k in posterior_k_support(n_eligible, n_fail, n_success, observed=observed):
+        hi = max(hi, k - revealed)
+    return range(0, min(int(subset_size), hi) + 1)
+
+
 def local_subset_probability(n_eligible: int, n_fail: int, n_success: int,
                              subset_size: int, failure_count_in_subset: int,
                              *, observed: bool) -> float:
@@ -266,30 +291,98 @@ def local_subset_probability(n_eligible: int, n_fail: int, n_success: int,
     """
     if failure_count_in_subset >= 3 or failure_count_in_subset < 0:
         return 0.0
+    support = posterior_k_support(n_eligible, n_fail, n_success, observed=observed)
     if not observed:
         acc = 0.0
-        for k, qk in ((1, 0.5), (2, 0.5)):
+        for k in support:
             den = _binom(n_eligible, k)
             if den == 0:
                 continue
-            acc += qk * _binom(n_eligible - subset_size, k - failure_count_in_subset) / den
+            acc += 0.5 * _binom(n_eligible - subset_size, k - failure_count_in_subset) / den
         return acc
     n_rem = n_eligible - n_fail - n_success
-    w1, w2 = posterior_weights(n_eligible, n_fail, n_success)
+    weights = dict(zip((1, 2), posterior_weights(n_eligible, n_fail, n_success)))
     acc = 0.0
-    for k, w in ((1, w1), (2, w2)):
+    for k in support:
         den = _binom(n_rem, k - n_fail)
         if den == 0:
             continue
-        acc += w * _binom(n_rem - subset_size, k - n_fail - failure_count_in_subset) / den
+        acc += weights[k] * _binom(n_rem - subset_size, k - n_fail - failure_count_in_subset) / den
     return acc
 
 
 def enumerate_local_world(n_eligible: int, n_fail: int, n_success: int, subset_size: int,
                           *, observed: bool) -> dict[int, float]:
-    """Exact local-branch distribution by summing the closed form over subset sizes."""
+    """Local-branch probabilities on the posterior support only. b≥3 is not a key."""
     return {b: local_subset_probability(n_eligible, n_fail, n_success, subset_size, b, observed=observed)
-            for b in range(0, subset_size + 1)}
+            for b in local_branch_support(n_eligible, n_fail, n_success, subset_size, observed=observed)}
+
+
+def batch_opens_recovery(events: Sequence[dict]) -> bool:
+    """A same-time batch opens one recovery only when it contains a new failure.
+
+    An all-success batch updates history and does not consume recovery budget.
+    """
+    for ev in events:
+        if ev.get("kind") == "failure":
+            return True
+        if ev.get("air_delivery_available") is False:
+            return True
+    return False
+
+
+_PLANNER_VIEW_KEYS = (
+    "rules_version", "units", "fleet_common", "kinematics", "payload", "operation_times_s",
+    "energy", "x_nominal_cross_gate", "replenishment", "cost", "shift", "planning_probability",
+    "budget", "planning_scope", "recovery_policy", "failure_semantics", "terminal_return_policy",
+    "launch_operations_authoritative", "waiting_operations", "tolerances", "strategy_mapping",
+    "warm_start", "implementation_ids", "failure_distribution_public", "cases_public",
+)
+_PLANNER_NOTE_KEYS = {
+    "M_note", "generator_version", "environment_rng_seed", "sampling_order", "draw",
+    "hash_key", "generator_check_samples", "python", "samples",
+}
+
+
+def explicit_planner_whitelist(view: dict) -> dict:
+    """Planner-visible config. Generator version, check samples, and dev-seed notes are out."""
+    clean: dict = {}
+    for key in _PLANNER_VIEW_KEYS:
+        if key not in view:
+            continue
+        value = view[key]
+        if isinstance(value, dict):
+            block = {}
+            for ik, iv in value.items():
+                if ik in _PLANNER_NOTE_KEYS or "seed" in ik.lower() or "generator" in ik.lower():
+                    continue
+                if isinstance(iv, str) and _dev_seed_note(iv):
+                    continue
+                block[ik] = iv
+            clean[key] = block
+        elif isinstance(value, str) and _dev_seed_note(value):
+            continue
+        else:
+            clean[key] = value
+    return clean
+
+
+def _dev_seed_note(text: str) -> bool:
+    markers = ("101-110", "1-10", "2001-2010", "4001-4030", "dev seed", "tune seed", "generator_version")
+    low = text.lower()
+    return any(m in low for m in markers)
+
+
+def column_pool_key(case_id: str, allow_cross: bool) -> tuple:
+    """Pool identity. The unrevealed failure set is not part of it."""
+    return (str(case_id), bool(allow_cross))
+
+
+def reset_planner_episode_state(alg) -> None:
+    """Drop caches and column pools before an episode. Training scenarios are not hidden F."""
+    for name in ("_column_pools", "_scenario_cache"):
+        if getattr(alg, name, None) is not None:
+            setattr(alg, name, {})
 
 
 @dataclass
