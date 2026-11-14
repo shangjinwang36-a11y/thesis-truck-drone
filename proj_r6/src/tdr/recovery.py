@@ -1237,7 +1237,8 @@ def initial_recovery(plan: Plan, state: StartState, inst: Instance, phys: Physic
     if keep_s_recovery and strategy == "X" and budget is not None and not best_s_eligible:
         info["s_seed_used"] = True
         s_cat = RecoveryCatalog(res, frag, inst, "S", state, ground_required, phys=phys,
-                                guard_n=catalog.guard_n, slot_aware=slot_aware)
+                                guard_n=catalog.guard_n, slot_aware=slot_aware,
+                                drop_energy_tail=energy_screen)
         for ent in [None] + list(s_cat.next_entries(6)):
             if budget.evals_left() <= 0:
                 break
