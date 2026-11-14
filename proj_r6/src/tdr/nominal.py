@@ -238,7 +238,7 @@ def _descent_loop(plan, inst, phys, alg, state, stats, best_ev, budget, max_eval
                     slack = float(getattr(alg, "x_rendezvous_slack_s", 90.0) or 90.0)
                     tol = float(getattr(alg, "cost_tolerance_yuan", 1e-4) or 1e-4)
                     if screen_nominal_j(cand, inst, phys, ctx.H, slack,
-                                        getattr(stats, "j_champion_j", None), tol, stats) is None:
+                                        getattr(stats, "j_champion_j", None), tol, stats, alg=alg) is None:
                         stats.aud("SCREEN", "skip")
                         continue
                 before = budget.used
@@ -269,7 +269,7 @@ def _descent_loop(plan, inst, phys, alg, state, stats, best_ev, budget, max_eval
                     cand = base.clone()
                     if not apply_air(cand, inst, p, ac):
                         continue
-                    if screen_nominal_j(cand, inst, phys, ctx.H, slack, j_ref, tol, stats) is None:
+                    if screen_nominal_j(cand, inst, phys, ctx.H, slack, j_ref, tol, stats, alg=alg) is None:
                         stats.aud("CROSS_INSERT", "proxy_skip")
                         continue
                     before = budget.used
