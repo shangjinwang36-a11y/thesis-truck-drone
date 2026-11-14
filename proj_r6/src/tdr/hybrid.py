@@ -63,14 +63,15 @@ def _cache(alg) -> dict:
 
 def _fingerprint(plan) -> tuple:
     routes = tuple((t, tuple(plan.route_customers(t))) for t in sorted(plan.routes))
-    ground = tuple(sorted(
-        (v.truck, v.customer, tuple(v.ground)) for v in plan.visits.values()))
     # T03/T08a：放飞点和接机点按（车, 路线位置, 客户）记入。以前只记接机车，
     # 同一航次换到同车另一访问放飞/回收时指纹不变，会错用别的计划的情景分。
     pos = {}
     for t, route in plan.routes.items():
         for i, vid in enumerate(route):
             pos[vid] = (t, i, plan.visits[vid].customer)
+    # 地送也须区分同一客户的重复访问；使用路线位置，不依赖访问 ID。
+    ground = tuple(sorted(
+        (*pt, tuple(plan.visits[vid].ground)) for vid, pt in pos.items()))
     air = []
     for s in plan.sorties.values():
         launch_pt = pos.get(s.launch_vid) if s.launch_vid is not None else ("DEPOT",)
