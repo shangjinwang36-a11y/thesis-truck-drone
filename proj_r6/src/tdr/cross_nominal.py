@@ -78,7 +78,12 @@ def propose_convert(plan, ctx, n: int, tried: set):
                 cands.append((-sc, s.sid, vid, bool(removable)))
     cands.sort()
     out = []
-    for _, sid, vid, removable in cands[:n]:
+    keep = 1 if getattr(getattr(ctx, "alg", None), "v13_rules", False) else n
+    for neg_sc, sid, vid, removable in cands:
+        if getattr(getattr(ctx, "alg", None), "v13_rules", False) and -neg_sc <= 1e-6:
+            break
+        if len(out) >= keep:
+            break
         tried.add((sid, vid))
         cand = plan.clone()
         so = cand.sorties[sid]

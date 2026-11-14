@@ -154,10 +154,12 @@ def _episode_one(args):
         evals = 0
         hits = 0
         process_evals = []
+        n_cross_rescues = 0
         for rep in ep.replans[1:]:
             stt = rep.stats or {}
             n_req = int(stt.get("n_eval_requests") or 0)
             process_evals.append(n_req)
+            n_cross_rescues += int(bool(stt.get("cross_rescue")))
             evals += n_req
             hits += int(stt.get("wall_hits") or 0)
             if stt.get("wall_s") is not None:
@@ -171,6 +173,7 @@ def _episode_one(args):
             wall_hits=hits,
             wall_max_s=max(walls) if walls else 0.0,
             n_recoveries=max(0, len(ep.replans) - 1),
+            n_cross_rescues=n_cross_rescues,
             episode_wall_s=time.perf_counter() - t0,
             ground_finish_status=ep.ground_finish_status,
         )

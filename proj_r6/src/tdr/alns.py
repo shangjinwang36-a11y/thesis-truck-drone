@@ -315,6 +315,9 @@ def eval_counted(plan: Plan, inst: Instance, phys: PhysicalConfig, state: StartS
         stats.eval_requests = budget.used
         if reason == "SCENARIO_RECOURSE":
             stats.n_scenario_eval = int(getattr(stats, "n_scenario_eval", 0)) + 1
+        if reason in ("CROSS_CONVERT", "SUPPORT_RENDEZVOUS", "ENERGY_RETARGET",
+                       "PAIR_HANDOFF", "CROSS_INSERT"):
+            stats.cross_evals = int(getattr(stats, "cross_evals", 0)) + 1
     holder = _ACTIVE_CTX.get()
     if (holder is not None and ev.feasible and ev.cost is not None
             and holder.mode == "nominal"
@@ -646,6 +649,10 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
         if budget.evals_left() <= 0:
             stats.stop_reason = "EVAL_LIMIT"
             break
+        slice_cap = getattr(stats, "slice_same_cap", None)
+        if slice_cap is not None and _same_clock(stats) >= int(slice_cap):
+            stats.stop_reason = "EVAL_LIMIT"
+            break
         if budget.wall_limit is not None and budget.time_left() <= 0:
             stats.stop_reason = "WALLCLOCK"
             break
@@ -929,16 +936,23 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                 and getattr(alg, "scenario_aware", False) and best_plan is not None
                 and best_ev is not None and best_ev.feasible):
             every = int(getattr(alg, "expected_reeval_every", 80) or 80)
-            mark = stats.eval_requests // every if every > 0 else 0
+            clock = _same_clock(stats) if getattr(stats, "slice_same_cap", None) else stats.eval_requests
+            mark = clock // every if every > 0 else 0
             if mark > getattr(ctx, "_expected_reeval_mark", 0):
                 ctx._expected_reeval_mark = mark
                 from .hybrid import scenario_score
                 scenario_score(best_plan, best_ev, ctx)
                 stats.aud("EXPECTED", "true_reeval")
         # 第 11 轮：只动离电量上限不到 0.05 kWh 的跨车航次。没有这种航次就不评价。
+        # v1.3 keeps these operators out of the same-truck loop. They were moving the
+        # iteration clock, so X's same-truck search left S's and published a different
+        # same-truck plan. Cross moves run on the finished same-truck plan, on the
+        # evaluations that search did not spend.
+        cross_room = not getattr(alg, "v13_rules", False)
         if (getattr(alg, "x_energy_retarget", False) and getattr(ctx.state, "nominal_cross", False)
                 and ctx.mode == "nominal"
                 and stats.iterations % alg.cross_period == 3
+                and cross_room
                 and budget.evals_left() > 0):
             from .support_nominal import try_energy_retarget
             p_e, e_e = try_energy_retarget(cur_plan, ctx, budget, stats)
@@ -947,20 +961,26 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                     and _within_makespan_cap(e_e, ctx)
                     and _nominal_cross_intact(p_e, e_e, ctx)):
                 stats.aud("ENERGY_RETARGET", "best")
-                if not getattr(alg, "v13_rules", False):
+                if getattr(alg, "v13_rules", False):
+                    _remember_cross(stats, p_e, e_e, alg, ctx)
+                else:
                     cur_plan, cur_ev = p_e, e_e
-                best_ev, best_plan = e_e, p_e.clone()
-                stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+                    best_ev, best_plan = e_e, p_e.clone()
+                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 第 9 轮：插入会合访问。X 插到另一辆车，S 只插到放飞车。两边同一频率、同一评价上限。
         if (getattr(alg, "support_rendezvous", False) and ctx.mode == "nominal"
                 and (getattr(ctx.state, "nominal_cross", False) or getattr(ctx, "scenario_on", False))
                 and stats.iterations % alg.cross_period == 0
+                and cross_room
                 and budget.evals_left() > 0):
             from .support_nominal import try_support_rendezvous
-            p_s, e_s = try_support_rendezvous(cur_plan, ctx, budget, stats)
+            base_s, ref_e = (cur_plan, best_ev)
+            if getattr(alg, "v13_rules", False):
+                base_s, ref_e = _cross_base(stats, cur_plan, best_plan, best_ev, alg, ctx)
+            p_s, e_s = try_support_rendezvous(base_s, ctx, budget, stats)
+            ref_p = base_s if getattr(alg, "v13_rules", False) else cur_plan
             if (p_s is not None and e_s is not None
-                    and _better_air(e_s, p_s, best_ev if getattr(alg, "v13_rules", False) else cur_ev,
-                                    best_plan if getattr(alg, "v13_rules", False) else cur_plan, alg, ctx)
+                    and _better_air(e_s, p_s, ref_e, ref_p, alg, ctx)
                     and _within_makespan_cap(e_s, ctx)
                     and _nominal_cross_intact(p_s, e_s, ctx)):
                 stats.aud("FUNNEL_SUPPORT", "accepted")
@@ -972,13 +992,15 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                 if sn is not None and sc is not None and sn < sc - alg.cost_tolerance_yuan:
                     stats.aud("FUNNEL_SUPPORT", "scenario")
                 stats.aud("SUPPORT_RENDEZVOUS", "cur_improve")
-                if not getattr(alg, "v13_rules", False):
+                if getattr(alg, "v13_rules", False):
+                    _remember_cross(stats, p_s, e_s, alg, ctx)
+                else:
                     cur_plan, cur_ev = p_s, e_s
-                if _better_air(e_s, p_s, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_s, ctx):
-                    stats.aud("SUPPORT_RENDEZVOUS", "best")
-                    stats.last_improvement_iter = stats.iterations
-                    best_ev, best_plan = e_s, p_s.clone()
-                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+                    if _better_air(e_s, p_s, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_s, ctx):
+                        stats.aud("SUPPORT_RENDEZVOUS", "best")
+                        stats.last_improvement_iter = stats.iterations
+                        best_ev, best_plan = e_s, p_s.clone()
+                        stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         if (getattr(alg, "pair_handoff", False) and getattr(ctx.state, "nominal_cross", False)
                 and ctx.mode == "nominal"
                 and stats.iterations % alg.cross_period == 1
@@ -998,24 +1020,31 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
         # 第六轮：X 名义专用“同车航次改跨车回收”算子（S 的 state.nominal_cross=False，永不触发；同一份名义预算）
         if (getattr(ctx.state, "nominal_cross", False) and ctx.mode == "nominal"
                 and stats.iterations % alg.cross_period == alg.cross_period // 2
+                and cross_room
                 and budget.evals_left() > 0):
             from .cross_nominal import try_cross_convert
-            p_x, e_x = try_cross_convert(cur_plan, ctx, budget, stats)
+            base_x = cur_plan
+            ref_e, ref_p = cur_ev, cur_plan
+            if getattr(alg, "v13_rules", False):
+                base_x, ref_e = _cross_base(stats, cur_plan, best_plan, best_ev, alg, ctx)
+                ref_p = base_x
+            p_x, e_x = try_cross_convert(base_x, ctx, budget, stats)
             if (p_x is not None and e_x is not None
-                    and _better_air(e_x, p_x, best_ev if getattr(alg, "v13_rules", False) else cur_ev,
-                                    best_plan if getattr(alg, "v13_rules", False) else cur_plan, alg, ctx)
+                    and _better_air(e_x, p_x, ref_e, ref_p, alg, ctx)
                     and _within_makespan_cap(e_x, ctx)
                     and _cross_energy_ok(p_x, cur_plan, e_x, ctx)
                     and _nominal_cross_intact(p_x, e_x, ctx)):
                 stats.aud("CROSS_CONVERT", "cur_improve")
                 stats.aud("FUNNEL_CROSS", "accepted")
-                if not getattr(alg, "v13_rules", False):
+                if getattr(alg, "v13_rules", False):
+                    _remember_cross(stats, p_x, e_x, alg, ctx)
+                else:
                     cur_plan, cur_ev = p_x, e_x
-                if _better_air(e_x, p_x, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_x, ctx):
-                    stats.aud("CROSS_CONVERT", "best")
-                    stats.last_improvement_iter = stats.iterations
-                    best_ev, best_plan = e_x, p_x.clone()
-                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+                    if _better_air(e_x, p_x, best_ev, best_plan, alg, ctx) and _within_makespan_cap(e_x, ctx):
+                        stats.aud("CROSS_CONVERT", "best")
+                        stats.last_improvement_iter = stats.iterations
+                        best_ev, best_plan = e_x, p_x.clone()
+                        stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
         # 局部事件重排
         if variant != "no_local_mip" and (stats.iterations % alg.mip_period_rounds == 0
                                           or stagnation >= alg.mip_stagnation_rounds):
@@ -1099,10 +1128,43 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
     return SolveResult(best_plan, final_ev, status, stats)
 
 
+def _remember_cross(stats, plan, ev, alg, ctx) -> bool:
+    """Keep a cross plan beside the same-truck search. It does not replace that search."""
+    from .evaluate import is_cross_sortie
+    if plan is None or ev is None or not ev.feasible:
+        return False
+    if not any(is_cross_sortie(plan, s) for s in plan.sorties.values()):
+        return False
+    old_p = getattr(stats, "cross_champ_plan", None)
+    old_e = getattr(stats, "cross_champ_ev", None)
+    if old_e is not None and not _better_air(ev, plan, old_e, old_p, alg, ctx):
+        return False
+    stats.cross_champ_plan = plan.clone()
+    stats.cross_champ_ev = ev
+    return True
+
+
+def _cross_base(stats, cur_plan, best_plan, best_ev, alg, ctx):
+    """Propose the next cross from the cross champion once one exists."""
+    cp = getattr(stats, "cross_champ_plan", None)
+    ce = getattr(stats, "cross_champ_ev", None)
+    if ce is not None and cp is not None and _better_air(ce, cp, best_ev, best_plan, alg, ctx):
+        return cp, ce
+    return cur_plan, best_ev
+
+
+def _same_clock(stats: SearchStats) -> int:
+    """Evaluations that belong to the same-truck loop. Cross proposals are excluded."""
+    return int(stats.eval_requests) - int(getattr(stats, "cross_evals", 0) or 0)
+
+
 def _progress(stats: SearchStats, budget: Budget) -> float:
     if budget.wall_limit is not None:
         used = time.perf_counter() - budget.start
         return max(0.0, min(1.0, used / budget.wall_limit))
+    cap = getattr(stats, "slice_same_cap", None)
+    if cap:
+        return max(0.0, min(1.0, _same_clock(stats) / max(1, int(cap))))
     return max(0.0, min(1.0, stats.eval_requests / max(1, budget.eval_limit)))
 
 

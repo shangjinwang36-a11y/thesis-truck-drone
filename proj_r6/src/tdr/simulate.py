@@ -1062,6 +1062,12 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             res.notes.append("RESIDUAL_GUARD_TRIGGERED")
             rp, rev = init_info["_residual"]
             sol = SolveResult(rp, rev, "FEASIBLE_LIMIT", sol.stats)
+        def _recovery_is_cross(plan, sid) -> bool:
+            from .evaluate import recovery_is_cross
+            if plan is None or sid not in plan.sorties:
+                return False
+            return bool(recovery_is_cross(plan, plan.sorties[sid]))
+
         init_counts = {
             "n_init_evals": init_stats.eval_requests,
             "init_by_reason": dict(init_stats.eval_by_reason),
@@ -1093,6 +1099,7 @@ def run_episode(inst: Instance, nominal_plan: Plan, nominal_ev: Evaluation, H: f
             "milp_surrogate_obj": init_info.get("milp_surrogate_obj"),
             "milp_true_costs": init_info.get("milp_true_costs"),
             "final_cost": sol.evaluation.cost if sol.evaluation is not None else None,
+            "cross_rescue": _recovery_is_cross(sol.plan, a.sid),
         }
         if init_counts["init_cost"] is not None and init_counts["final_cost"] is not None:
             init_counts["patch_back"] = init_counts["init_cost"] - init_counts["final_cost"]
