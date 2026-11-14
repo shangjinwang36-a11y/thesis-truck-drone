@@ -494,6 +494,7 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
             sp, se = getattr(stats, "same_plan", None), getattr(stats, "same_ev", None)
             if sp is not None and se is not None:
                 long_start = sp
+        _stamp_cross_census(stats, long_start, inst, phys, alg, "_enter")
         res = optimize(long_start, ctx, budget, variant=variant, stats=stats)
         stats.iter_cap = None
         budget.eval_limit = total
@@ -522,6 +523,7 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
         stats.wall_s = time.perf_counter() - t0
         stats.counts = dict(res.stats.counts)
         stats.counts["n_conversion_evals"] = n_conv
+        _stamp_cross_census(stats, best_plan, inst, phys, alg, "")
         return SolveResult(best_plan, best_ev, "FEASIBLE_LIMIT", stats)
     # 转换启动
     if alg.nominal_descent:
@@ -551,4 +553,14 @@ def build_nominal(inst: Instance, phys: PhysicalConfig, alg: AlgorithmConfig,
     stats.counts = dict(res.stats.counts)
     stats.counts.update({k: v for k, v in res.stats.counts.items() if k not in stats.counts})
     stats.counts["n_conversion_evals"] = n_conv
+    _stamp_cross_census(stats, best_plan, inst, phys, alg, "")
     return SolveResult(best_plan, best_ev, "FEASIBLE_LIMIT", stats)
+
+
+def _stamp_cross_census(stats, plan, inst, phys, alg, suffix: str) -> None:
+    """Record cross meetings before and after the 0.08333 kWh floor. No evaluation."""
+    from .cross_nominal import census_cross_candidates
+    slack = float(getattr(alg, "x_rendezvous_slack_s", 90.0) or 90.0)
+    got = census_cross_candidates(plan, inst, phys, slack)
+    stats.counts[f"cross_cand_emin{suffix}"] = int(got["emin"])
+    stats.counts[f"cross_cand_floor{suffix}"] = int(got["floor"])

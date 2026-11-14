@@ -371,21 +371,126 @@ def _apply_rec(plan, sid, vid, removable_old: bool) -> bool:
     return not has_wait_cycle(plan)
 
 
+def _floor_kwh(phys, slack_s: float) -> float:
+    from .cross_robust import x_cross_energy_floor_kwh
+    return x_cross_energy_floor_kwh(phys, slack_s)
+
+
+def _clears(phys, consumed: float, reserve: float) -> bool:
+    return consumed <= phys.e_cap - reserve + phys.energy_tol
+
+
+def _rescue_open(plan, inst, phys, customer_xy, mass: float, launch: str, rec: str, floor: float) -> bool:
+    """A truck other than the launch and the chosen recovery can still meet this customer."""
+    for truck, route in plan.routes.items():
+        if truck == launch or truck == rec:
+            continue
+        for vid in route:
+            pos = _pos(inst, plan, vid)
+            dist = math.hypot(pos[0] - customer_xy[0], pos[1] - customer_xy[1])
+            need = phys.fly_energy_kwh(dist, mass) + phys.hover_energy_kwh(phys.recovery_s, mass)
+            if _clears(phys, need, floor):
+                return True
+    return False
+
+
+def census_cross_candidates(plan, inst, phys, slack_s: float = 90.0) -> dict[str, int]:
+    """Cheap count of cross meetings. emin clears E_min; floor clears the 0.08333 kWh margin.
+
+    No full evaluation. The two counts are the neighbourhood before and after that margin.
+    """
+    floor = _floor_kwh(phys, slack_s)
+    emin = 0
+    legal = 0
+    if plan is None or len(plan.routes) < 2:
+        return {"emin": 0, "floor": 0}
+    rt_cache = {}
+
+    def rt(truck):
+        if truck not in rt_cache:
+            rt_cache[truck] = route_times(plan, inst, phys, truck)
+        return rt_cache[truck]
+
+    for sids in plan.drone_sorties.values():
+        if not sids:
+            continue
+        s = plan.sorties[sids[-1]]
+        if s.started or not s.air or s.launch_vid not in plan.visits or s.rec_vid not in plan.visits:
+            continue
+        if plan.visits[s.launch_vid].truck != plan.visits[s.rec_vid].truck:
+            continue
+        ta = plan.visits[s.launch_vid].truck
+        if s.launch_vid not in plan.routes.get(ta, []):
+            continue
+        sp = sortie_start(inst, plan, s)
+        _, dep_a = rt(ta)
+        la = plan.routes[ta].index(s.launch_vid)
+        mass = sum(inst.parcel_mass[p] for p in s.air)
+        for tb, route in plan.routes.items():
+            if tb == ta:
+                continue
+            arr_b, _ = rt(tb)
+            for bi, vid in enumerate(route):
+                rp = _pos(inst, plan, vid)
+                try:
+                    e = air_energy(inst, phys, sp, s.air, rp)
+                except KeyError:
+                    continue
+                tt = arr_b[bi] - dep_a[la]
+                hover = phys.hover_energy_kwh(max(0.0, tt - air_time(inst, phys, sp, s.air, rp)), mass)
+                consumed = e + hover
+                if not _clears(phys, consumed, phys.e_min):
+                    continue
+                emin += 1
+                if _clears(phys, consumed, floor):
+                    legal += 1
+    # Ground hand-offs off the critical truck. cross_air_candidates already drops E_min failures.
+    from .moves import cross_air_candidates
+    slow = _critical_truck(inst, plan, phys, None)
+    if slow is not None:
+        depot = (inst.depot_x, inst.depot_y)
+        route = plan.routes.get(slow, [])
+        parcels = []
+        for i, vid in enumerate(route):
+            v = plan.visits[vid]
+            if len(v.ground) != 1:
+                continue
+            if any(s.launch_vid == vid or s.rec_vid == vid for s in plan.sorties.values()):
+                continue
+            cc = inst.customer(v.customer)
+            prv = depot if i == 0 else _pos(inst, plan, route[i - 1])
+            nxt = depot if i + 1 == len(route) else _pos(inst, plan, route[i + 1])
+            det = (math.hypot(cc.x - prv[0], cc.y - prv[1]) + math.hypot(nxt[0] - cc.x, nxt[1] - cc.y)
+                   - math.hypot(nxt[0] - prv[0], nxt[1] - prv[1]))
+            if det > 0:
+                parcels.append(v.ground[0])
+        for parcel in parcels[:2]:
+            mass = inst.parcel_mass[parcel]
+            for cand in cross_air_candidates(plan, inst, phys, parcel, max_cross=4, allow_support=True):
+                if not cand.cross:
+                    continue
+                emin += 1
+                hover = phys.hover_energy_kwh(phys.recovery_s, mass)
+                if _clears(phys, cand.energy + hover, floor):
+                    legal += 1
+    return {"emin": emin, "floor": legal}
+
+
 def propose_integrated(plan, ctx, kind: int):
     """One cross neighbourhood move. No full evaluation.
 
     kind 0: reassign several same-truck recoveries onto other trucks at once.
     kind 1: move a ground cluster off the critical truck onto drones that meet
-    another truck inside H.
+    another truck, shortening that truck inside H.
     kind 2: the single best recovery retarget.
-    A move that already clears the 0.08333 kWh floor is preferred over one that
-    only clears E_min, so an illegal cross does not spend the iteration's evaluation.
+    A meeting that does not clear the 0.08333 kWh floor is not returned, so the
+    caller does not spend an evaluation on it.
     """
     if not getattr(getattr(ctx, "state", None), "nominal_cross", False):
         return None
     inst, phys = ctx.inst, ctx.phys
     if kind % 3 == 1:
-        return _relieve_slow_truck(plan, inst, phys, getattr(ctx, "H", None))
+        return _relieve_slow_truck(plan, ctx)
     moves = []
     rt_cache = {}
 
@@ -419,11 +524,11 @@ def propose_integrated(plan, ctx, kind: int):
         if s.launch_vid not in plan.routes.get(ta, []):
             continue
         la = plan.routes[ta].index(s.launch_vid)
-        from .cross_robust import x_cross_energy_floor_kwh
-        floor = x_cross_energy_floor_kwh(
-            phys, float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0))
+        floor = _floor_kwh(phys, float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0))
+        n_el = max(2, int(getattr(inst, "n", 0) or 0))
+        p_single = 3.0 / (2.0 * n_el)
+        end = inst.customer(inst.parcel_to_customer[s.air[-1]])
         best = None
-        best_raw = None
         for tb, route in plan.routes.items():
             if tb == ta:
                 continue
@@ -438,17 +543,16 @@ def propose_integrated(plan, ctx, kind: int):
                 mass = sum(inst.parcel_mass[p] for p in s.air)
                 t_air = air_time(inst, phys, sp, s.air, rp)
                 hover = phys.hover_energy_kwh(max(0.0, tt - t_air), mass)
-                # Empty-hover against E_min let a margin-illegal meeting outrank a legal one.
-                clears_floor = e + hover <= phys.e_cap - floor + phys.energy_tol
-                if not clears_floor and e + hover > phys.e_cap - phys.e_min + phys.energy_tol:
+                # Below the floor: do not return the meeting. The caller spends no evaluation.
+                if not _clears(phys, e + hover, floor):
                     continue
                 sc = save - sync_cost(phys, t_air, tt, mass) - phys.cost_depot_kwh * e
-                slot = (sc, vid, removable)
-                if best_raw is None or sc > best_raw[0]:
-                    best_raw = slot
-                if clears_floor and (best is None or sc > best[0]):
-                    best = slot
-        best = best if best is not None else best_raw
+                # Plain v1.3 failure weight. A second truck that can still meet the customer
+                # leaves a cross rescue open, so this placement is worth 3/(2N) of the failure cost.
+                if _rescue_open(plan, inst, phys, (end.x, end.y), mass, ta, tb, floor):
+                    sc += p_single * max(save, phys.wage_per_s * phys.recovery_s)
+                if best is None or sc > best[0]:
+                    best = (sc, vid, removable)
         if best is not None and best[0] > 1e-6:
             moves.append((best[0], s.sid, best[1], best[2]))
     if kind % 3 == 2:
@@ -470,7 +574,7 @@ def propose_integrated(plan, ctx, kind: int):
                 break
         moves = chosen
     if not moves:
-        return _relieve_slow_truck(plan, inst, phys, getattr(ctx, "H", None)) if kind % 3 == 0 else None
+        return _relieve_slow_truck(plan, ctx) if kind % 3 == 0 else None
     cand = plan.clone()
     applied = 0
     for item in moves:
@@ -496,14 +600,19 @@ def _critical_truck(inst, plan, phys, H: float | None) -> str | None:
     return None if best is None else best[1]
 
 
-def _relieve_slow_truck(plan, inst, phys, H: float | None = None):
-    """Hand a cluster of ground customers on the critical truck to drones that meet another truck."""
+def _relieve_slow_truck(plan, ctx):
+    """Hand a cluster off the critical truck to drones that still clear the energy floor."""
     from .moves import apply_air, cross_air_candidates, remove_parcel
+    inst, phys = ctx.inst, ctx.phys
+    H = getattr(ctx, "H", None)
     if len(plan.routes) < 2:
         return None
     slow = _critical_truck(inst, plan, phys, H)
     if slow is None:
         return None
+    floor = _floor_kwh(phys, float(getattr(ctx.alg, "x_rendezvous_slack_s", 90.0) or 90.0))
+    n_el = max(2, int(getattr(inst, "n", 0) or 0))
+    p_single = 3.0 / (2.0 * n_el)
     route = plan.routes.get(slow, [])
     depot = (inst.depot_x, inst.depot_y)
     ranked = []
@@ -519,30 +628,46 @@ def _relieve_slow_truck(plan, inst, phys, H: float | None = None):
         det = (math.hypot(cc.x - prv[0], cc.y - prv[1]) + math.hypot(nxt[0] - cc.x, nxt[1] - cc.y)
                - math.hypot(nxt[0] - prv[0], nxt[1] - prv[1]))
         if det > 0:
-            ranked.append((det, v.ground[0]))
+            yuan = phys.c_km * det / 1000.0 + phys.wage_per_s * det / phys.truck_speed_m_s
+            ranked.append((yuan, v.ground[0], (cc.x, cc.y)))
     ranked.sort(reverse=True)
     if not ranked:
         return None
     cand = plan.clone()
     placed = 0
-    for _det, parcel in ranked[:2]:
+    for yuan, parcel, xy in ranked[:2]:
         trial = cand.clone()
         remove_parcel(trial, parcel)
-        acs = [a for a in cross_air_candidates(trial, inst, phys, parcel, max_cross=4, allow_support=True) if a.cross]
+        mass = inst.parcel_mass[parcel]
+        acs = []
+        for a in cross_air_candidates(trial, inst, phys, parcel, max_cross=4, allow_support=True):
+            if not a.cross:
+                continue
+            hover = phys.hover_energy_kwh(phys.recovery_s, mass)
+            if not _clears(phys, a.energy + hover, floor):
+                continue
+            rec = a.rec_truck or trial.visits[a.rec_vid].truck
+            bonus = 0.0
+            if _rescue_open(trial, inst, phys, xy, mass, a.truck, rec, floor):
+                bonus = p_single * max(yuan, phys.wage_per_s * phys.recovery_s)
+            acs.append((a.proxy - bonus, a))
         if not acs:
             continue
-        acs.sort(key=lambda a: a.proxy)
-        if apply_air(trial, inst, parcel, acs[0]):
+        acs.sort(key=lambda row: row[0])
+        if apply_air(trial, inst, parcel, acs[0][1]):
             cand = trial
             placed += 1
     return cand if placed else None
 
 
-def try_integrated_cross(plan, ctx, budget, stats, iteration: int):
-    """One full evaluation of a cross move. Runs from iteration 1 of X's nominal search."""
+def try_integrated_cross(plan, ctx, budget, stats, kind: int):
+    """Evaluate one floor-legal cross move. No meeting under the floor means no evaluation."""
     from .alns import eval_counted
-    cand = propose_integrated(plan, ctx, iteration)
-    if cand is None or budget is None or budget.evals_left() <= 0:
+    cand = propose_integrated(plan, ctx, kind)
+    if cand is None:
+        stats.aud("CROSS_INSERT", "no_floor")
+        return None, None
+    if budget is None or budget.evals_left() <= 0:
         return None, None
     ev = eval_counted(cand, ctx.inst, ctx.phys, ctx.state, ctx.H, "CROSS_INSERT", stats, budget)
     stats.aud("CROSS_INSERT", "calls")

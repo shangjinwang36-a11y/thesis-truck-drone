@@ -946,28 +946,44 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
                 from .hybrid import scenario_score
                 scenario_score(best_plan, best_ev, ctx)
                 stats.aud("EXPECTED", "true_reeval")
-        # 第 11 轮：只动离电量上限不到 0.05 kWh 的跨车航次。没有这种航次就不评价。
-        # One cross move per iteration, from iteration 1. It does not replace the
-        # same-truck repair above. Temperature depends on the iteration, not on this eval.
+        # X only. Adaptive weights over SKIP and the three cross kinds. S never
+        # enters, so S's destroy and repair roulette is unchanged. A kind that
+        # finds no floor-legal meeting spends no evaluation.
         if (getattr(ctx.state, "nominal_cross", False) and ctx.mode == "nominal"
                 and getattr(alg, "v13_rules", False) and budget.evals_left() > 0):
             from .cross_nominal import try_integrated_cross
             from .evaluate import is_cross_sortie as _isc_now
-            base_i = cur_plan
-            if (stats.iterations % 4 == 0 and best_plan is not None
-                    and any(_isc_now(best_plan, s) for s in best_plan.sorties.values())):
-                base_i = best_plan
-            p_i, e_i = try_integrated_cross(base_i, ctx, budget, stats, stats.iterations)
-            from .expected_cost import expected_j as _ej
-            j_i = None if e_i is None else _ej(e_i.cost, p_i, inst, phys, failure_prob(alg) if False else 0.0, v13=True, rescue_aware=True)
-            j_b = None if best_ev is None else _ej(best_ev.cost, best_plan, inst, phys, 0.0, v13=True, rescue_aware=True)
-            if (p_i is not None and e_i is not None and j_i is not None and j_b is not None
-                    and j_i < j_b - alg.cost_tolerance_yuan
-                    and _within_makespan_cap(e_i, ctx)
-                    and _nominal_cross_intact(p_i, e_i, ctx)):
-                stats.aud("CROSS_INSERT", "best")
-                best_ev, best_plan = e_i, p_i.clone()
-                stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+            _ensure_cross_weights(stats)
+            rng_cross = stats.cross_rng
+            rng_cross.seed(
+                f"crn|{alg.base_algorithm_seed}|{inst.case_id}|{ctx.replan_index}|{stats.iterations}|cross")
+            chosen = _roulette(stats.cross_weights, rng_cross)
+            stats.cross_n[chosen] += 1
+            stats.cross_selects[chosen] = stats.cross_selects.get(chosen, 0) + 1
+            if chosen == "SKIP":
+                _reward(stats.cross_s, "SKIP", reward)
+            else:
+                kind = {"MULTI": 0, "RELIEVE": 1, "RETARGET": 2}[chosen]
+                base_i = cur_plan
+                if (stats.iterations % 4 == 0 and best_plan is not None
+                        and any(_isc_now(best_plan, s) for s in best_plan.sorties.values())):
+                    base_i = best_plan
+                p_i, e_i = try_integrated_cross(base_i, ctx, budget, stats, kind)
+                from .expected_cost import expected_j as _ej
+                # Plain v1.3 J. The rescue proxy does not decide acceptance.
+                j_i = None if e_i is None else _ej(e_i.cost, p_i, inst, phys, 0.0, v13=True, rescue_aware=False)
+                j_b = None if best_ev is None else _ej(best_ev.cost, best_plan, inst, phys, 0.0, v13=True, rescue_aware=False)
+                accepted_cross = (p_i is not None and e_i is not None and j_i is not None and j_b is not None
+                                  and j_i < j_b - alg.cost_tolerance_yuan
+                                  and _within_makespan_cap(e_i, ctx)
+                                  and _nominal_cross_intact(p_i, e_i, ctx))
+                if accepted_cross:
+                    stats.aud("CROSS_INSERT", "best")
+                    _reward(stats.cross_s, chosen, alg.score_global_best)
+                    best_ev, best_plan = e_i, p_i.clone()
+                    stats.best_trace.append((stats.eval_requests, best_ev.cost, best_ev.z))
+                else:
+                    _reward(stats.cross_s, chosen, 0.0)
         cross_room = not getattr(alg, "v13_rules", False)
         if (getattr(alg, "x_energy_retarget", False) and getattr(ctx.state, "nominal_cross", False)
                 and ctx.mode == "nominal"
@@ -1142,6 +1158,9 @@ def _optimize_loop(plan: Plan, ctx: SolveContext, budget: Budget, variant: str =
     final_ev = best_ev
     stats.same_plan = same_plan
     stats.same_ev = same_ev
+    if getattr(stats, "cross_weights", None):
+        stats.counts["cross_weights"] = {k: round(float(v), 4) for k, v in stats.cross_weights.items()}
+        stats.counts["cross_selects"] = dict(stats.cross_selects)
     status = "FEASIBLE_LIMIT"
     if stats.stop_reason in ("EVAL_LIMIT", "WALLCLOCK", "MAX_ROUNDS") and best_ev.feasible:
         status = "FEASIBLE_LIMIT"
@@ -1210,6 +1229,31 @@ def _maybe_weights(stats, w_d, w_r, n_d, n_r, s_d, s_r, alg, variant="full") -> 
                          (1 - alg.weight_reaction) * w_r[k] + alg.weight_reaction * s_r[k] / n_r[k])
         n_r[k] = 0
         s_r[k] = 0.0
+    # X-only tail. S never sets cross_weights, so this block does not run for S
+    # and the destroy/repair update above is unchanged.
+    w_c = getattr(stats, "cross_weights", None)
+    if not w_c:
+        return
+    n_c = stats.cross_n
+    s_c = stats.cross_s
+    for k in w_c:
+        if n_c[k] > 0:
+            w_c[k] = max(alg.operator_min_weight,
+                         (1 - alg.weight_reaction) * w_c[k] + alg.weight_reaction * s_c[k] / n_c[k])
+        n_c[k] = 0
+        s_c[k] = 0.0
+
+
+def _ensure_cross_weights(stats) -> None:
+    """X nominal only. Same reaction, segment, and floor as the destroy/repair weights."""
+    if getattr(stats, "cross_weights", None):
+        return
+    names = ("SKIP", "MULTI", "RELIEVE", "RETARGET")
+    stats.cross_weights = {k: 1.0 for k in names}
+    stats.cross_n = {k: 0 for k in names}
+    stats.cross_s = {k: 0.0 for k in names}
+    stats.cross_selects = {k: 0 for k in names}
+    stats.cross_rng = random.Random(0)
 
 
 def _roulette(w: dict[str, float], rng: random.Random) -> str:
