@@ -1,0 +1,605 @@
+{
+ "method": "Each L is paired with the next R of the same drone before the next L. SERVICE counts only inside that interval. Launch truck is the L record. Recovery truck is the R actor. r_launch_named is reported and not allowed to override the L truck. The same ref string does not merge separate flights.",
+ "not_a_redefinition": "The previously published cross counts used a whole-episode ref merge. These chain counts are a separate check, not a silent replacement.",
+ "focus": [
+  {
+   "case": "C100",
+   "seed": 1001,
+   "flights": 8,
+   "cross_flights_with_service": 0,
+   "cross_flights": 0,
+   "cross_service_customers": [],
+   "named_disagree": 0,
+   "ref_mismatch": 0,
+   "parcels": {},
+   "cross_detail": []
+  },
+  {
+   "case": "C100",
+   "seed": 1002,
+   "flights": 8,
+   "cross_flights_with_service": 0,
+   "cross_flights": 0,
+   "cross_service_customers": [],
+   "named_disagree": 0,
+   "ref_mismatch": 0,
+   "parcels": {},
+   "cross_detail": []
+  },
+  {
+   "case": "RC100",
+   "seed": 1001,
+   "flights": 15,
+   "cross_flights_with_service": 0,
+   "cross_flights": 1,
+   "cross_service_customers": [],
+   "named_disagree": 0,
+   "ref_mismatch": 0,
+   "parcels": {
+    "p095": [
+     {
+      "drone": "d1",
+      "ref": "S300",
+      "r_ref": "S300",
+      "launch_truck": "t1",
+      "recovery_truck": "t1",
+      "r_launch_named": "t1",
+      "cross": false,
+      "l_start": 585.8618412792213,
+      "r_start": 1186.9948050117694,
+      "same_ref": true
+     }
+    ]
+   },
+   "cross_detail": [
+    {
+     "drone": "d2",
+     "ref": "S301",
+     "r_ref": "S301",
+     "launch_truck": "t1",
+     "recovery_truck": "t2",
+     "service_parcels": [],
+     "l_start": 575.8618412792213,
+     "r_start": 835.8569304166477
+    }
+   ]
+  },
+  {
+   "case": "RC100",
+   "seed": 1002,
+   "flights": 27,
+   "cross_flights_with_service": 0,
+   "cross_flights": 0,
+   "cross_service_customers": [],
+   "named_disagree": 0,
+   "ref_mismatch": 0,
+   "parcels": {
+    "p095": [
+     {
+      "drone": "d2",
+      "ref": "S355",
+      "r_ref": "S355",
+      "launch_truck": "t1",
+      "recovery_truck": "t1",
+      "r_launch_named": "t1",
+      "cross": false,
+      "l_start": 660.3186837964085,
+      "r_start": 1565.4731892642792,
+      "same_ref": true
+     }
+    ],
+    "p057": [
+     {
+      "drone": "d2",
+      "ref": "S355",
+      "r_ref": "S355",
+      "launch_truck": "t1",
+      "recovery_truck": "t1",
+      "r_launch_named": "t1",
+      "cross": false,
+      "l_start": 660.3186837964085,
+      "r_start": 1565.4731892642792,
+      "same_ref": true
+     }
+    ],
+    "p061": [
+     {
+      "drone": "d8",
+      "ref": "S419",
+      "r_ref": "S419",
+      "launch_truck": "t4",
+      "recovery_truck": "t4",
+      "r_launch_named": "t4",
+      "cross": false,
+      "l_start": 2095.6238145257935,
+      "r_start": 2477.1192985599464,
+      "same_ref": true
+     }
+    ]
+   },
+   "cross_detail": []
+  }
+ ],
+ "all_40": [
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "C50",
+    "S",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "C50",
+    "R",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "C50",
+    "X",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "C50",
+    "S",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "C50",
+    "R",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 1,
+   "cross_service_customers": 3
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "C50",
+    "X",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 1,
+   "cross_service_customers": 4
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "R50",
+    "S",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "R50",
+    "R",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "R50",
+    "X",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "R50",
+    "S",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "R50",
+    "R",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "R50",
+    "X",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "RC50",
+    "S",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "RC50",
+    "R",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "RC50",
+    "X",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 1,
+   "cross_service_customers": 2
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "RC50",
+    "S",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "RC50",
+    "R",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "RC50",
+    "X",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "C100",
+    "S",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "C100",
+    "R",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 1,
+   "cross_service_customers": 1
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "C100",
+    "X",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "C100",
+    "S",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "C100",
+    "R",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 4,
+   "cross_service_customers": 6
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "C100",
+    "X",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "R100",
+    "S",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "R100",
+    "R",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "R100",
+    "X",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 2,
+   "cross_service_customers": 6
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "R100",
+    "S",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "R100",
+    "R",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 2,
+   "cross_service_customers": 3
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "R100",
+    "X",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 1,
+   "cross_service_customers": 1
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "RC100",
+    "S",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "RC100",
+    "R",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 2,
+   "cross_service_customers": 3
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "RC100",
+    "X",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "RC100",
+    "S",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "RC100",
+    "R",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 2,
+   "cross_service_customers": 5
+  },
+  {
+   "job": [
+    "M47_CANDIDATE",
+    "RC100",
+    "X",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M44_CURRENT",
+    "C100",
+    "X",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 1,
+   "cross_service_customers": 2
+  },
+  {
+   "job": [
+    "M44_CURRENT",
+    "C100",
+    "X",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 2,
+   "cross_service_customers": 4
+  },
+  {
+   "job": [
+    "M44_CURRENT",
+    "RC100",
+    "X",
+    "dev",
+    1001,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  },
+  {
+   "job": [
+    "M44_CURRENT",
+    "RC100",
+    "X",
+    "dev",
+    1002,
+    "own"
+   ],
+   "cross_complete_flights": 0,
+   "cross_service_customers": 0
+  }
+ ]
+}

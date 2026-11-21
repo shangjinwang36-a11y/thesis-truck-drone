@@ -5,8 +5,10 @@ def close(plan,state,mode):
  q=plan.clone();changed=[];new_anchors={}
  for s in sorted(q.sorties.values(),key=lambda x:x.sid):
   if s.started or s.launch_vid is not None or s.truck not in state.truck_in_transit:continue
+  # A truck already driving back can launch from the depot after it arrives.
+  if s.truck in state.truck_returning:continue
   rt=q.routes.get(s.truck,[])
-  if not rt:return None
+  if not rt:continue
   first=rt[0];s.launch_vid=first;s.mode='STOP';s.lam=0.
   if s.rec_vid==first:
    # Distinct genuine visits at the same real stop: arrival, P/L, flight, R.

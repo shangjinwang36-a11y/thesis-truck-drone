@@ -670,9 +670,13 @@ def build_catalog_candidates(cat: "RecoveryCatalog", entry: dict, inst: Instance
 
 
 def _legalize_depot_preparation(cand: Plan, inst, phys, state) -> Plan:
-    """S and X: ground parcels that can no longer be prepared at the depot."""
+    """S and X. Retarget a consumed depot launch; ground only if it cannot."""
+    from .cut_launch_windows import close as close_launch_window
     from .moves import repair_ground_only
     from .schedule import release_depot_preparation_on_road
+    closed = close_launch_window(cand, state, "recovery")
+    if closed is not None:
+        cand = closed[0]
     freed = release_depot_preparation_on_road(cand, state)
     if not freed:
         return cand

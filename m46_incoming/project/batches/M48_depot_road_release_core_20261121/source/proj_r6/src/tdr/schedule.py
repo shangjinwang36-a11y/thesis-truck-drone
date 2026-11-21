@@ -78,16 +78,22 @@ class StartState:
 
 
 def release_depot_preparation_on_road(plan: Plan, state: StartState) -> list[str]:
-    """Remove unstarted depot launches from a truck that has already left.
+    """Ground a depot launch only when that anchor can no longer be kept.
 
-    S and X share this. The parcels are not put back on an air sortie here.
+    An ordinary depot launch stays while the truck has not left. A truck that
+    is returning keeps a future depot launch. A truck with a remaining visit
+    is retargeted by cut_launch_windows.close and is not grounded here.
+    S and X share this path. No new air sortie is created.
     """
     delivered = set(state.delivered)
     freed: list[str] = []
     for sortie in list(plan.sorties.values()):
         if sortie.started or sortie.launch_vid is not None:
             continue
-        if sortie.truck not in state.truck_in_transit:
+        truck = sortie.truck
+        if truck not in state.truck_in_transit or truck in state.truck_returning:
+            continue
+        if plan.routes.get(truck):
             continue
         for parcel in list(sortie.air) + list(sortie.handover):
             if parcel not in delivered:

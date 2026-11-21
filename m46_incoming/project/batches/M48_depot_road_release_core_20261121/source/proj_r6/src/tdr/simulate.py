@@ -614,9 +614,13 @@ def truncate(plan: Plan, tl: Timeline, inst: Instance, phys: PhysicalConfig,
         new.drone_sorties[d] = [x for x in keep_c if x in new.sorties]
         if not new.drone_sorties[d]:
             new.drone_sorties.pop(d, None)
-    # A depot launch cannot be prepared after its truck has left. S and X both
-    # release those parcels to the recovery pool instead of evaluating the illegal sortie.
+    # Consumed depot anchors move onto the next real visit. Only a launch with
+    # nowhere to go, and not a future return launch, is released to ground.
+    from .cut_launch_windows import close as close_launch_window
     from .schedule import release_depot_preparation_on_road
+    closed = close_launch_window(new, st, "recovery")
+    if closed is not None:
+        new = closed[0]
     freed.extend(p for p in release_depot_preparation_on_road(new, st) if p not in all_delivered)
     st.parcel_holder = _compute_holders(new, plan, inst, all_delivered, prev_state, inflight)
     # A completed P keeps the cargo on the drone until the truck performs a real U.
