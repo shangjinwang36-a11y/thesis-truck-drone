@@ -1,0 +1,17 @@
+{
+  "fairness": "The extra S lock on ground-visit rehome was not the original S rule. S is restricted when a drone recovery truck differs from its launch truck (recovery.py strategy == S and truck != launch_truck). Ground custody is allowed_truck in moves.py: a parcel on a truck can only be delivered by that truck, a depot parcel can use any truck. Both strategies now use the same-truck recovery advance and the holder-screened ground move.",
+  "winner_1002_attribution": "The sealed 601.3641210199783 plan keeps p047 on t7. Its difference from the first skeleton is sortie 130 recovering on t2 instead of t7. That is the existing cross-drone recovery, not a shared ground move. This corrected shared search does not contain that plan, so the cost is not reclassified as a common repair.",
+  "paid_relief_illegal_sibling": {"calls": 2608, "per_seed": 1304, "result": "no feasible suffix", "first_1001": "sortie 380 launch visit not on the launch truck"},
+  "paid_advance_one": {"calls": 2, "1001": "SWAP_CANNOT_FIX:d13@4885.3:e=0.029464<0.050000", "1002": "H_EXCEEDED:t7@6612.2>5911.7"},
+  "paid_shared": {
+    "calls": 2608,
+    "per_seed": 1304,
+    "main": null,
+    "1001_distribution": {"H_EXCEEDED": 354, "SWAP_CANNOT_FIX": 352, "P_CUSTODY": 426, "sortie 214": 2, "sortie 380": 1, "sortie 376": 168, "drone d14": 1},
+    "1002_distribution": {"H_EXCEEDED": 658, "SWAP_CANNOT_FIX": 614, "G_CUSTODY": 32}
+  },
+  "new_calls_this_round": 5218,
+  "sealed_rehome_calls_unchanged": 3405,
+  "fresh_preregistration": false,
+  "core_freeze_sha256": "5a0e6a296516ecbb14b5d01adab51e6b3d5c76f1bcc448bf66ff6c778a946ff7"
+}

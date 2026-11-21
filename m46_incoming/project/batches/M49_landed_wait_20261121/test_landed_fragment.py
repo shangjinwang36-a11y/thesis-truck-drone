@@ -7,7 +7,9 @@ from pathlib import Path
 CORE = Path(__file__).resolve().parents[1] / "M49_landed_wait_core_20261121"
 sys.path.insert(0, str(CORE / "source/proj_r6/src"))
 sys.path.insert(0, str(CORE))
-from tdr.recovery import _reassign_overflow_tail, build_residual_candidate  # noqa: E402
+import json
+from tdr.experiment import plan_from_dict
+from tdr.recovery import _advance_late_recovery, _reassign_overflow_tail, build_residual_candidate  # noqa: E402
 
 PICKLE = Path("/workspace/m46_incoming/project/batches/M48_depot_road_release_20261121/M48_RECOVERY/observer/formal/own/dev/RC100_1001_X/009/VISIBLE_CONTEXT.pkl")
 
@@ -49,24 +51,37 @@ def test_unstarted_sortie_lands_only_when_configured():
             assert not sortie.landed
 
 
-def test_overflow_visit_keeps_its_customer_and_can_change_truck_for_x():
-    inst, phys, plan, state, _greq, opts = load()
+def test_same_truck_recovery_advance_is_shared_and_ground_holder_blocks_both():
+    inst, phys, _plan, state, _greq, opts = load()
+    raw = json.loads(next(open(
+        "/workspace/m46_incoming/project/batches/M49_landed_wait_20261121/paid_rehome/RC100_1001/RAW.jsonl")))
+    plan = plan_from_dict(raw["plan"])
     plan._horizon_limit = opts["H"]
-    moved = _reassign_overflow_tail(plan, inst, phys, state, "t7", "X")
-    if moved is not None:
-        for vid, visit in moved.visits.items():
-            if visit.ground:
-                for parcel in visit.ground:
-                    assert inst.parcel_to_customer[parcel] == visit.customer
-        same = _reassign_overflow_tail(plan, inst, phys, state, "t7", "S")
-        if same is not None:
-            for vid in plan.routes["t7"]:
-                if vid in moved.visits and plan.visits[vid].customer == "c047":
-                    assert same.visits[vid].truck == "t7"
+    shared = _advance_late_recovery(plan, inst, phys, state, "t7", "S")
+    cross = _advance_late_recovery(plan, inst, phys, state, "t7", "X")
+    assert shared is not None and cross is not None
+    assert shared.sorties[214].rec_vid == cross.sorties[214].rec_vid
+    assert shared.visits[shared.sorties[214].rec_vid].truck == "t7"
+    assert shared.visits[shared.sorties[214].rec_vid].customer == "c009"
+    for strategy_plan in (shared, cross):
+        for visit in strategy_plan.visits.values():
+            if "p047" in visit.ground:
+                assert visit.truck == "t7"
+                assert visit.customer == "c047"
+    # S does not move the recovery onto another truck. X may.
+    assert shared.sorties[380].truck == "t7"
+    for strategy in ("S", "X"):
+        moved = _reassign_overflow_tail(plan, inst, phys, state, "t7", strategy)
+        if moved is None:
+            continue
+        for visit in moved.visits.values():
+            if "p047" in visit.ground:
+                assert visit.truck == "t7"
+                assert visit.customer == "c047"
 
 
 if __name__ == "__main__":
     test_started_fragment_lands_only_when_configured()
     test_unstarted_sortie_lands_only_when_configured()
-    test_overflow_visit_keeps_its_customer_and_can_change_truck_for_x()
+    test_same_truck_recovery_advance_is_shared_and_ground_holder_blocks_both()
     print("LANDED_FRAGMENT_REGRESSION_PASS", "native_evaluations", 0)

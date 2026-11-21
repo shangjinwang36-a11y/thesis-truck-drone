@@ -701,52 +701,96 @@ def _legalize_depot_preparation(cand: Plan, inst, phys, state) -> Plan:
     return placed
 
 
-def _reassign_overflow_tail(plan, inst, phys, state, truck, strategy):
-    """Move the visits from which this truck can no longer reach the depot by H.
+def _holder_truck(state, parcel: str) -> str | None:
+    """原保管规则：卡车上的票只能由该车地送，仓库票不限制，无人机在途的票不能改派地送车。"""
+    from .moves import allowed_truck
+    allowed = allowed_truck(state, parcel)
+    if allowed == "__FIXED__":
+        return "__FIXED__"
+    return allowed
 
-    Each visit keeps its customer, so a ground parcel is not delivered at the
-    wrong address. Another truck receives the visit only under strategy X.
-    S stays on the same truck. Started recoveries block a cross-truck move.
-    """
+
+def _overflow_visits(plan, inst, phys, state, truck):
     from .schedule import schedule_plan
+    limit = getattr(plan, "_horizon_limit", None)
     route = list(plan.routes.get(truck) or [])
-    if len(route) < 2:
-        return None
-    timeline = schedule_plan(plan, inst, phys, state)
-    horizon = None
-    # The caller passes H through state only indirectly. Use the truck finish
-    # comparison from the violation path: any visit whose departure plus the
-    # direct depot leg misses the recorded truck finish's horizon is handled
-    # by the caller via the same schedule and the plan's own H check below.
+    if limit is None or len(route) < 2:
+        return None, []
+    timeline = None
+    try:
+        timeline = schedule_plan(plan, inst, phys, state)
+    except ValueError:
+        return None, []
+    if timeline is None:
+        return None, []
     depot = (inst.depot_x, inst.depot_y)
     speed = phys.truck_speed_m_s
-    # Recover H from the latest truck finish that the violation named. The
-    # schedule itself does not store H. The caller sets plan attribute below.
-    limit = getattr(plan, "_horizon_limit", None)
-    if limit is None:
-        return None
-    overflow = []
+    late = []
     for vid in route:
-        visit = plan.visits[vid]
         departed = timeline.visit_dep.get(vid)
         if departed is None:
             continue
-        customer = inst.customer(visit.customer)
+        customer = inst.customer(plan.visits[vid].customer)
         home = math.dist((customer.x, customer.y), depot) / speed
         if departed + home > limit + 1e-6:
-            overflow.append(vid)
-    if not overflow:
+            late.append(vid)
+    return timeline, late
+
+
+def _advance_late_recovery(plan, inst, phys, state, truck, strategy):
+    """Pull an unstarted recovery off the part of the route that can no longer reach the depot.
+
+    Same-truck moves are shared by S and X. A different truck is the existing
+    cross-drone recovery and stays X-only. Ground parcels stay where they are.
+    """
+    _timeline, late = _overflow_visits(plan, inst, phys, state, truck)
+    if not late:
         return None
     moved = plan.clone()
-    for vid in reversed(overflow):
+    changed = False
+    for sortie in list(moved.sorties.values()):
+        if sortie.started or sortie.rec_vid not in late:
+            continue
+        launch_truck = sortie.launch_truck or sortie.truck
+        route = list(moved.routes.get(truck) or [])
+        if sortie.launch_vid in route and sortie.rec_vid in route:
+            launch_at = route.index(sortie.launch_vid)
+            recover_at = route.index(sortie.rec_vid)
+            earlier = [vid for vid in route[launch_at + 1:recover_at] if vid not in late]
+            if earlier:
+                sortie.rec_vid = earlier[-1]
+                changed = True
+        # A different truck is not done here. The catalog already owns that
+        # cross-drone recovery, and moving only the recovery truck leaves the
+        # launch visit on the old truck.
+    if not changed:
+        return None
+    if phys.land_and_wait:
+        for sortie in moved.sorties.values():
+            sortie.landed = True
+    return moved
+
+
+def _reassign_overflow_tail(plan, inst, phys, state, truck, strategy):
+    """Move a late visit without changing its customer.
+
+    S and X both use this ground move. The original holder rule decides the
+    truck: a parcel on t7 is not handed to t2. Changing the truck that recovers
+    a drone remains X-only when that truck is not the launch truck.
+    """
+    _timeline, late = _overflow_visits(plan, inst, phys, state, truck)
+    if not late:
+        return None
+    moved = plan.clone()
+    changed = False
+    for vid in reversed(late):
         visit = moved.visits[vid]
-        if any(s.started and s.rec_vid == vid for s in moved.sorties.values()):
-            if strategy != "X":
-                return None
-        destination = _best_visit_host(moved, inst, state, vid, truck if strategy != "X" else None)
+        destination = _best_visit_host(moved, inst, state, vid, strategy)
         if destination is None:
-            return None
+            continue
         host, index = destination
+        if host == visit.truck and index == moved.routes.get(host, []).index(vid):
+            continue
         old_route = moved.routes.get(visit.truck, [])
         if vid in old_route:
             old_route.remove(vid)
@@ -757,21 +801,41 @@ def _reassign_overflow_tail(plan, inst, phys, state, truck, strategy):
             if not sortie.started and sortie.launch_vid == vid:
                 sortie.truck = host
                 sortie.launch_truck = host
+        changed = True
+    if not changed:
+        return None
     if phys.land_and_wait:
         for sortie in moved.sorties.values():
             sortie.landed = True
     return moved
 
 
-def _best_visit_host(plan, inst, state, vid, only_truck):
+def _best_visit_host(plan, inst, state, vid, strategy):
     visit = plan.visits[vid]
+    holders = [_holder_truck(state, parcel) for parcel in visit.ground]
+    if any(holder == "__FIXED__" for holder in holders):
+        return None
+    fixed = {holder for holder in holders if holder}
+    if len(fixed) > 1:
+        return None
+    only_truck = next(iter(fixed)) if fixed else None
+    recoveries = [s for s in plan.sorties.values() if s.rec_vid == vid]
+    if strategy != "X":
+        launch_trucks = {s.launch_truck or s.truck for s in recoveries}
+        if len(launch_trucks) > 1:
+            return None
+        if launch_trucks:
+            launch_truck = next(iter(launch_trucks))
+            if only_truck is not None and only_truck != launch_truck:
+                return None
+            only_truck = launch_truck if only_truck is None else only_truck
     customer = inst.customer(visit.customer)
     target = (customer.x, customer.y)
     depot = (inst.depot_x, inst.depot_y)
     trucks = [only_truck] if only_truck is not None else list(plan.routes)
     best = None
     for truck in trucks:
-        if truck is None:
+        if truck is None or truck not in plan.routes:
             continue
         route = [item for item in plan.routes.get(truck, []) if item != vid]
         low = state.truck_min_insert.get(truck, 0)
@@ -818,7 +882,9 @@ def _first_feasible(cands: list[Plan], inst, phys, state, H, stats, budget, grou
             if match is None:
                 break
             probe._horizon_limit = H
-            nxt = _reassign_overflow_tail(probe, inst, phys, state, match.group(1), strategy)
+            nxt = _advance_late_recovery(probe, inst, phys, state, match.group(1), strategy)
+            if nxt is None:
+                nxt = _reassign_overflow_tail(probe, inst, phys, state, match.group(1), strategy)
             if nxt is None:
                 break
             if budget is not None and budget.evals_left() <= 0:
