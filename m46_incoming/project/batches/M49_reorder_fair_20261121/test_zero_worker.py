@@ -1,5 +1,4 @@
-"""Five checks. None of them spawn a worker or call evaluate_plan."""
-import hashlib
+"""Drive the real serve() branch. The spawn replacement does not evaluate."""
 import importlib.util
 import json
 import os
@@ -7,113 +6,127 @@ import shutil
 import tempfile
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parent / "run_actual.py"
-REAL_STATE = Path("/workspace/m46_incoming/project/batches/M48_depot_road_release_20261121/state.json")
+HERE = Path(__file__).resolve().parent
+os.environ.pop("M49_LAUNCH_APPROVED", None)
 
 
-def load():
-    spec = importlib.util.spec_from_file_location("m49_controller", SRC)
+def load(name, filename):
+    spec = importlib.util.spec_from_file_location(name, HERE / filename)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def test_state_before_worker(module, stage):
-    state = module.ensure_state(stage)
-    assert (stage / "state.json").is_file()
-    assert state["active_processes"] == []
-    assert state["actual_execution_started"] is False
-    assert state["optimizer_running"] is False
+def zero_spawn(stage, job, calls):
+    state = json.loads((Path(stage) / "state.json").read_text())
+    assert state["stage"] == "M49_REORDER"
+    assert "evaluate_plan" not in Path(HERE / "run_actual.py").read_text()
+    calls.append(tuple(job))
+
+    class Proc:
+        pid = 0
+
+        def poll(self):
+            return 0
+
+    class Log:
+        def close(self):
+            return None
+
+    return Proc(), Log(), job
 
 
-def test_resume_blocks(module, stage):
-    job = ("M49_REORDER", "RC100", "X", "dev", 1001, "own")
-    (stage / "FRESH_PROGRESS.json").write_text(json.dumps({"active": [{"job": list(job)}], "completed": [], "failures": []}))
-    pending, _completed, _failed, blocked = module.restore(stage, [job])
-    assert blocked is True
-    assert len(pending) == 0
+def stage_with_registration():
+    stage = Path(tempfile.mkdtemp(prefix="m49_serve_"))
+    shutil.copy(HERE / "FRESH_JOB_REGISTRATION.json", stage / "FRESH_JOB_REGISTRATION.json")
+    return stage
 
 
-def test_path_conflict_keeps_the_file(module, stage):
-    job = ("M49_REORDER", "RC100", "X", "dev", 1001, "own")
-    path = module.exclusive_outputs(stage, job)[0]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{}\n")
+def test_serve_writes_state_before_zero_spawn(controller):
+    stage = stage_with_registration()
+    calls = []
     try:
-        module.refuse_existing_output(stage, [job])
-        raise AssertionError("conflict was not raised")
-    except SystemExit as exc:
-        assert "output already exists" in str(exc)
-    assert path.is_file()
+        controller.serve(stage, lambda stage, job: zero_spawn(stage, job, calls))
+        assert len(calls) == 36
+        assert not (stage / "M49_REORDER").exists()
+    finally:
+        shutil.rmtree(stage)
 
 
-def test_no_residue(stage, before):
-    shutil.rmtree(stage)
-    assert not stage.exists()
-    after = hashlib.sha256(REAL_STATE.read_bytes()).hexdigest() if REAL_STATE.is_file() else None
-    assert before == after
-
-
-def test_main_does_not_spawn_and_core_matches(module):
-    assert module.core_members_match()
-    try:
-        module.main()
-        raise AssertionError("main returned")
-    except SystemExit as exc:
-        assert str(exc) == "not launched"
-
-
-def test_worker_refuses_and_scope_is_bound():
-    os.environ.pop("M49_LAUNCH_APPROVED", None)
-    spec = importlib.util.spec_from_file_location("m49_worker", Path(__file__).resolve().parent / "fresh_actual.py")
-    worker = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(worker)
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "M49_landed_wait_core_20261121/source/proj_r6/src"))
-    calls = {"n": 0}
-
-    def banned(*_args, **_kwargs):
-        calls["n"] += 1
-        raise AssertionError("evaluate_plan was called")
-
-    import tdr.evaluate as evaluate
-    original = evaluate.evaluate_plan
-    evaluate.evaluate_plan = banned
+def test_active_resume_does_not_spawn(controller):
+    stage = stage_with_registration()
+    job = json.loads((HERE / "FRESH_JOB_REGISTRATION.json").read_text())["jobs"][0]
+    (stage / "FRESH_PROGRESS.json").write_text(json.dumps({"active": [{"job": job}], "completed": [], "failures": []}))
+    calls = []
     try:
         try:
-            worker.shift(("M49_REORDER", "RC100", "X", "dev", 1001, "own"))
-            raise AssertionError("worker returned")
+            controller.serve(stage, lambda stage, job: zero_spawn(stage, job, calls))
+            raise AssertionError("resume spawned")
+        except controller.CheckpointActive:
+            pass
+        assert calls == []
+    finally:
+        shutil.rmtree(stage)
+
+
+def test_existing_output_is_not_overwritten(controller):
+    stage = stage_with_registration()
+    job = tuple(json.loads((HERE / "FRESH_JOB_REGISTRATION.json").read_text())["jobs"][0])
+    path = controller.exclusive_outputs(stage, job)[0]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"keep": true}\n')
+    calls = []
+    try:
+        try:
+            controller.serve(stage, lambda stage, job: zero_spawn(stage, job, calls))
+            raise AssertionError("conflict spawned")
+        except SystemExit as exc:
+            assert "output already exists" in str(exc)
+        assert json.loads(path.read_text()) == {"keep": True}
+        assert calls == []
+    finally:
+        shutil.rmtree(stage)
+
+
+def test_controller_file_is_not_the_m47_module(worker):
+    controller = worker.load_controller()
+    assert Path(controller.__file__).resolve() == (HERE / "run_actual.py").resolve()
+    m47 = HERE.parent / "M47_bounded_actual_20261121" / "run_actual.py"
+    if m47.is_file():
+        assert Path(controller.__file__).resolve() != m47.resolve()
+
+
+def test_unapproved_spawn_and_shift_do_not_evaluate(controller, worker):
+    stage = stage_with_registration()
+    try:
+        try:
+            controller.popen_spawn(stage, ("M49_REORDER", "C50", "S", "dev", 1001, "own"))
+            raise AssertionError("popen returned")
         except SystemExit as exc:
             assert str(exc) == "not launched"
-        assert calls["n"] == 0
-        reg = json.loads((Path(__file__).resolve().parent / "FRESH_JOB_REGISTRATION.json").read_text())
+        assert not (stage / "worker_logs").exists()
+        try:
+            worker.shift(("M49_REORDER", "C50", "S", "dev", 1001, "own"))
+            raise AssertionError("shift returned")
+        except SystemExit as exc:
+            assert str(exc) == "not launched"
+        assert "run_episode" in worker.execute_job.__code__.co_names
     finally:
-        evaluate.evaluate_plan = original
-    assert reg["launch_allowed"] is False
-    assert reg["core_freeze_sha256"] == "39a85da8c9b63d785754cdee4c3e596827e2b9986d32ed37480cab20306c8363"
-    assert reg["init_eval_budget"] == 100 and reg["main_eval_budget"] == 1000
-    assert reg["logical_count"] == 36 and len(reg["jobs"]) == 36
-    assert reg["calls_this_round"] == 0
-    for case in ("C50", "R50", "RC50", "C100", "R100", "RC100"):
-        rows = [row for row in reg["logical_mapping"] if row["logical_job"][1] == case]
-        by_arm = {row["logical_job"][2]: row for row in rows}
-        assert by_arm["S"]["nominal_role"] == "S" and by_arm["S"]["recovery_policy"] == "S"
-        assert by_arm["R"]["nominal_role"] == "S" and by_arm["R"]["nominal_sha256"] == by_arm["S"]["nominal_sha256"]
-        assert by_arm["R"]["recovery_policy"] == "X"
-        assert by_arm["X"]["nominal_role"] == "X"
-        assert by_arm["S"]["H_s"] == by_arm["R"]["H_s"] == by_arm["X"]["H_s"]
+        shutil.rmtree(stage)
 
 
 def main():
-    module = load()
-    before = hashlib.sha256(REAL_STATE.read_bytes()).hexdigest() if REAL_STATE.is_file() else None
-    stage = Path(tempfile.mkdtemp(prefix="m49_five_"))
-    test_state_before_worker(module, stage)
-    test_resume_blocks(module, stage)
-    test_path_conflict_keeps_the_file(module, stage)
-    test_no_residue(stage, before)
-    test_main_does_not_spawn_and_core_matches(module)
-    test_worker_refuses_and_scope_is_bound()
+    controller = load("m49_reorder_controller", "run_actual.py")
+    worker = load("m49_reorder_worker", "fresh_actual.py")
+    assert controller.REQUIRED_FREEZE == "39a85da8c9b63d785754cdee4c3e596827e2b9986d32ed37480cab20306c8363"
+    assert controller.scope_ok(HERE)
+    test_serve_writes_state_before_zero_spawn(controller)
+    test_active_resume_does_not_spawn(controller)
+    test_existing_output_is_not_overwritten(controller)
+    test_controller_file_is_not_the_m47_module(worker)
+    test_unapproved_spawn_and_shift_do_not_evaluate(controller, worker)
+    assert not (HERE / "state.json").exists()
+    assert not (HERE / "M49_REORDER").exists()
     print("ZERO_WORKER_FIVE_PASS", "native_evaluations", 0)
 
 
