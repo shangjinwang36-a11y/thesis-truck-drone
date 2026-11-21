@@ -2,6 +2,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -62,6 +63,47 @@ def test_main_does_not_spawn_and_core_matches(module):
         assert str(exc) == "not launched"
 
 
+def test_worker_refuses_and_scope_is_bound():
+    os.environ.pop("M49_LAUNCH_APPROVED", None)
+    spec = importlib.util.spec_from_file_location("m49_worker", Path(__file__).resolve().parent / "fresh_actual.py")
+    worker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(worker)
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "M49_landed_wait_core_20261121/source/proj_r6/src"))
+    calls = {"n": 0}
+
+    def banned(*_args, **_kwargs):
+        calls["n"] += 1
+        raise AssertionError("evaluate_plan was called")
+
+    import tdr.evaluate as evaluate
+    original = evaluate.evaluate_plan
+    evaluate.evaluate_plan = banned
+    try:
+        try:
+            worker.shift(("M49_REORDER", "RC100", "X", "dev", 1001, "own"))
+            raise AssertionError("worker returned")
+        except SystemExit as exc:
+            assert str(exc) == "not launched"
+        assert calls["n"] == 0
+        reg = json.loads((Path(__file__).resolve().parent / "FRESH_JOB_REGISTRATION.json").read_text())
+    finally:
+        evaluate.evaluate_plan = original
+    assert reg["launch_allowed"] is False
+    assert reg["core_freeze_sha256"] == "39a85da8c9b63d785754cdee4c3e596827e2b9986d32ed37480cab20306c8363"
+    assert reg["init_eval_budget"] == 100 and reg["main_eval_budget"] == 1000
+    assert reg["logical_count"] == 36 and len(reg["jobs"]) == 36
+    assert reg["calls_this_round"] == 0
+    for case in ("C50", "R50", "RC50", "C100", "R100", "RC100"):
+        rows = [row for row in reg["logical_mapping"] if row["logical_job"][1] == case]
+        by_arm = {row["logical_job"][2]: row for row in rows}
+        assert by_arm["S"]["nominal_role"] == "S" and by_arm["S"]["recovery_policy"] == "S"
+        assert by_arm["R"]["nominal_role"] == "S" and by_arm["R"]["nominal_sha256"] == by_arm["S"]["nominal_sha256"]
+        assert by_arm["R"]["recovery_policy"] == "X"
+        assert by_arm["X"]["nominal_role"] == "X"
+        assert by_arm["S"]["H_s"] == by_arm["R"]["H_s"] == by_arm["X"]["H_s"]
+
+
 def main():
     module = load()
     before = hashlib.sha256(REAL_STATE.read_bytes()).hexdigest() if REAL_STATE.is_file() else None
@@ -71,6 +113,7 @@ def main():
     test_path_conflict_keeps_the_file(module, stage)
     test_no_residue(stage, before)
     test_main_does_not_spawn_and_core_matches(module)
+    test_worker_refuses_and_scope_is_bound()
     print("ZERO_WORKER_FIVE_PASS", "native_evaluations", 0)
 
 

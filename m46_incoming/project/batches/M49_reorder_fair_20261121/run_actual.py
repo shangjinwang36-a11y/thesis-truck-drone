@@ -9,6 +9,7 @@ import sys
 HERE = Path(__file__).resolve().parent
 CORE = HERE.parent / "M49_landed_wait_core_20261121"
 LAUNCH_ENV = "M49_LAUNCH_APPROVED"
+REQUIRED_FREEZE = "39a85da8c9b63d785754cdee4c3e596827e2b9986d32ed37480cab20306c8363"
 
 
 class CheckpointActive(SystemExit):
@@ -80,6 +81,8 @@ def refuse_existing_output(stage, pending):
 
 def core_members_match():
     freeze_path = CORE / "EXPERIMENT_CORE_FREEZE.json"
+    if sha256(freeze_path) != REQUIRED_FREEZE:
+        return False
     freeze = json.loads(freeze_path.read_text())
     if len(freeze) != 147:
         return False
