@@ -1,0 +1,25 @@
+{
+ "purpose": "Supplement the executed c51 driver sources. Not a new run and not a new fingerprint.",
+ "sealed_driver_sha256": "3ff50aa8a9bfc2aa61f8387c0e577bbce523aece3a4ebcc1dac4de27045c7dda",
+ "executed_driver_sha256": "c51adad6f8d6d5bcd3622b34729ff2f1625948205bbc831751c73dad81099d0b",
+ "executed_controller_sha256": "af62e36e26eb4513b7f1acae49a1abb06dcb8e8333e96145d440864857554507",
+ "executed_prepare_sha256": "c2df64acda6c1cb287a3904823c9465a0c34bbec73ea0174f31aa2a7737aafc0",
+ "executed_test_sha256": "f3efaeb8d69519750acfa317483f2894ee83cc5af38972f2007a6319c696caf6",
+ "registration_sha256": "cfe78cd9429c5293636fea3ef64c37063200242c15748bf9ba684c1d985e5a71",
+ "diff_lines": "setup label M48_RECOVERY to M48, and three nominal path strings M47_CANDIDATE to M44_CURRENT",
+ "setup_objects_identical": true,
+ "rng_getstate_identical": true,
+ "budgets": "INIT 100, MAIN 1000, override None, rescue one extension by MAIN",
+ "core_path_unchanged": true,
+ "s_horizon_files_byte_identical": true,
+ "nominal_bytes_differ_only": [
+  "X/C100",
+  "X/RC100"
+ ],
+ "reuse_32": "Dedup used sealed_equivalent_fingerprint computed with driver 3ff. It is not the c51 execution fingerprint. Those two hashes differ because the driver file hash is inside the fingerprint. For the 32, the c51 path reads the same nominal bytes as 3ff.",
+ "not_strict_same_hash_dedup": true,
+ "four_cell_trace_match_is_not_the_36_mean": true,
+ "same_fix_mean_is_not_historical_m44_table": "The four fresh cells match historical M44. The other 32 are the finished M48 executions. The 36-mean is 501.163 and service 33.667, not the old M44 table 498.915 and 33.583.",
+ "zero_worker_recheck": "5 tests passed, 0 real workers, test file hash unchanged",
+ "originals_not_regenerated": true
+}
