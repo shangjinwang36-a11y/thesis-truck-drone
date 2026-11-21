@@ -18,7 +18,7 @@ def bound(p,e,ctx):
 def candidate_air_ok(parent,child,descriptor):
  pa=air(parent);qa=air(child)
  if descriptor['kind']=='PAID_TRAINING_COMPLETE_REBIND':return pa==qa and not descriptor.get('parcels')
- if descriptor['kind']=='SCHEDULE_CLOSED_DETOUR':return qa-pa==set(descriptor.get('parcels') or []) and len(qa-pa)==1
+ if descriptor['kind']=='SCHEDULE_CLOSED_DETOUR':return qa-pa==set(descriptor.get('parcels') or []) and len(descriptor.get('parcels') or []) in (0,1)
  return pa<qa
 class Work:
  def __init__(self,p,e,ctx):
@@ -129,7 +129,8 @@ class Ticket:
  def valid(self,p,e,q=None,qe=None):
   q=self.q if q is None else q;qe=self.qe if qe is None else qe
   kind=self.row['descriptor']['kind']
-  return bool(not self.done and p is self.p and e is self.e and version(p)==self.parent and bound(p,e,self.ctx)and repr(vars(self.ctx.state))==self.state and self.ctx.H==self.H and q is self.q and qe is self.qe and version(q)==self.child and bound(q,qe,self.ctx)and candidate_air_ok(p,q,self.row['descriptor'])and air(q)-air(p)==self.added and (kind=='PAID_TRAINING_COMPLETE_REBIND'or len(self.added)in(1,2)or(kind=='MULTI_TASK_POOL_RECONSTRUCTION'and self.added==frozenset(self.row['descriptor']['parcels'])and len(self.added)>=3)))
+  added_ok=((kind=='SCHEDULE_CLOSED_DETOUR' and len(self.added) in (0,1)) or kind=='PAID_TRAINING_COMPLETE_REBIND' or len(self.added) in (1,2) or (kind=='MULTI_TASK_POOL_RECONSTRUCTION' and self.added==frozenset(self.row['descriptor']['parcels']) and len(self.added)>=3))
+  return bool(not self.done and p is self.p and e is self.e and version(p)==self.parent and bound(p,e,self.ctx)and repr(vars(self.ctx.state))==self.state and self.ctx.H==self.H and q is self.q and qe is self.qe and version(q)==self.child and bound(q,qe,self.ctx)and candidate_air_ok(p,q,self.row['descriptor'])and air(q)-air(p)==self.added and added_ok)
  def cas(self,p,e,q,qe):
   self.row['commit_observed_current_version']=version(p);self.row['commit_observed_evaluation_version']=getattr(e,'_complete_plan_version',None);self.row['commit_actual_H']=self.ctx.H
   if not self.valid(p,e,q,qe):self.row.update(cas=False,commit_rejected='STALE_CURRENT_OR_EVALUATION_OR_CHILD_H');return None
@@ -161,7 +162,7 @@ class CurrentTransactions:
   if item is None:return None
   q,d=item;parentseal=version(p);pa=air(p)
   expected_new=set(d['parcels'])if d['kind']=='MULTI_TASK_POOL_RECONSTRUCTION'else None
-  size_ok=(air(q)-pa==set(d['parcels']) and len(d['parcels'])==1)if d['kind']=='SCHEDULE_CLOSED_DETOUR'else (air(q)==pa)if d['kind']=='PAID_TRAINING_COMPLETE_REBIND'else (air(q)-pa==expected_new and len(expected_new)>=3)if expected_new is not None else len(air(q)-pa)==(2 if getattr(self.ctx.alg,'joint_block',False)else 1)
+  size_ok=(air(q)-pa==set(d.get('parcels') or []) and len(d.get('parcels') or []) in (0,1))if d['kind']=='SCHEDULE_CLOSED_DETOUR'else (air(q)==pa)if d['kind']=='PAID_TRAINING_COMPLETE_REBIND'else (air(q)-pa==expected_new and len(expected_new)>=3)if expected_new is not None else len(air(q)-pa)==(2 if getattr(self.ctx.alg,'joint_block',False)else 1)
   if not complete(q,self.ctx.inst)or not candidate_air_ok(p,q,d)or not size_ok or q.validate_structure(self.ctx.inst,self.ctx.phys):raise ValueError('Unclosed current-parent promotion')
   qe=eval_counted(q,self.ctx.inst,self.ctx.phys,self.ctx.state,self.ctx.H,'CURRENT_PARENT_JOINT',stats,budget)
   if qe is None:return None

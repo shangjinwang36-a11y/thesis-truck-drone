@@ -1,0 +1,288 @@
+{
+ "label": "conditional X replay; S is the sealed K1/M46 S plan, not a fresh S solve",
+ "historical_s_preparation": "K1 nominal S already paid in the sealed study; this run adopts that plan as X's reference H and same-truck baseline. It does not re-buy S's 1000 physical evaluations.",
+ "rows": [
+  {
+   "case": "C50",
+   "x_cost": 121.10960906755213,
+   "sealed_x_cost": 121.10960906755213,
+   "x_air": 45,
+   "sealed_x_air": 45,
+   "x_cross_sorties": 0,
+   "sealed_x_cross": 0,
+   "sealed_s_cost": 200.92102328764042,
+   "cost_delta_vs_sealed_x": 0.0,
+   "physical_used": 995,
+   "scenario_used": 40,
+   "envelope": {
+    "limit": 1000,
+    "used": 995,
+    "auxiliary_used": 1,
+    "denied": 0,
+    "reference_H": 4180.4961968114485
+   },
+   "wall_s": 9.347322919000135,
+   "cpu_s": 9.35547485,
+   "funnel": {
+    "generated": 1053,
+    "schedule": 11,
+    "margin": 9,
+    "energy": 129,
+    "accepted": 3
+   },
+   "schedule_closed": [
+    {
+     "emitted": 0,
+     "stops_seen": 0,
+     "best_proxy_j_gain": null,
+     "owned_rejected": 0,
+     "native_calls": 0
+    },
+    {
+     "emitted": 2,
+     "stops_seen": 1,
+     "best_proxy_j_gain": -29.193595535651582,
+     "owned_rejected": 0,
+     "native_calls": 0
+    },
+    {
+     "emitted": 0,
+     "stops_seen": 0,
+     "best_proxy_j_gain": null,
+     "owned_rejected": 0,
+     "native_calls": 0
+    }
+   ],
+   "label": "X_REPLAY_ON_SEALED_K1_S_NOT_FRESH_S"
+  },
+  {
+   "case": "R50",
+   "x_cost": 384.5596607673594,
+   "sealed_x_cost": 384.5596607673594,
+   "x_air": 43,
+   "sealed_x_air": 43,
+   "x_cross_sorties": 0,
+   "sealed_x_cross": 0,
+   "sealed_s_cost": 433.42002288204685,
+   "cost_delta_vs_sealed_x": 0.0,
+   "physical_used": 1000,
+   "scenario_used": 34,
+   "envelope": {
+    "limit": 1000,
+    "used": 1000,
+    "auxiliary_used": 1,
+    "denied": 0,
+    "reference_H": 6389.43765659336
+   },
+   "wall_s": 10.266836839999996,
+   "cpu_s": 10.266219713,
+   "funnel": {
+    "generated": 1468,
+    "schedule": 42,
+    "margin": 8,
+    "accepted": 1,
+    "energy": 1072
+   },
+   "schedule_closed": [
+    {
+     "emitted": 0,
+     "stops_seen": 0,
+     "best_proxy_j_gain": null,
+     "owned_rejected": 0,
+     "native_calls": 0
+    },
+    {
+     "emitted": 2,
+     "stops_seen": 2,
+     "best_proxy_j_gain": -32.249560928165536,
+     "owned_rejected": 0,
+     "native_calls": 0
+    }
+   ],
+   "label": "X_REPLAY_ON_SEALED_K1_S_NOT_FRESH_S"
+  },
+  {
+   "case": "RC50",
+   "x_cost": 303.2494243777115,
+   "sealed_x_cost": 303.2494243777115,
+   "x_air": 45,
+   "sealed_x_air": 45,
+   "x_cross_sorties": 0,
+   "sealed_x_cross": 0,
+   "sealed_s_cost": 364.2434743636842,
+   "cost_delta_vs_sealed_x": 0.0,
+   "physical_used": 1000,
+   "scenario_used": 28,
+   "envelope": {
+    "limit": 1000,
+    "used": 1000,
+    "auxiliary_used": 1,
+    "denied": 0,
+    "reference_H": 5720.1205418026875
+   },
+   "wall_s": 8.939861619999874,
+   "cpu_s": 8.938061773000001,
+   "funnel": {
+    "generated": 253,
+    "schedule": 16,
+    "accepted": 3,
+    "energy": 105,
+    "margin": 7
+   },
+   "schedule_closed": [
+    {
+     "emitted": 0,
+     "stops_seen": 0,
+     "best_proxy_j_gain": null,
+     "owned_rejected": 0,
+     "native_calls": 0
+    }
+   ],
+   "label": "X_REPLAY_ON_SEALED_K1_S_NOT_FRESH_S"
+  },
+  {
+   "case": "C100",
+   "x_cost": 321.9461658588226,
+   "sealed_x_cost": 351.5689422401729,
+   "x_air": 82,
+   "sealed_x_air": 67,
+   "x_cross_sorties": 0,
+   "sealed_x_cross": 0,
+   "sealed_s_cost": 468.00403113335017,
+   "cost_delta_vs_sealed_x": -29.622776381350263,
+   "physical_used": 1000,
+   "scenario_used": 52,
+   "envelope": {
+    "limit": 1000,
+    "used": 1000,
+    "auxiliary_used": 1,
+    "denied": 0,
+    "reference_H": 4650.277457563401
+   },
+   "wall_s": 34.83867560199997,
+   "cpu_s": 34.836117062,
+   "funnel": {
+    "generated": 2946,
+    "schedule": 13,
+    "margin": 9,
+    "accepted": 1
+   },
+   "schedule_closed": [
+    {
+     "emitted": 0,
+     "stops_seen": 0,
+     "best_proxy_j_gain": null,
+     "owned_rejected": 0,
+     "native_calls": 0
+    },
+    {
+     "emitted": 2,
+     "stops_seen": 4,
+     "best_proxy_j_gain": -2.2971800644954987,
+     "owned_rejected": 0,
+     "native_calls": 0
+    },
+    {
+     "emitted": 0,
+     "stops_seen": 0,
+     "best_proxy_j_gain": null,
+     "owned_rejected": 0,
+     "native_calls": 0
+    }
+   ],
+   "label": "X_REPLAY_ON_SEALED_K1_S_NOT_FRESH_S"
+  },
+  {
+   "case": "R100",
+   "x_cost": 729.5020961963194,
+   "sealed_x_cost": 729.5020961963194,
+   "x_air": 76,
+   "sealed_x_air": 76,
+   "x_cross_sorties": 0,
+   "sealed_x_cross": 0,
+   "sealed_s_cost": 736.6347106994058,
+   "cost_delta_vs_sealed_x": 0.0,
+   "physical_used": 1000,
+   "scenario_used": 28,
+   "envelope": {
+    "limit": 1000,
+    "used": 1000,
+    "auxiliary_used": 1,
+    "denied": 0,
+    "reference_H": 6222.706020313075
+   },
+   "wall_s": 38.40041696100002,
+   "cpu_s": 38.406296438,
+   "funnel": {
+    "generated": 2345,
+    "margin": 12,
+    "schedule": 13,
+    "energy": 1175,
+    "accepted": 1
+   },
+   "schedule_closed": [
+    {
+     "emitted": 0,
+     "stops_seen": 0,
+     "best_proxy_j_gain": null,
+     "owned_rejected": 0,
+     "native_calls": 0
+    },
+    {
+     "emitted": 2,
+     "stops_seen": 6,
+     "best_proxy_j_gain": -2.4599239716929864,
+     "owned_rejected": 0,
+     "native_calls": 0
+    }
+   ],
+   "label": "X_REPLAY_ON_SEALED_K1_S_NOT_FRESH_S"
+  },
+  {
+   "case": "RC100",
+   "x_cost": 542.4744922191281,
+   "sealed_x_cost": 564.6795968132932,
+   "x_air": 76,
+   "sealed_x_air": 76,
+   "x_cross_sorties": 1,
+   "sealed_x_cross": 0,
+   "sealed_s_cost": 670.1232467899293,
+   "cost_delta_vs_sealed_x": -22.20510459416505,
+   "physical_used": 1000,
+   "scenario_used": 42,
+   "envelope": {
+    "limit": 1000,
+    "used": 1000,
+    "auxiliary_used": 1,
+    "denied": 1,
+    "reference_H": 5911.709582085911
+   },
+   "wall_s": 38.073409584000046,
+   "cpu_s": 38.06666842899999,
+   "funnel": {
+    "generated": 4270,
+    "schedule": 39,
+    "margin": 14,
+    "energy": 1561,
+    "accepted": 4
+   },
+   "schedule_closed": [
+    {
+     "emitted": 0,
+     "stops_seen": 0,
+     "best_proxy_j_gain": null,
+     "owned_rejected": 0,
+     "native_calls": 0
+    },
+    {
+     "emitted": 2,
+     "stops_seen": 4,
+     "best_proxy_j_gain": 21.379581384009082,
+     "owned_rejected": 0,
+     "native_calls": 0
+    }
+   ],
+   "label": "X_REPLAY_ON_SEALED_K1_S_NOT_FRESH_S"
+  }
+ ]
+}
