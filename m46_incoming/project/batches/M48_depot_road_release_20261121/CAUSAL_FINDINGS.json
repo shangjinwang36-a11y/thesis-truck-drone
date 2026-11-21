@@ -1,0 +1,32 @@
+{
+  "stage": "M48_isolated_from_sealed_M47",
+  "m47_core_modified": false,
+  "native_evaluations": 0,
+  "actual_reopened": false,
+  "decision_on_m47_actual": "DROP_STANDS",
+  "first_blocker_c100": {
+    "both_seeds": true,
+    "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+    "when": "first failure, before any successful recovery and before MAIN",
+    "times_s": {"1001": 182.0, "1002": 171.6},
+    "init_evals": 1304,
+    "main_evals": 0,
+    "recorded_reasons": "DEPOT_PREPARATION_ON_ROAD:t2",
+    "published_nominal_cross_sorties": 0,
+    "not_asserted_from_operator_scope_alone": "The M47 detour operator is nominal-only. The recorded chain shows the published C100 plan has no cross sortie; the stop is the depot-preparation gate on t2."
+  },
+  "m44_same_worlds": {
+    "C100_1001": "15 successful recoveries, then H_EXCEEDED; 37 SERVICE and soft H",
+    "C100_1002": "13 successful recoveries and a hard-H completion; 40 SERVICE"
+  },
+  "shared_exposure": "Both the M47 and M44 C100 nominals contain unstarted depot launches on t2. Marking t2 in transit makes both plans fail the same gate. M44's recorded trace did not die on that gate.",
+  "m48_change": "Truncate and the shared initial-candidate evaluator release those depot launches and place the parcels on the ground. S and X use the same code. No air sortie is created. J, prices, p, H, handover, energy, and budgets are unchanged.",
+  "zero_native_case": "test_depot_preparation_on_road.py clears the gate for both nominals with repair_ground_only and no evaluator call.",
+  "not_yet_shown": "A paid replay of the recorded C100 failure snapshot was not run. Clearing the gate on the nominal geometry does not by itself prove the airborne failure at t=182 has a feasible suffix.",
+  "rc100": {
+    "1001": "8 successful recoveries, one t1 to t2 recovery, p095 served and p057 not; stop is SWAP_CANNOT_FIX energy below 0.05, then soft H",
+    "1002": "10 successful recoveries, no cross recovery, both nominal cross parcels served on some air sortie; same energy stop and soft H",
+    "m44": "Both RC100 seeds also stop on SWAP_CANNOT_FIX and use soft H. The energy dead-end is not unique to the new nominal cross.",
+    "not_fixed_here": true
+  }
+}
