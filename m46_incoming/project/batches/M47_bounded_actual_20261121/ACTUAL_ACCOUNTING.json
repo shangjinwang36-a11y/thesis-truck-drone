@@ -1,0 +1,33 @@
+{
+ "counts": {
+  "accepted": 391553,
+  "init": 55124,
+  "main": 336000,
+  "object_external": 429,
+  "denied": 0,
+  "startup": 40
+ },
+ "external_subset_not_added": {
+  "SIMULATE": 377,
+  "FINAL": 33,
+  "GROUND_FINISH": 19
+ },
+ "init_budget_final_limits": {
+  "100": 309,
+  "1000": 336,
+  "1304": 20,
+  "1124": 13,
+  "124": 2
+ },
+ "init_limit_note": "1000 is the separate main ALNS budget. Other limits are the init budget 100 plus the frozen recovery extensions: one rescue of 1000, fallback 24, joint 60, and land 120.",
+ "logical_rows_are_not_independent_calls": true,
+ "unique_actual_all_fresh": true,
+ "diagnostic_audit_native_evaluations": 0,
+ "historical_K1_replayed_native_evaluations": 0,
+ "episode_wall_s": 1257.5116210830038,
+ "sampled_worker_cpu_s_lower_bound": 1240.74,
+ "process_sample_lines": 297,
+ "cpu_note": "Samples keep the highest cpu_s seen while a worker pid was still alive. CPU after the last sample of a pid is not reconstructed.",
+ "controller_started_at": "2026-11-21T09:27:46Z",
+ "no_unknown_imputation": true
+}
