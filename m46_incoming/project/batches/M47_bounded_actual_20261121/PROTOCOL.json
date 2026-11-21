@@ -28,7 +28,10 @@
   "budgets": {
     "nominal": "Already paid. Not rerun.",
     "startup_nominal_verify": "One physical call per canonical execution, separate startup ledger",
-    "recovery": "1000, init 100 inside it, wall_limit null",
+    "recovery_init": "100, a separate Budget. Unchanged.",
+    "recovery_main": "1000, the ALNS Budget passed to run_episode. Unchanged and not combined with init.",
+    "recovery_rescue": "If init finds nothing, the original code extends that init budget once by the main limit. This is not an extra search and does not fold init into the 1000.",
+    "wall_limit": null,
     "scenario_cap": 200
   },
   "H": "Per map the nominal file H_s, required equal to M20 preflight S H_s and alg._nominal_reference_H (sealed K1 S). Not X z+1800.",

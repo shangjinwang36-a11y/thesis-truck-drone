@@ -20,9 +20,9 @@ from tdr.complete_joint import version  # noqa: E402
 CASES = ["C50", "R50", "RC50", "C100", "R100", "RC100"]
 SEEDS = [1001, 1002]
 VARIANTS = ["M47_CANDIDATE", "M44_CURRENT"]
-WITNESS_DIR = B / "J2_historical_R10_integrated_repair_20261120/J2/executions/own/dev"
-M20 = B / "M20_canonical_H_sixmap_20261121/preflight_fresh"
-K1_EXEC = B / "K1_R10_S_warm_restore_20261120/K1/executions/own/dev"
+sys.path.insert(0, str(H))
+from private_root import k1_execution, m20_s, witness  # noqa: E402
+from scope_fingerprint import complete_scope, fingerprint  # noqa: E402
 M47_NOMINAL = B / "M47_schedule_closed_exchange_20261121/fresh_new"
 M44_NOMINAL = B / "M44_paid_temporal_body_skeleton_20261121/fresh_new"
 
@@ -35,29 +35,29 @@ def main():
     missing = []
     historical = []
     for case in CASES:
-        m20 = M20 / case / "S/nominal_plan.json"
+        m20 = m20_s(case)
         if not m20.is_file():
-            missing.append(dict(
-                path=str(m20),
-                role="frozen_H_identity",
-                format="nominal_plan.json with H_s equal to sealed K1 S H_s and to alg._nominal_reference_H",
-                shareable=True,
-                hidden_flags=False,
-            ))
-        for seed in SEEDS:
-            witness = WITNESS_DIR / f"{case}_{seed}_S.json"
-            if not witness.is_file():
                 missing.append(dict(
-                    path=str(witness),
+                    path=f"project/batches/M20_canonical_H_sixmap_20261121/preflight_fresh/{case}/S/nominal_plan.json",
+                    role="frozen_H_identity",
+                    format="nominal_plan.json with H_s equal to sealed K1 S H_s and to alg._nominal_reference_H",
+                    shareable=True,
+                    hidden_flags=False,
+                ))
+        for seed in SEEDS:
+            witness_path = witness(case, seed)
+            if not witness_path.is_file():
+                missing.append(dict(
+                    path=f"project/batches/J2_historical_R10_integrated_repair_20261120/J2/executions/own/dev/{case}_{seed}_S.json",
                     role="recorded_dev_world_shared_by_S_R_X_and_both_variants",
                     format="JSON object. Required key flags: a list. The registration hashes the whole file. Do not send the list for plan construction.",
                     shareable=False,
                     hidden_flags=True,
                 ))
             for arm in "SRX":
-                old = K1_EXEC / f"{case}_{seed}_{arm}.json"
+                old = k1_execution(case, seed, arm)
                 historical.append(dict(
-                    path=str(old),
+                    case=case, seed=seed, arm=arm,
                     present=old.is_file(),
                     role="historical_K1_actual_reference_not_a_fresh_job",
                     used_by="audit_source_and_world_identity.py compares flags and H after an execution exists",
@@ -84,10 +84,12 @@ def main():
             for role in "SX":
                 src = root / case / role / "nominal_plan.json"
                 dst = H / variant / "nominal" / role / case / "nominal_plan.json"
-                if dst.exists():
-                    raise FileExistsError(dst)
                 dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
+                if dst.exists():
+                    if sha(dst) != sha(src):
+                        raise FileExistsError(dst)
+                else:
+                    shutil.copy2(src, dst)
                 raw = read(dst)
                 held.append(dict(variant=variant, case=case, role=role, source=str(src),
                                  sha256=sha(src), version=version(plan_from_dict(raw["plan"])), H_s=raw["H_s"]))
@@ -98,20 +100,20 @@ def main():
     for variant in VARIANTS:
         for case in CASES:
             for seed in SEEDS:
-                world = WITNESS_DIR / f"{case}_{seed}_S.json"
+                world = witness(case, seed)
                 world_hash = sha(world)
                 for arm in "SRX":
                     inst, phys, alg = setup(case, variant)
-                    alg.recovery_eval_budget_override = 1000
                     raw_path = H / variant / "nominal" / ("X" if arm == "X" else "S") / case / "nominal_plan.json"
                     raw = read(raw_path)
                     plan = plan_from_dict(raw["plan"])
                     pol = "S" if arm == "S" else "X"
                     rngs = rr.derive_rngs(alg.base_algorithm_seed, case, "recovery", 0)
-                    scope = (inst, case, seed, pol, version(plan), raw["H_s"], vars(alg), phys,
-                             vars(initial_run_state(plan, inst, phys)),
-                             {k: v.getstate() for k, v in rngs.items()}, core, driver_hash, world_hash)
-                    fp = hashlib.sha256(pickle.dumps(scope, protocol=5)).hexdigest()
+                    scope = complete_scope(
+                        inst, case, seed, pol, version(plan), raw["H_s"], alg, phys,
+                        vars(initial_run_state(plan, inst, phys)),
+                        {k: v.getstate() for k, v in rngs.items()}, core, driver_hash, world_hash)
+                    fp = fingerprint(scope)
                     job = (variant, case, arm, "dev", seed, "own")
                     if fp not in seen:
                         seen[fp] = job
@@ -128,7 +130,11 @@ def main():
         unique_fresh_jobs=len(jobs), no_new_nominal_preparation=True,
         all_actual_share_same_recovery_code=True, full_scope_dedup=True,
         no_old_actual_rows_used=True, exact_scope_details=details,
-        worlds=SEEDS, variants=VARIANTS, stream="dev", hmode="own"))
+        worlds=SEEDS, variants=VARIANTS, stream="dev", hmode="own",
+        driver_sha256=driver_hash,
+        core_freeze_sha256=sha(C / "EXPERIMENT_CORE_FREEZE.json"),
+        init_eval_budget=100, main_eval_budget=1000,
+        rescue="one extension of the init budget by main_eval when init finds nothing"))
     report.update(registration_written=True, nominal_inputs_staged=True,
                   unique_fresh_jobs=len(jobs), logical_count=72)
     dump(H / "MISSING_DEPENDENCIES.json", report)

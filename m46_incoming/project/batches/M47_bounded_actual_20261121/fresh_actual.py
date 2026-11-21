@@ -2,7 +2,6 @@ from pathlib import Path
 import sys,os,json,hashlib
 HERE=Path(__file__).resolve().parent
 SOURCE_ROOT=HERE.parent/"M47_schedule_closed_exchange_core_20261121"
-FROZEN_NOMINAL_SOURCE=HERE.parent/"M20_canonical_H_sixmap_20261121"
 sys.path.insert(0,str(SOURCE_ROOT))
 from research import *
 ROOT=HERE
@@ -28,7 +27,12 @@ def _shift_inner(job):
     check_core()
     assert seed in (1001,1002) and arm in "SRX" and hmode=="own" and stream=="dev"
     inst,phys,alg=setup(case,variant)
-    alg.recovery_eval_budget_override=1000
+    # MAIN is the ALNS budget. INIT stays alg.recovery_init_eval_budget (100).
+    # A failed init may extend that init budget once by MAIN (original rescue).
+    # Do not add INIT into MAIN or set an override that merges them.
+    main_budget=alg.deterministic_recovery_eval_budget
+    assert alg.recovery_init_eval_budget==100 and main_budget==1000
+    assert alg.recovery_eval_budget_override is None
     raw=read(ROOT/variant/"nominal"/("X" if arm=="X" else "S")/case/"nominal_plan.json")["plan"]
     hvariant="F2" if hmode=="common_F2" else variant
     if hmode == "frozen_K1":
@@ -39,12 +43,15 @@ def _shift_inner(job):
     assert hmode in ("own","common_F2","frozen_K1")
     assert hmode!="common_F2" or H==read(F2/"F2/nominal/S"/case/"nominal_plan.json")["H_s"]
     p=plan_from_dict(raw);pol="S" if arm=="S" else "X"
-    assert H==read(FROZEN_NOMINAL_SOURCE/"preflight_fresh"/case/"S/nominal_plan.json")["H_s"]==alg._nominal_reference_H
+    from private_root import m20_s
+    assert H==read(m20_s(case))["H_s"]==alg._nominal_reference_H
     import tdr.simulate as loaded_simulate,tdr.moves as loaded_moves
     assert Path(loaded_simulate.__file__).resolve()==(SOURCE_ROOT/"source/proj_r6/src/tdr/simulate.py").resolve()
     assert Path(loaded_moves.__file__).resolve()==(SOURCE_ROOT/"source/proj_r6/src/tdr/moves.py").resolve()
     # Existing recorded worlds only. Never sample or rewrite a same-seed witness.
-    witness=J2/"J2/executions"/("own/dev" if stream=="dev" else "common_F2/verify270601")/f"{case}_{seed}_S.json"
+    from private_root import witness as recorded_witness
+    assert stream=="dev"
+    witness=recorded_witness(case,seed)
     if not witness.is_file():
         raise FileNotFoundError("RECORDED_WORLD_WITNESS_MISSING:"+str(witness))
     saved=read(witness); flags=saved["flags"]
@@ -60,7 +67,7 @@ def _shift_inner(job):
     with rr.audit_evaluations() as audit, finish_candidate_calls() as finish_counts:
         try:
             with observe_initializations(ROOT/variant/'observer/formal'/hmode/stream/f'{case}_{seed}_{arm}',world,inst,phys,alg) as observed_world:
-                ep=rr.run_episode(inst,p,ev,H,phys,observed_world,pol,alg,rr.derive_rngs(alg.base_algorithm_seed,case,"recovery",0),recovery_eval_budget=1000,recovery_wall_s=None,cut_mode="snapshot",max_replans=inst.n,ground_finish=True)
+                ep=rr.run_episode(inst,p,ev,H,phys,observed_world,pol,alg,rr.derive_rngs(alg.base_algorithm_seed,case,"recovery",0),recovery_eval_budget=main_budget,recovery_wall_s=None,cut_mode="snapshot",max_replans=inst.n,ground_finish=True)
         finally:
             dump(ROOT/variant/"live_ledgers"/hmode/stream/f"{case}_{seed}_{arm}.json",dict(ledger=audit.summary(),finish_candidates=dict(finish_counts)))
     elapsed=time.perf_counter()-start

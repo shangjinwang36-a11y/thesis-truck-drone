@@ -1,7 +1,12 @@
 from pathlib import Path
 import subprocess,sys,json,os,time,threading
 from collections import deque
-H=Path(__file__).resolve().parent;R=H.parent.parent;pending=deque(tuple(x)for x in json.loads((H/'FRESH_JOB_REGISTRATION.json').read_text())['jobs']);active=[];completed=[];failed=[];pause=threading.Event();started=time.time()
+H=Path(__file__).resolve().parent;R=H.parent.parent
+import sys as _sys
+_sys.path.insert(0,str(H))
+from private_root import private_root
+private_root()
+pending=deque(tuple(x)for x in json.loads((H/'FRESH_JOB_REGISTRATION.json').read_text())['jobs']);active=[];completed=[];failed=[];pause=threading.Event();started=time.time()
 def dump(p,d):
  t=p.with_suffix(p.suffix+'.tmp');t.write_text(json.dumps(d,indent=2));t.replace(p)
 def process(pid):

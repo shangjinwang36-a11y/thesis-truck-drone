@@ -1,0 +1,13 @@
+{
+  "decision": "PREPARED_NOT_LAUNCHED",
+  "actual_started": false,
+  "native_evaluations_for_registration": 0,
+  "logical_jobs": 72,
+  "unique_fresh_jobs": 40,
+  "core_freeze_sha256": "a509cc36961296e24dec23d212dddbc2dcc07bc08ec16618549ce726897e8f48",
+  "driver_sha256": "2547a985e75f32ef5ec239db0abceb7a72dfb565d8b15243119f24507f033561",
+  "init_eval_budget": 100,
+  "main_eval_budget": 1000,
+  "rescue": "one extension of the init budget by main_eval when init finds nothing",
+  "waiting_for": "independent check of this driver and registration before the same frozen batch is launched"
+}
