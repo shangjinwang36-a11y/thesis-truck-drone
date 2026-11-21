@@ -1,0 +1,166 @@
+{
+ "cost": 121.10960906755213,
+ "air": 45,
+ "cross": 0,
+ "verified": true,
+ "eval_requests": 989,
+ "wall_s": 9.778081251000117,
+ "cpu_s": 9.473531507999999,
+ "envelope": {
+  "limit": 1000,
+  "used": 990,
+  "auxiliary_used": 1,
+  "denied": 0,
+  "reference_H": 4180.4961968114485
+ },
+ "accepted": 1030,
+ "budgets": [
+  {
+   "accepted_calls": 1,
+   "used": 1,
+   "final_limit": 1000,
+   "wall_limit": null,
+   "scenario_ledger": false,
+   "reasons": {
+    "NOMINAL": 1
+   }
+  },
+  {
+   "accepted_calls": 799,
+   "used": 799,
+   "final_limit": 800,
+   "wall_limit": null,
+   "scenario_ledger": false,
+   "reasons": {
+    "NOMINAL_GROUND": 1,
+    "NOMINAL_AIR_BASE": 374,
+    "init": 3,
+    "ALNS_BASE": 199,
+    "COORDINATE": 149,
+    "CROSS_CONVERT": 33,
+    "SUPPORT_RENDEZVOUS": 29,
+    "PAIR_HANDOFF": 9,
+    "MIP_RETURN": 2
+   }
+  },
+  {
+   "accepted_calls": 40,
+   "used": 40,
+   "final_limit": 200,
+   "wall_limit": null,
+   "scenario_ledger": true,
+   "reasons": {
+    "SCENARIO_RECOURSE": 40
+   }
+  },
+  {
+   "accepted_calls": 78,
+   "used": 78,
+   "final_limit": 78,
+   "wall_limit": null,
+   "scenario_ledger": false,
+   "reasons": {
+    "NOMINAL_GROUND": 1,
+    "ALNS_BASE": 42,
+    "PAIR_HANDOFF": 3,
+    "CROSS_CONVERT": 6,
+    "SUPPORT_RENDEZVOUS": 6,
+    "COORDINATE": 20
+   }
+  },
+  {
+   "accepted_calls": 78,
+   "used": 78,
+   "final_limit": 78,
+   "wall_limit": null,
+   "scenario_ledger": false,
+   "reasons": {
+    "NOMINAL_GROUND": 1,
+    "ALNS_BASE": 62,
+    "SUPPORT_RENDEZVOUS": 5,
+    "CROSS_CONVERT": 9,
+    "PAIR_HANDOFF": 1
+   }
+  },
+  {
+   "accepted_calls": 34,
+   "used": 34,
+   "final_limit": 44,
+   "wall_limit": null,
+   "scenario_ledger": false,
+   "reasons": {
+    "CURRENT_PARENT_JOINT": 10,
+    "COORDINATE": 24
+   }
+  }
+ ],
+ "schedule_closed": [
+  {
+   "emitted": 0,
+   "stops_seen": 0,
+   "energy_rejected": 0,
+   "owned_rejected": 0,
+   "slot_rejected": 0,
+   "proxy_rejected": 0,
+   "structure_rejected": 0,
+   "best_proxy_j_gain": null,
+   "skip": "NO_ORIGINAL_MATURE_FULLPOOL_CAS"
+  },
+  {
+   "emitted": 0,
+   "stops_seen": 1,
+   "energy_rejected": 0,
+   "owned_rejected": 0,
+   "slot_rejected": 0,
+   "proxy_rejected": 1,
+   "structure_rejected": 0,
+   "best_proxy_j_gain": -51.78201128695247,
+   "native_calls": 0
+  },
+  {
+   "emitted": 0,
+   "stops_seen": 0,
+   "energy_rejected": 0,
+   "owned_rejected": 0,
+   "slot_rejected": 0,
+   "proxy_rejected": 0,
+   "structure_rejected": 0,
+   "best_proxy_j_gain": null,
+   "native_calls": 0
+  }
+ ],
+ "audit_funnel": {
+  "FUNNEL_CROSS": {
+   "generated": 1053,
+   "schedule": 11,
+   "margin": 9,
+   "energy": 129,
+   "accepted": 3
+  },
+  "CROSS_ROBUST": {
+   "rejected": 14
+  },
+  "PLAN_HAS_CROSS": {
+   "TN_feasible": 6,
+   "TC_feasible": 11,
+   "TC_infeasible": 4,
+   "TN_infeasible": 1
+  }
+ },
+ "result_cost": 121.10960906755213,
+ "result_air": 45,
+ "result_cross": 0,
+ "result_audit_funnel": {
+  "generated": 1053,
+  "schedule": 11,
+  "margin": 9,
+  "energy": 129,
+  "accepted": 3
+ },
+ "result_reject_top": {
+  "PAIR_HANDOFF|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 4,
+  "CROSS_CONVERT|INFEASIBLE_RESOURCE|SLOT_OVER:t#@#=#": 9,
+  "ALNS_BASE|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 38,
+  "SUPPORT_RENDEZVOUS|ENERGY_INFEASIBLE|SWAP_CANNOT_FIX:d#@#:e=#<#": 3
+ }
+}
