@@ -8,6 +8,7 @@ CORE = Path(__file__).resolve().parents[1] / "M49_landed_wait_core_20261121"
 sys.path.insert(0, str(CORE / "source/proj_r6/src"))
 sys.path.insert(0, str(CORE))
 import json
+from tdr.evaluate import recovery_is_cross
 from tdr.experiment import plan_from_dict
 from tdr.recovery import _advance_late_recovery, _reassign_overflow_tail, build_residual_candidate  # noqa: E402
 
@@ -80,8 +81,20 @@ def test_same_truck_recovery_advance_is_shared_and_ground_holder_blocks_both():
                 assert visit.customer == "c047"
 
 
+def test_saved_sid130_metadata_is_not_a_cross_recovery():
+    plan = plan_from_dict(json.loads(Path(
+        "/workspace/m46_incoming/project/batches/M49_landed_wait_20261121/paid_rehome/RC100_1002/SELECTED_PLAN.json"
+    ).read_text()))
+    sortie = plan.sorties[130]
+    assert sortie.truck == "t2"
+    assert sortie.launch_truck == "t7"
+    assert plan.visits[sortie.rec_vid].truck == "t7"
+    assert recovery_is_cross(plan, sortie) is False
+
+
 if __name__ == "__main__":
     test_started_fragment_lands_only_when_configured()
     test_unstarted_sortie_lands_only_when_configured()
     test_same_truck_recovery_advance_is_shared_and_ground_holder_blocks_both()
+    test_saved_sid130_metadata_is_not_a_cross_recovery()
     print("LANDED_FRAGMENT_REGRESSION_PASS", "native_evaluations", 0)

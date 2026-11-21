@@ -820,12 +820,19 @@ def _best_visit_host(plan, inst, state, vid, strategy):
         return None
     only_truck = next(iter(fixed)) if fixed else None
     recoveries = [s for s in plan.sorties.values() if s.rec_vid == vid]
-    if strategy != "X":
-        launch_trucks = {s.launch_truck or s.truck for s in recoveries}
-        if len(launch_trucks) > 1:
+    if strategy != "X" and recoveries:
+        # Real launch truck only. sortie.truck is not the launch truck and
+        # not the recovery truck after a field is left stale.
+        launches = set()
+        for sortie in recoveries:
+            if sortie.launch_truck:
+                launches.add(sortie.launch_truck)
+            elif sortie.launch_vid in plan.visits:
+                launches.add(plan.visits[sortie.launch_vid].truck)
+        if len(launches) > 1:
             return None
-        if launch_trucks:
-            launch_truck = next(iter(launch_trucks))
+        if len(launches) == 1:
+            launch_truck = next(iter(launches))
             if only_truck is not None and only_truck != launch_truck:
                 return None
             only_truck = launch_truck if only_truck is None else only_truck

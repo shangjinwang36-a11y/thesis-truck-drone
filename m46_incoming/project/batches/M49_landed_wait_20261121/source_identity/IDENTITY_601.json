@@ -1,0 +1,67 @@
+{
+  "exclusivity_claim": "suspended",
+  "native_evaluations_for_this_record": 0,
+  "cost_601_364_is": "final ALNS plan after main, not the first feasible INIT",
+  "first_feasible_init": {
+    "raw": "paid_rehome/RC100_1002/RAW.jsonl",
+    "line": 373,
+    "cost": 601.5840995742682,
+    "status": "FEASIBLE",
+    "plan_sha256_canonical": "ea16596b540bbbfa93d8ed6000177b98cfc50c03187986546de9dd520b6d501e"
+  },
+  "final_selected": {
+    "path": "paid_rehome/RC100_1002/SELECTED_PLAN.json",
+    "file_sha256": "9311e58a4f4ea6ad64dc36032684bac9ce5b3712ef0b77ca72aaeea1dafeb2f4",
+    "plan_sha256_canonical": "90db1a1d95f281cc594faf3dcd25dd6bd18ff2849643c6b93f866cc1b0919b3e",
+    "evaluation_file_sha256": "6483ca919d4902ad44a95b4026bdc75842b59736f636f211706c199cc1808e48",
+    "suffix_file_sha256": "dd70788f8d7d53a29936d3db58632227ae9fac4d45af1868b924a788621255e2",
+    "result_file_sha256": "073cc73c0eb0dec9183faf8654e25c2638c2cccef4344fbf8208d125e43aa1bc",
+    "source": "ALNS",
+    "cost": 601.3641210199783,
+    "calls": 2101,
+    "init_used": 1100,
+    "main_used": 1000
+  },
+  "plans_differ": true,
+  "sid130_identical_in_both_plans": true,
+  "other_differences": {
+    "routes_changed": ["t5", "t7"],
+    "sorties_only_in_first_init": ["485", "494"],
+    "sorties_only_in_final": ["496", "497"],
+    "shared_sortie_field_change": {"491": ["lam"]}
+  },
+  "sid130_fields_both_plans": {
+    "sid": 130,
+    "drone": "d13",
+    "truck": "t2",
+    "launch_truck": "t7",
+    "launch_vid": null,
+    "rec_vid": 521,
+    "started": true,
+    "landed": true,
+    "air": ["p045"],
+    "handover": ["p028"],
+    "mode": "AIR",
+    "rec_visit_521": {"truck": "t7", "customer": "c028", "ground": ["p028"]}
+  },
+  "call1_same_sortie": {
+    "truck": "t7",
+    "launch_truck": "t7",
+    "rec_vid": 94,
+    "rec_visit_94": {"truck": "t7", "customer": "c004", "ground": ["p004"]}
+  },
+  "what_changed_by_call_373": "rec_vid moved from visit 94 to visit 521. Both visits are on t7. The truck field changed from t7 to t2. That field is not the recovery truck.",
+  "recovery_is_cross_on_saved_final": false,
+  "formal_S_gate_in_the_paid_driver": "not executed. initial_recovery and verify_replay were called with strategy X only. The saved RESULT does not contain an S replay.",
+  "physical_chain_from_saved_segments": [
+    {"where": "M48 execution segment 10, before the cut", "kind": "L", "actor": "d13", "truck": "t7", "start": 3202.864788710978, "end": 3212.864788710978, "ref": "S130"},
+    {"where": "selected suffix stage", "kind": "SERVICE", "actor": "d13", "truck": null, "customer": "c045", "start": 3755.832079034552, "end": 3815.832079034552},
+    {"where": "selected suffix action", "kind": "R", "actor": "t7", "launch_truck": "t7", "customer": "c028", "start": 4183.515889479906, "end": 4213.515889479906, "ref": "S130", "landed": true},
+    {"where": "selected suffix action", "kind": "U", "actor": "t7", "launch_truck": "t7", "customer": "c028", "start": 4213.515889479906, "end": 4233.515889479906, "ref": "S130"}
+  ],
+  "same_state_emergency_paid": 685.4916957008995,
+  "nominal_sha256": "ddad358aea47e56faecaf1cbe98b78c90ea35fcb76439d7b80146ff9edb19bd3",
+  "cut": 3452.903818675321,
+  "conditional_difference": 84.12757468092127,
+  "do_not_use_as_same_state_baseline": 732.0096592354022
+}
