@@ -1,0 +1,49 @@
+{
+ "label": "METERED_RERUN_OF_THE_THREE_TESTS_NOT_THE_ORIGINAL_PYTEST_PROCESS",
+ "accepted_calls": 10,
+ "denied_calls": 0,
+ "by_reason": {
+  "M47_POSITIVE_RC100": 1,
+  "SCENARIO_RECOURSE": 4,
+  "M47_POSITIVE_C100": 2,
+  "M47_NEGATIVE_ENERGY": 1,
+  "M47_NEGATIVE_H": 1,
+  "M47_NEGATIVE_CUSTODY": 1
+ },
+ "unbudgeted_by_reason": {},
+ "budgets": [
+  {
+   "accepted_calls": 3,
+   "used": 3,
+   "final_limit": 4,
+   "wall_limit": null,
+   "scenario_ledger": false,
+   "reasons": {
+    "M47_POSITIVE_RC100": 1,
+    "M47_POSITIVE_C100": 2
+   }
+  },
+  {
+   "accepted_calls": 4,
+   "used": 4,
+   "final_limit": 200,
+   "wall_limit": null,
+   "scenario_ledger": true,
+   "reasons": {
+    "SCENARIO_RECOURSE": 4
+   }
+  },
+  {
+   "accepted_calls": 3,
+   "used": 3,
+   "final_limit": 8,
+   "wall_limit": null,
+   "scenario_ledger": false,
+   "reasons": {
+    "M47_NEGATIVE_ENERGY": 1,
+    "M47_NEGATIVE_H": 1,
+    "M47_NEGATIVE_CUSTODY": 1
+   }
+  }
+ ]
+}

@@ -1,0 +1,94 @@
+{
+  "label": "M47 call accounting. Unknowns are explicit. This is not a claim that CPU equals evaluation count.",
+  "sealed_originals_modified": false,
+  "actual_world_runs": 0,
+  "seeds_4001_4030_read": false,
+  "batch_270701_generated": false,
+  "batch_180_started": false,
+  "items": [
+    {
+      "id": "proxy_false_negative_diagnostic",
+      "kind": "DIAGNOSTIC_NOT_FRESH",
+      "physical_accepted": 42,
+      "scenario_accepted": 0,
+      "denied": 0,
+      "unbudgeted": 0,
+      "cpu_s_sum_of_map_construct_plus_eval": 0.452,
+      "source": "PROXY_FALSE_NEGATIVE.json native_charged_sum",
+      "note": "At most 8 physical evaluations per sealed X champion. C50 paid 2; the other five paid 8. No scenario draws."
+    },
+    {
+      "id": "three_tests_first_pytest",
+      "kind": "TEST",
+      "physical_accepted": null,
+      "scenario_accepted": null,
+      "unknown": "The first pytest process was not wrapped in audit_evaluations. Its exact call count is unknown. Do not add it to the metered rerun.",
+      "note": "3 passed in 2.26 s before the metered rerun."
+    },
+    {
+      "id": "three_tests_metered_rerun",
+      "kind": "TEST_METERED_RERUN",
+      "physical_accepted": 6,
+      "scenario_accepted": 4,
+      "denied": 0,
+      "unbudgeted": 0,
+      "by_reason": {
+        "M47_POSITIVE_RC100": 1,
+        "M47_POSITIVE_C100": 2,
+        "M47_NEGATIVE_ENERGY": 1,
+        "M47_NEGATIVE_H": 1,
+        "M47_NEGATIVE_CUSTODY": 1,
+        "SCENARIO_RECOURSE": 4
+      },
+      "source": "TEST_NATIVE_LEDGER.json",
+      "note": "S-path test issued 0 native calls. The three negative examples are the energy, H, and custody reasons."
+    },
+    {
+      "id": "round1_x_replay_on_sealed_k1_s",
+      "kind": "X_REPLAY_NOT_FRESH_S",
+      "physical_envelope_used": 5990,
+      "accepted_calls_if_audit_hook_saw_them": 6202,
+      "scenario_accepted_inferred": 212,
+      "unknown": "Per-call RAW logs were not recorded. Scenario calls were not stored on a separate ledger. 212 is accepted_calls minus envelope.used (C50 40, R50 34, RC50 28, C100 44, R100 28, RC100 38) and is an inference, not a ledger.",
+      "published_result": "All six X costs, air counts, and FUNNEL_CROSS matched sealed M46. Operator emitted 0."
+    },
+    {
+      "id": "round2_x_replay_on_sealed_k1_s",
+      "kind": "X_REPLAY_NOT_FRESH_S",
+      "physical_accepted": 5995,
+      "scenario_accepted": 224,
+      "source": "REPLAY_X_SIXMAP.json sums: C50 995/40, R50 1000/34, RC50 1000/28, C100 1000/52, R100 1000/28, RC100 1000/42",
+      "cpu_s": 139.9,
+      "wall_s": 139.8,
+      "per_call_log": "ABSENT. build_case_nominal was called without the profile recorder.",
+      "published_result": "RC100 cost -22.205 and 1 cross sortie. C100 cost -29.623, air 82, 0 published cross sorties. RC50 unchanged at 45 air."
+    },
+    {
+      "id": "posthoc_nominal_replay_of_round2_plans",
+      "kind": "POSTHOC_AUDIT_NOT_SEARCH",
+      "physical_accepted": 3,
+      "scenario_accepted": 6,
+      "unknown": "One RC100 attempt aborted at the print statement after its physical and scenario calls had already been accepted (1 physical + 2 scenario). The successful rerun then paid RC100 and C100 again (2 physical + 4 scenario).",
+      "source": "POSITIVE_NOMINAL_REPLAY.json is the successful rerun only"
+    },
+    {
+      "id": "fresh_s_and_x_twelve_arms",
+      "kind": "FRESH_NOMINAL",
+      "physical_accepted": 11995,
+      "scenario_accepted": 584,
+      "denied": 2,
+      "accepted_total": 12579,
+      "unbudgeted": 0,
+      "per_arm_cap_physical": 1000,
+      "per_arm_cap_scenario": 200,
+      "cpu_s_sum": 722.4,
+      "wall_s_sum_of_arm_walls": 722.4,
+      "batch_wall_clock": "2026-11-21 08:44:13Z to 08:56Z, single process",
+      "source": "NOMINAL_INDEPENDENT_AUDIT.json",
+      "per_call_logs": "fresh_new/<case>/<arm>_RAW.jsonl.gz and <arm>_live/receipts.jsonl",
+      "S_versus_strong_K1": "All six S plans are byte-identical to strong K1 (original_K1_plan_exact true, delta fee 0, delta air 0). S was solved inside its own 1000, not loaded as a free incumbent.",
+      "H": "Each arm used the sealed K1 S H_s for that map. X did not use its own z+1800.",
+      "not_free_k1_plus_search": "S preparation is the fresh S arm's own physical and scenario calls, listed per map in the audit. X then spends its own 1000. K1 was read only as the identity check and the H number."
+    }
+  ]
+}
