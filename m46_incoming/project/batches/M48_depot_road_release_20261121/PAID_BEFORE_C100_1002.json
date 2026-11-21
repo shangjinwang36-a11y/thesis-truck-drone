@@ -1,0 +1,51 @@
+{
+ "label": "BEFORE",
+ "seed": 1002,
+ "core": "/workspace/m46_incoming/project/batches/M47_schedule_closed_exchange_core_20261121",
+ "native_is_diagnostic": true,
+ "fresh_execution": false,
+ "init": {
+  "found": false,
+  "used": 1304,
+  "limit": 1304,
+  "rescue_used": true,
+  "source": null,
+  "first_reasons": [
+   "DEPOT_PREPARATION_ON_ROAD:t2",
+   "DEPOT_PREPARATION_ON_ROAD:t2",
+   "DEPOT_PREPARATION_ON_ROAD:t2",
+   "DEPOT_PREPARATION_ON_ROAD:t2",
+   "DEPOT_PREPARATION_ON_ROAD:t2",
+   "DEPOT_PREPARATION_ON_ROAD:t2",
+   "DEPOT_PREPARATION_ON_ROAD:t2",
+   "DEPOT_PREPARATION_ON_ROAD:t2"
+  ],
+  "n_reasons": 20,
+  "depot_gate": "DEPOT_PREPARATION_ON_ROAD:t2"
+ },
+ "ledger": {
+  "accepted_calls": 1304,
+  "denied_calls": 0,
+  "by_reason": {
+   "RECOVERY_INITIAL_BASE": 1146,
+   "COMPLETE_TASK_BINDING_SKELETON": 158
+  },
+  "denied_by_reason": {},
+  "unbudgeted_by_reason": {},
+  "budgets": [
+   {
+    "accepted_calls": 1304,
+    "used": 1304,
+    "final_limit": 1304,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RECOVERY_INITIAL_BASE": 1146,
+     "COMPLETE_TASK_BINDING_SKELETON": 158
+    }
+   }
+  ]
+ },
+ "seconds": 1.7971435970002858,
+ "complete_hard_suffix": false
+}

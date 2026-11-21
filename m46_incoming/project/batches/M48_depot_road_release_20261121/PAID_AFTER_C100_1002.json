@@ -1,0 +1,116 @@
+{
+ "label": "AFTER",
+ "seed": 1002,
+ "core": "/workspace/m46_incoming/project/batches/M48_depot_road_release_core_20261121",
+ "native_is_diagnostic": true,
+ "fresh_execution": false,
+ "init": {
+  "found": true,
+  "used": 100,
+  "limit": 100,
+  "rescue_used": false,
+  "source": "CATALOG",
+  "first_reasons": [
+   "sortie 67: \u540c\u8f66\u653e\u98de\u8bbf\u95ee\u4e0d\u65e9\u4e8e\u56de\u6536\u8bbf\u95ee(\u65f6\u523b\u6210\u73af)",
+   "sortie 67: \u540c\u8f66\u653e\u98de\u8bbf\u95ee\u4e0d\u65e9\u4e8e\u56de\u6536\u8bbf\u95ee(\u65f6\u523b\u6210\u73af)",
+   "sortie 67: \u540c\u8f66\u653e\u98de\u8bbf\u95ee\u4e0d\u65e9\u4e8e\u56de\u6536\u8bbf\u95ee(\u65f6\u523b\u6210\u73af)",
+   "SWAP_CANNOT_FIX:d12@879.2:e=-0.279254<0.050000",
+   "SWAP_CANNOT_FIX:d12@879.2:e=-0.261076<0.050000",
+   "SWAP_CANNOT_FIX:d12@879.2:e=-0.197071<0.050000",
+   "SWAP_CANNOT_FIX:d12@879.2:e=0.029905<0.050000",
+   "sortie 67: \u540c\u8f66\u653e\u98de\u8bbf\u95ee\u4e0d\u65e9\u4e8e\u56de\u6536\u8bbf\u95ee(\u65f6\u523b\u6210\u73af)"
+  ],
+  "n_reasons": 20,
+  "depot_gate": "DEPOT_PREPARATION_ON_ROAD:t2"
+ },
+ "suffix": {
+  "source": "ALNS",
+  "init_cost": 324.0483833185521,
+  "final_cost": 318.10564387449045,
+  "main_used": 1000,
+  "main_limit": 1000,
+  "hard_feasible": true,
+  "hard_violations": [],
+  "depot_gate": null,
+  "ground_required_still_air": null,
+  "replay_ok": true,
+  "replay_violations": [],
+  "min_energy": 0.05148872937273928,
+  "invoice": 318.1056438744905,
+  "invoice_matches_replay": true,
+  "new_air_parcels": [],
+  "u_not_20s": [],
+  "drives": [
+   {
+    "truck": "t1",
+    "from_matches_snapshot": true,
+    "ref": "c024"
+   },
+   {
+    "truck": "t2",
+    "from_matches_snapshot": true,
+    "ref": "c023"
+   },
+   {
+    "truck": "t4",
+    "from_matches_snapshot": true,
+    "ref": "c052"
+   },
+   {
+    "truck": "t6",
+    "from_matches_snapshot": true,
+    "ref": "c063"
+   },
+   {
+    "truck": "t7",
+    "from_matches_snapshot": true,
+    "ref": "c007"
+   }
+  ],
+  "h": 4650.277457563401,
+  "e_min": 0.05
+ },
+ "ledger": {
+  "accepted_calls": 1101,
+  "denied_calls": 0,
+  "by_reason": {
+   "RECOVERY_INITIAL_BASE": 100,
+   "ALNS_BASE": 760,
+   "REFLY": 8,
+   "COORDINATE": 218,
+   "MIP_RETURN": 14,
+   "DIAGNOSTIC_HARD_SUFFIX": 1
+  },
+  "denied_by_reason": {},
+  "unbudgeted_by_reason": {
+   "DIAGNOSTIC_HARD_SUFFIX": 1
+  },
+  "budgets": [
+   {
+    "accepted_calls": 100,
+    "used": 100,
+    "final_limit": 100,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RECOVERY_INITIAL_BASE": 100
+    }
+   },
+   {
+    "accepted_calls": 1000,
+    "used": 1000,
+    "final_limit": 1000,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "ALNS_BASE": 760,
+     "REFLY": 8,
+     "COORDINATE": 218,
+     "MIP_RETURN": 14
+    }
+   }
+  ]
+ },
+ "seconds": 6.563792364000619,
+ "complete_hard_suffix": true
+}
