@@ -1,25 +1,14 @@
 {
   "authorized": false,
-  "do_not_run_until_parent_review": true,
-  "not_a_36": true,
-  "not_a_180": true,
-  "cells": [
-    {"case": "RC100", "seed": 1002, "arm": "X", "why": "fresh final 777.9705106520454 emergency; first cut matches M48"},
-    {"case": "R100", "seed": 1002, "arm": "S", "why": "M48 hard H, M49 emergency; first cut matches M48"}
-  ],
-  "state": "Observer 001 VISIBLE_CONTEXT of the finished episode. It is the shared first-recovery arrival, not the conditional suffix pickle that produced 601.364 or 563.508.",
-  "code": "M49_narrow_land_20261121/recovery.py on top of sealed core 39a85da8, with only this recovery file replaced.",
-  "budget_per_cell": {
-    "init": 100,
-    "main": 1000,
-    "rescue": "one +1000 on the init budget only if that init finds nothing",
-    "hard_suffix_check": 1,
-    "ceiling_without_rescue": 1101,
-    "ceiling_with_rescue": 2101
-  },
-  "two_cell_ceiling": 4202,
-  "warm_start": "none. Do not inject 601.364, 563.508, or 777.971.",
-  "world": "the same recorded dev witness the finished episode used, revealed only at arrival. Do not read 4001-4030 or 270701.",
-  "success_for_a_later_review": "The adopted first-recovery makespan is not above the saved M48 makespan on that same cut, the S cell is not an emergency if the recovery is executed, and any X cross that is kept has L, SERVICE, and R on different trucks with at least one SERVICE between L and R.",
-  "what_this_does_not_answer": "A first-recovery replay does not by itself replace the 36. A full episode remains unauthorized."
+  "do_not_run_until_the_budget_scope_is_reviewed": true,
+  "budget": "BUDGET_REGISTRATION.json",
+  "cells": ["RC100_1002_X", "R100_1002_S"],
+  "visible_inputs": "visible_inputs/INDEX.json",
+  "one_attempt_per_cell": true,
+  "candidate_recovery": "recovery.py",
+  "candidate_benefit_unproven": true,
+  "kept_from_the_shared_repair": ["started-fragment landing", "truck-field contract"],
+  "removed_but_not_established_as_the_cause": ["blanket landed=True on unstarted sorties", "drive-distance reorder"],
+  "model_objective": "unchanged original cost objective and existing H constraint",
+  "developer_screen_not_a_model_constraint": "A later review may compare the adopted makespan with the saved M48 plan. That comparison is not a new hard gate and is not a new objective."
 }

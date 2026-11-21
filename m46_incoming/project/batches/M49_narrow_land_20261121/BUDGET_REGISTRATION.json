@@ -1,0 +1,84 @@
+{
+  "status": "SEALED_NOT_RUN",
+  "authorized": false,
+  "core_freeze_sha256": "39a85da8c9b63d785754cdee4c3e596827e2b9986d32ed37480cab20306c8363",
+  "core_modified": false,
+  "simulate_sha256_m48_and_39a85": "b2d0d79ba446e4eef5a6e10247b4fa45f515f2420d77463a833bb115a1925072",
+  "simulate_files_identical": true,
+  "sealed_recovery_sha256": "54c730fff2b5185c2400aa30d0df751af6564b80833b67ce89c6821c7916ab3d",
+  "m48_recovery_sha256": "151f907c0e8281b8acfd2a03f7f751916e8d9fdffac5719cd7796f6512568eea",
+  "candidate_recovery_sha256": "5a3882b7866e8b6b286480eaa3403876902c40257ec6b37dd7adbe5007c91694",
+  "candidate_benefit_unproven": true,
+  "objective_unchanged": "original cost comparison inside evaluate_plan and _recovery_prefers; H remains the existing constraint, not a new objective",
+  "developer_screen_not_a_model_constraint": "Comparing adopted makespan with the saved M48 plan is a later review note. It is not passed into the model and it is not a new hard gate.",
+  "cells": ["RC100_1002_X", "R100_1002_S"],
+  "one_recovery_each": true,
+  "no_repeat_on_the_same_state": true,
+  "stages": [
+    {
+      "name": "INIT_BASE",
+      "budget_object": "init",
+      "amount": 100,
+      "trigger": "simulate creates Budget(alg.recovery_init_eval_budget) before initial_recovery. Both sealed simulate.py copies are byte-identical and use 100.",
+      "evidence": "tdr/simulate.py Budget(alg.recovery_init_eval_budget) immediately before initial_recovery"
+    },
+    {
+      "name": "INIT_RESCUE",
+      "budget_object": "init",
+      "amount": "the existing rescue_evals argument, which the sealed caller sets to main_limit (1000). Not a second main budget and not a new extend.",
+      "trigger": "best is None and evals_left()<=0 and rescue_used is false. One extend. S and X use the same rule.",
+      "evidence": "M48 recovery.py _rescue_check budget.extend(rescue_evals); M48 and 39a85 simulate.py both pass rescue_evals=main_limit. 39a85 recovery.py keeps that same check."
+    },
+    {
+      "name": "INIT_FALLBACK",
+      "budget_object": "init",
+      "amount": 24,
+      "trigger": "not best_s_eligible and tried_entries is non-empty. Rebuild-fallback entries only. Not the main ALNS loop.",
+      "evidence": "M48 recovery.py and 39a85 recovery.py both budget.extend(24) under that condition."
+    },
+    {
+      "name": "INIT_JOINT",
+      "budget_object": "init",
+      "amount": 60,
+      "trigger": "(joint or land_and_wait or unlaunched) and best is None, then _joint_retarget extends by JOINT_EXTRA_EVALS. On these two cases setup reports joint, unlaunched, and land_and_wait all true, so the trigger can fire only while init still has no feasible plan.",
+      "evidence": "JOINT_EXTRA_EVALS = 60 in M48 recovery.py and in 39a85 recovery.py."
+    },
+    {
+      "name": "INIT_LAND_EXTRA",
+      "budget_object": "init",
+      "amount": 120,
+      "trigger": "added inside the same _joint_retarget extend only when land_and_wait or unlaunched is true. It is not added on a recovery that already has a feasible init plan.",
+      "evidence": "LAND_EXTRA_EVALS = 120; extend is JOINT_EXTRA_EVALS + LAND_EXTRA_EVALS when that flag is set."
+    },
+    {
+      "name": "MAIN",
+      "budget_object": "main",
+      "amount": 1000,
+      "trigger": "After initial_recovery returns a plan, simulate creates a new Budget(main_limit) and calls optimize. If init returns nothing, main stays 0. This object is not added onto the init budget.",
+      "evidence": "simulate.py: budget = Budget(main_limit, ...) after the initial_recovery call, commented as the main-loop budget."
+    }
+  ],
+  "not_registered": [
+    "a new +1000 on top of the inherited rescue",
+    "a hard-suffix evaluate outside the episode",
+    "a makespan objective",
+    "a second paid attempt on the same visible state"
+  ],
+  "rng": {
+    "function": "derive_rngs(base_algorithm_seed, case, 'recovery', 1)",
+    "when": "first recovery main search uses replan_index+1 with replan_index starting at 0. Init does not use this RNG.",
+    "base_algorithm_seed": 20261111,
+    "state_sha256": {
+      "RC100": {
+        "operator": "c262a920b5a8c5b9d07e9f0b30a46a457f8162e64497469a92cc2e44bfe9b8e5",
+        "destroy": "d14c343c2e1d2a2f202c68a506621070c8b4522094085f9ed2e9f39175177e10",
+        "accept": "170281dadd5cebfdc9911ace7388919277ee082d72b124a31c1c5cc15946f3d0"
+      },
+      "R100": {
+        "operator": "5efc5c432aaa6a50f7036a00ae93616cf0a933e2cb7b2a448041a29c1ae13b10",
+        "destroy": "0efa47c1891f115ed594dc1219332d7d8dcd10e1ef45ebef9714d2ce662893cf",
+        "accept": "6a1ee638fa9fe0fae1277bd43ef7e0807c8b5b9523b6c5387d9652084a844d82"
+      }
+    }
+  }
+}
