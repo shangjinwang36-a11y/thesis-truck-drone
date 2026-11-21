@@ -359,9 +359,11 @@
  "init_eval_budget": 100,
  "main_eval_budget": 1000,
  "rescue": "one extension of the init budget by 1000 only when init finds nothing",
- "core_freeze_sha256": "6270df9fccb7ad59faa58eedfe4f5d78fb3d4518c780a1f02583e7f499830e77",
+  "core_freeze_sha256": "39a85da8c9b63d785754cdee4c3e596827e2b9986d32ed37480cab20306c8363",
  "conditional_driver_sha256": "2e071a1feec3aa699e1a70af028adb22267c97c3d27232c993ffb42b1c03770b",
  "existing_controller_sha256": "86a91b72dedea84a658ebd0f245d3f01da68b699c4f7b26351fcdeb13136c065",
  "existing_controller_refuses_this_core": "run_actual.py preflight still requires core 74ae8419889b98e735dd68fcf16407165b5980535acde3179e3d168a8f7e3d47 and driver 3ff50aa8a9bfc2aa61f8387c0e577bbce523aece3a4ebcc1dac4de27045c7dda",
- "schedule_plan_filter": "uncharged same-truck reorder ranking; does not call evaluate_plan; a paid evaluate_plan can still reject the chosen reorder"
+ "schedule_plan_filter": "withdrawn. Live reorder uses driving distance only and does not call schedule_plan.",
+ "formal_controller": "M49_reorder_fair_20261121/run_actual.py",
+ "formal_controller_launches": false
 }

@@ -468,18 +468,29 @@ def _finish_attempts(attempts: list[Plan], inst: Instance, phys: PhysicalConfig,
 
 
 def _sync_recovery_truck(plan: Plan) -> None:
-    """The recovery truck is the visit that receives the drone.
+    """Align labels with the structure gate.
 
-    sortie.truck is only a label. After a retarget it can keep an old value
-    while the visit stays on the launch truck. launch_truck is left as it is.
+    An unstarted sortie's truck is the launch visit's truck. plan.py rejects
+    the plan when that visit belongs to another truck. A started fragment has
+    no launch visit; its truck is the recovery visit and launch_truck keeps
+    the original launch. A real cross is launch visit truck != recovery visit
+    truck, not a rewritten label.
     """
     for sortie in plan.sorties.values():
-        visit = plan.visits.get(sortie.rec_vid)
-        if visit is None:
+        if sortie.started:
+            visit = plan.visits.get(sortie.rec_vid)
+            if visit is None:
+                continue
+            if sortie.launch_truck is None:
+                sortie.launch_truck = sortie.truck
+            sortie.truck = visit.truck
+            continue
+        launch = plan.visits.get(sortie.launch_vid) if sortie.launch_vid is not None else None
+        if launch is None:
             continue
         if sortie.launch_truck is None:
-            sortie.launch_truck = sortie.truck
-        sortie.truck = visit.truck
+            sortie.launch_truck = launch.truck
+        sortie.truck = launch.truck
 
 
 def _assigned(plan: Plan) -> set[str]:
@@ -718,24 +729,29 @@ def _legalize_depot_preparation(cand: Plan, inst, phys, state) -> Plan:
     return placed
 
 
-def _reorder_same_truck(plan, inst, phys, state, truck):
-    """Move overflow visits earlier on the same truck when that shortens its finish.
+def _drive_meters(inst, state, plan, truck, order) -> float:
+    """Truck path length only. Not a timeline and not an evaluation."""
+    depot = (inst.depot_x, inst.depot_y)
+    points = [state.truck_start_pos.get(truck, depot)]
+    for vid in order:
+        customer = inst.customer(plan.visits[vid].customer)
+        points.append((customer.x, customer.y))
+    points.append(depot)
+    return sum(math.dist(left, right) for left, right in zip(points, points[1:]))
 
-    S and X share this. The visit's truck does not change, so a parcel held by
-    that truck stays there. A drone's launch must remain before its recovery.
-    The caller pays for the result only when the scheduled finish is strictly
-    shorter. A reorder that does not shorten the truck is not evaluated.
+
+def _reorder_same_truck(plan, inst, phys, state, truck):
+    """Rank one same-truck order by driving distance.
+
+    S and X share this. The visit's truck does not change. Launch stays before
+    recovery. This function does not call schedule_plan or evaluate_plan. The
+    caller pays for at most one evaluate_plan of the shortest drive, and that
+    call can still reject the order.
     """
-    from .schedule import schedule_plan
     route = list(plan.routes.get(truck) or [])
     if len(route) < 2:
         return None
-    try:
-        base = schedule_plan(plan, inst, phys, state).truck_finish.get(truck)
-    except ValueError:
-        return None
-    if base is None:
-        return None
+    base = _drive_meters(inst, state, plan, truck, route)
     fixed = {vid for vid, _customer in state.truck_committed_first.values()}
     low = state.truck_min_insert.get(truck, 0)
     best = None
@@ -743,26 +759,20 @@ def _reorder_same_truck(plan, inst, phys, state, truck):
         if vid in fixed:
             continue
         for index in range(low, len(route)):
-            trial = plan.clone()
-            order = list(trial.routes[truck])
+            order = list(route)
             order.remove(vid)
             order.insert(min(index, len(order)), vid)
-            if order == list(plan.routes[truck]):
+            if order == route or not _launch_before_recovery(plan, truck, order):
                 continue
-            if not _launch_before_recovery(trial, truck, order):
+            length = _drive_meters(inst, state, plan, truck, order)
+            if length >= base - 1e-6:
                 continue
-            trial.routes[truck] = order
-            try:
-                finish = schedule_plan(trial, inst, phys, state).truck_finish.get(truck)
-            except ValueError:
-                continue
-            if finish is None or finish >= base - 1e-6:
-                continue
-            if best is None or finish < best[0]:
-                best = (finish, trial)
+            if best is None or length < best[0]:
+                best = (length, order)
     if best is None:
         return None
-    chosen = best[1]
+    chosen = plan.clone()
+    chosen.routes[truck] = best[1]
     _sync_recovery_truck(chosen)
     if phys.land_and_wait:
         for sortie in chosen.sorties.values():
@@ -792,30 +802,8 @@ def _holder_truck(state, parcel: str) -> str | None:
 
 
 def _overflow_visits(plan, inst, phys, state, truck):
-    from .schedule import schedule_plan
-    limit = getattr(plan, "_horizon_limit", None)
-    route = list(plan.routes.get(truck) or [])
-    if limit is None or len(route) < 2:
-        return None, []
-    timeline = None
-    try:
-        timeline = schedule_plan(plan, inst, phys, state)
-    except ValueError:
-        return None, []
-    if timeline is None:
-        return None, []
-    depot = (inst.depot_x, inst.depot_y)
-    speed = phys.truck_speed_m_s
-    late = []
-    for vid in route:
-        departed = timeline.visit_dep.get(vid)
-        if departed is None:
-            continue
-        customer = inst.customer(plan.visits[vid].customer)
-        home = math.dist((customer.x, customer.y), depot) / speed
-        if departed + home > limit + 1e-6:
-            late.append(vid)
-    return timeline, late
+    """No standalone timeline. A full schedule is a paid evaluation's job."""
+    return None, []
 
 
 def _advance_late_recovery(plan, inst, phys, state, truck, strategy):

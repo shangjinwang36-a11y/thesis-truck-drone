@@ -52,22 +52,64 @@ def test_unstarted_sortie_lands_only_when_configured():
             assert not sortie.landed
 
 
-def test_same_truck_reorder_is_shared_and_keeps_the_parcel_on_its_truck():
-    inst, phys, _plan, state, _greq, opts = load()
+def test_same_truck_reorder_is_shared_and_does_not_schedule():
+    import tdr.schedule as schedule
+    inst, phys, _plan, state, _greq, _opts = load()
     raw = json.loads(next(open(
         "/workspace/m46_incoming/project/batches/M49_landed_wait_20261121/paid_rehome/RC100_1002/RAW.jsonl")))
     plan = plan_from_dict(raw["plan"])
-    shared = _reorder_same_truck(plan, inst, phys, state, "t7")
-    cross = _reorder_same_truck(plan, inst, phys, state, "t7")
-    assert shared is not None and cross is not None
+    calls = {"n": 0}
+    real = schedule.schedule_plan
+
+    def counted(*args, **kwargs):
+        calls["n"] += 1
+        return real(*args, **kwargs)
+
+    schedule.schedule_plan = counted
+    try:
+        shared = _reorder_same_truck(plan, inst, phys, state, "t7")
+        again = _reorder_same_truck(plan, inst, phys, state, "t7")
+    finally:
+        schedule.schedule_plan = real
+    assert calls["n"] == 0
+    assert shared is not None and again is not None
     order_s = [shared.visits[v].customer for v in shared.routes["t7"]]
-    order_x = [cross.visits[v].customer for v in cross.routes["t7"]]
+    order_x = [again.visits[v].customer for v in again.routes["t7"]]
     assert order_s == order_x
-    assert order_s.index("c028") < order_s.index("c004")
+    assert set(order_s) == set(plan.visits[v].customer for v in plan.routes["t7"])
     for visit in shared.visits.values():
         if "p047" in visit.ground:
             assert visit.truck == "t7"
-            assert visit.customer == "c047"
+    from tdr.alns import Budget
+    budget = Budget(100, None)
+    assert budget.take() and budget.used == 1 and budget.evals_left() == 99
+    assert budget.eval_limit == 100
+
+
+def test_sync_keeps_an_unstarted_cross_and_aligns_a_started_fragment():
+    from tdr.plan import Plan, Sortie
+    inst, phys, _plan, _state, _greq, _opts = load()
+    built = Plan(inst.case_id)
+    launch = built.add_visit("t1", "c001")
+    recover = built.add_visit("t2", "c002")
+    later = built.add_visit("t1", "c003")
+    cross = Sortie(1, "d1", "t1", launch.vid, "STOP", 0.0, [], recover.vid, launch_truck="t1")
+    same = Sortie(2, "d1", "t1", launch.vid, "STOP", 0.0, [], later.vid, launch_truck="t1")
+    started = Sortie(3, "d2", "t9", None, "AIR", 0.0, [], recover.vid, started=True,
+                     start_pos=(0.0, 0.0), launch_truck="t7")
+    built.sorties = {1: cross, 2: same, 3: started}
+    built.drone_sorties = {"d1": [1, 2], "d2": [3]}
+    _sync_recovery_truck(built)
+    assert cross.truck == "t1"
+    assert built.visits[cross.launch_vid].truck == cross.truck
+    assert recovery_is_cross(built, cross) is True
+    assert same.truck == "t1"
+    assert recovery_is_cross(built, same) is False
+    assert started.launch_truck == "t7"
+    assert started.truck == "t2"
+    assert recovery_is_cross(built, started) is True
+    errors = built.validate_structure(inst, phys)
+    assert not any("放飞访问不属于放飞车" in error for error in errors)
 
 
 def test_saved_sid130_metadata_is_not_a_cross_recovery():
@@ -99,6 +141,7 @@ def test_saved_sid130_metadata_is_not_a_cross_recovery():
 if __name__ == "__main__":
     test_started_fragment_lands_only_when_configured()
     test_unstarted_sortie_lands_only_when_configured()
-    test_same_truck_reorder_is_shared_and_keeps_the_parcel_on_its_truck()
+    test_same_truck_reorder_is_shared_and_does_not_schedule()
+    test_sync_keeps_an_unstarted_cross_and_aligns_a_started_fragment()
     test_saved_sid130_metadata_is_not_a_cross_recovery()
     print("LANDED_FRAGMENT_REGRESSION_PASS", "native_evaluations", 0)
