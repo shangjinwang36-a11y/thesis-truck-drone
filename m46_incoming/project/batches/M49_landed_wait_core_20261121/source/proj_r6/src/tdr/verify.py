@@ -1,0 +1,152 @@
+"""独立重放与检查：从计划、坐标和实际时刻重新累计，不直接采信优化器账面值."""
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+
+from .config import PhysicalConfig
+from .data import Instance
+from .evaluate import channel_check, final_carrier, recovery_is_cross, truck_slot_check
+from .plan import Plan
+from .schedule import (StartState, allocate_charging, initial_state, schedule_plan, stage_energy)
+
+
+@dataclass
+class VerificationReport:
+    ok: bool = False
+    violations: list[str] = field(default_factory=list)
+    cost: float | None = None
+    cost_breakdown: dict[str, float] = field(default_factory=dict)
+    distance_km: float = 0.0
+    energy_kwh: dict[str, float] = field(default_factory=dict)
+    charging_kwh: float = 0.0
+    terminal: dict[str, dict] = field(default_factory=dict)
+    notes: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "ok": self.ok,
+            "violations": self.violations,
+            "cost": self.cost,
+            "cost_breakdown": self.cost_breakdown,
+            "distance_km": self.distance_km,
+            "energy_kwh": self.energy_kwh,
+            "charging_kwh": self.charging_kwh,
+            "terminal": self.terminal,
+            "notes": self.notes,
+        }
+
+
+def verify_plan(inst: Instance, state: StartState | None, plan: Plan, strategy: str,
+                phys: PhysicalConfig, H: float | None = None) -> VerificationReport:
+    rep = VerificationReport()
+    state = state or initial_state(inst, phys)
+    errs = plan.validate_structure(inst, phys)
+    # 策略资格：S 的任一航次（含已起飞残段）都只能回收到原放飞车。
+    # 残段的 truck 字段在改派后等于接机车，必须用 launch_truck 对照。
+    if strategy == "S":
+        for s in plan.sorties.values():
+            if recovery_is_cross(plan, s):
+                rec_truck = plan.visits[s.rec_vid].truck
+                launch = s.launch_truck or (plan.visits[s.launch_vid].truck
+                                            if s.launch_vid in plan.visits else s.truck)
+                errs.append(f"S_POLICY_VIOLATION: sortie {s.sid} launch {launch} rec {rec_truck}")
+    if errs:
+        rep.violations = errs[:30]
+        return rep
+    tl = schedule_plan(plan, inst, phys, state)
+    ok, msg, q = allocate_charging(tl, phys, state)
+    if not ok:
+        rep.violations.append(msg)
+        return rep
+    # ---- 独立距离重算 ----
+    depot = (inst.depot_x, inst.depot_y)
+    dist = 0.0
+    for truck in state.truck_start_pos:
+        prev = state.truck_start_pos[truck]
+        meters = 0.0
+        for vid in plan.routes.get(truck, []):
+            customer = inst.customer(plan.visits[vid].customer)
+            pos = (customer.x, customer.y)
+            meters += math.dist(prev, pos)
+            prev = pos
+        meters += math.dist(prev, depot)
+        if abs(meters - tl.truck_distance_m[truck]) > 1e-6:
+            rep.violations.append(f"DISTANCE_MISMATCH:{truck}:{meters}:{tl.truck_distance_m[truck]}")
+        dist += meters
+    rep.violations.extend(tl.custody_violations)
+    rep.distance_km = (state.prefix_distance_m + dist) / 1000.0
+    # ---- 独立能量重算 ----
+    for d, stages in tl.drone_stages.items():
+        e = tl.drone_energy.get(d, [phys.e_cap])[0]
+        consumed = 0.0
+        for st in stages:
+            consumed += stage_energy(st, phys)
+        rep.energy_kwh[d] = consumed
+    rep.charging_kwh = tl.q_total
+    # ---- 资源 ----
+    if not tl.converged:
+        rep.violations.append("SCHEDULE_NOT_CONVERGED")
+    else:
+        rep.violations += truck_slot_check(plan, inst, phys, tl, state)
+        rep.violations += channel_check(plan, phys, tl, state)
+    for k, f in tl.truck_finish.items():
+        if H is not None and f > H + 1e-6 and not phys.soft_h:
+            rep.violations.append(f"H_EXCEEDED:{k}@{f:.1f}>{H:.1f}")
+    for d, stages in tl.drone_stages.items():
+        energies = tl.drone_energy.get(d, [])
+        for i, st in enumerate(stages):
+            if i + 1 < len(energies) and energies[i + 1] < -phys.energy_tol:
+                rep.violations.append(f"NEGATIVE_SOC:{d}@{st.start:.1f}")
+            if i + 1 < len(energies) and energies[i + 1] < phys.e_min - phys.energy_tol:
+                rep.violations.append(f"RESERVE_VIOLATION:{d}@{st.start:.1f}")
+        if energies and energies[0] < phys.e_min - phys.energy_tol:
+            rep.violations.append(f"INITIAL_RESERVE_VIOLATION:{d}")
+    # ---- 交付与终端 ----
+    delivered = set(state.delivered)
+    for v in plan.visits.values():
+        delivered.update(v.ground)
+    for s in plan.sorties.values():
+        delivered.update(s.air)
+    missing = [c.parcel_id for c in inst.customers if c.parcel_id not in delivered]
+    if missing:
+        rep.violations.append(f"UNDELIVERED:{len(missing)}")
+    for d in [f"d{i+1}" for i in range(phys.drone_count)]:
+        sids = plan.drone_sorties.get(d, [])
+        carrier = final_carrier(plan, d, state, phys)
+        rep.terminal[d] = {
+            "final_carrier": carrier,
+            "t_return_s": tl.truck_finish.get(carrier, 0.0),
+            "E_return_kwh": tl.e_return.get(d, phys.e_cap),
+            "return_mode": "ON_TRUCK" if sids or d in state.dispatched else "NOT_DISPATCHED",
+        }
+        if carrier not in plan.routes:
+            rep.violations.append(f"TERMINAL_CARRIER:{d}")
+    # ---- 成本 ----
+    Qac = state.prefix_ac_kwh + tl.q_total
+    sumF = sum(tl.truck_finish.values())
+    refill = sum(phys.e_cap - tl.e_return.get(d, phys.e_cap)
+                 for d in [f"d{i+1}" for i in range(phys.drone_count)])
+    refill += state.prefix_refill_kwh + tl.swap_refill_kwh
+    c_km = phys.c_km * (state.prefix_distance_m + dist) / 1000.0
+    c_driver = phys.wage_per_s * sumF
+    overtime_s = (sum(max(0.0, f - H) for f in tl.truck_finish.values())
+                  if (phys.soft_h and H is not None) else 0.0)
+    c_overtime = phys.wage_per_s * (phys.overtime_mult - 1.0) * overtime_s
+    Qnet = phys.slot_efficiency * Qac
+    c_veh = phys.cost_vehicle_kwh * Qnet
+    c_dep = phys.cost_depot_kwh * refill
+    rep.cost = c_km + c_driver + c_veh + c_dep + c_overtime
+    rep.cost_breakdown = {"c_km": c_km, "c_driver": c_driver, "c_vehicle": c_veh, "c_depot": c_dep,
+                          "c_overtime": c_overtime, "overtime_s": overtime_s,
+                          "distance_km": rep.distance_km, "driver_s": sumF,
+                          "ac_kwh": Qac, "net_kwh": Qnet, "refill_kwh": refill}
+    # 能量守恒：机载总耗 = 初始 + 充电净入 - 入库余电
+    lhs = sum(rep.energy_kwh.values())
+    rhs = sum(tl.drone_energy[d][0] - tl.e_return[d] for d in rep.energy_kwh)
+    rhs += phys.slot_efficiency * tl.q_total + tl.swap_refill_kwh
+    if abs(lhs - rhs) > phys.energy_tol:
+        rep.violations.append(f"ENERGY_BALANCE:{lhs}:{rhs}")
+    rep.notes.append(f"energy_consumed={lhs:.4f}")
+    rep.ok = not rep.violations
+    return rep
