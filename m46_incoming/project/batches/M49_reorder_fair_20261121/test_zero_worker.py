@@ -8,6 +8,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 os.environ.pop("M49_LAUNCH_APPROVED", None)
+os.environ.setdefault("M47_PRIVATE_EXEC_ROOT", "/home/ubuntu/m47_private_exec")
 
 
 def load(name, filename):
@@ -55,8 +56,16 @@ def test_serve_writes_state_before_zero_spawn(controller):
 
 def test_active_resume_does_not_spawn(controller):
     stage = stage_with_registration()
-    job = json.loads((HERE / "FRESH_JOB_REGISTRATION.json").read_text())["jobs"][0]
-    (stage / "FRESH_PROGRESS.json").write_text(json.dumps({"active": [{"job": job}], "completed": [], "failures": []}))
+    jobs = json.loads((HERE / "FRESH_JOB_REGISTRATION.json").read_text())["jobs"]
+    body = json.dumps({
+        "active": [{"job": jobs[0], "pid": 424242}],
+        "pending": jobs[1:],
+        "completed": [],
+        "failures": [],
+    })
+    path = stage / "FRESH_PROGRESS.json"
+    path.write_text(body)
+    before = path.read_bytes()
     calls = []
     try:
         try:
@@ -65,6 +74,11 @@ def test_active_resume_does_not_spawn(controller):
         except controller.CheckpointActive:
             pass
         assert calls == []
+        assert path.read_bytes() == before
+        saved = json.loads(path.read_text())
+        assert saved["active"] == [{"job": jobs[0], "pid": 424242}]
+        assert saved["pending"] == jobs[1:]
+        assert len(saved["pending"]) == 35
     finally:
         shutil.rmtree(stage)
 

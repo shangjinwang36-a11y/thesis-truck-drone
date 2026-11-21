@@ -72,6 +72,15 @@ def build_registration():
     for case in CASES:
         if horizons[f"{case}/R/1001"] != horizons[f"{case}/S/1001"]:
             raise SystemExit("R horizon is not the S horizon")
+    dependency_files = {
+        "private_root.py": HERE.parent / "M47_bounded_actual_20261121" / "private_root.py",
+        "scope_fingerprint.py": HERE.parent / "M47_bounded_actual_20261121" / "scope_fingerprint.py",
+        "run_emin005.py": CORE / "source/round10_recheck/run_emin005.py",
+        "research.py": CORE / "research.py",
+        "initial_observer.py": CORE / "initial_observer.py",
+        "finish_accounting.py": CORE / "finish_accounting.py",
+        "bill.py": CORE / "bill.py",
+    }
     return dict(
         status="PREREGISTERED_NOT_LAUNCHED",
         launch_allowed=False,
@@ -86,6 +95,15 @@ def build_registration():
         nominal_sha256=nominal_hashes, horizons=horizons,
         driver_sha256=driver, controller_sha256=controller,
         prepare_sha256=sha(HERE / "prepare_registration.py"),
+        dependency_sha256={name: sha(path) for name, path in dependency_files.items()},
+        stage_accounting=dict(
+            startup="accepted calls in the nominal-verify audit",
+            episode="accepted calls in the episode audit; row.calls keeps this value and is not the stage total",
+            ground_finish="GROUND_FINISH reason count inside the episode audit, not added again",
+            object_external="unbudgeted accepted calls, a slice of the audits, not added again",
+            failed_journal="call-journal lines with accepted false, not accepted calls",
+            stage_total_accepted="startup + episode",
+        ),
         core_freeze_sha256=REQUIRED_FREEZE,
         init_eval_budget=100, main_eval_budget=1000,
         rescue="one extension of the init budget by main_eval when init finds nothing",

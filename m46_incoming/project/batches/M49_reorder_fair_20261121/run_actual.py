@@ -94,6 +94,7 @@ def refuse_existing_output(stage, pending):
 
 
 def scope_ok(stage):
+    """Recompute the 36-cell scope before any physical call. Zero evaluations."""
     freeze_path = CORE / "EXPERIMENT_CORE_FREEZE.json"
     if sha256(freeze_path) != REQUIRED_FREEZE:
         return False
@@ -104,15 +105,17 @@ def scope_ok(stage):
     if not reg_path.is_file():
         return False
     reg = json.loads(reg_path.read_text())
-    if reg.get("core_freeze_sha256") != REQUIRED_FREEZE:
+    if reg.get("core_freeze_sha256") != REQUIRED_FREEZE or reg.get("launch_allowed") is not False:
         return False
     if reg.get("init_eval_budget") != 100 or reg.get("main_eval_budget") != 1000:
         return False
-    if reg.get("logical_count") != 36 or len(reg.get("jobs") or []) != 36:
+    if reg.get("logical_count") != 36 or len(reg.get("jobs") or []) != 36 or len(reg.get("logical_mapping") or []) != 36:
         return False
     if sha256(HERE / "fresh_actual.py") != reg.get("driver_sha256"):
         return False
     if sha256(HERE / "run_actual.py") != reg.get("controller_sha256"):
+        return False
+    if sha256(HERE / "prepare_registration.py") != reg.get("prepare_sha256"):
         return False
     nominal = M47_BATCH / "M47_CANDIDATE" / "nominal"
     for case in ("C50", "R50", "RC50", "C100", "R100", "RC100"):
@@ -131,6 +134,22 @@ def scope_ok(stage):
             return False
         if arm in ("R", "X") and row["recovery_policy"] != "X":
             return False
+    sys.path.insert(0, str(HERE))
+    os.environ.setdefault("M47_PRIVATE_EXEC_ROOT", "/home/ubuntu/m47_private_exec")
+    from prepare_registration import build_registration
+    fresh = build_registration()
+    if fresh["jobs"] != reg["jobs"]:
+        return False
+    if [row["complete_input_fingerprint"] for row in fresh["logical_mapping"]] != [row["complete_input_fingerprint"] for row in reg["logical_mapping"]]:
+        return False
+    if [row["world_sha256"] for row in fresh["logical_mapping"]] != [row["world_sha256"] for row in reg["logical_mapping"]]:
+        return False
+    if fresh["nominal_sha256"] != reg["nominal_sha256"] or fresh["horizons"] != reg["horizons"]:
+        return False
+    if fresh["dependency_sha256"] != reg.get("dependency_sha256"):
+        return False
+    if fresh["driver_sha256"] != reg["driver_sha256"] or fresh["controller_sha256"] != reg["controller_sha256"]:
+        return False
     return True
 
 
@@ -168,7 +187,8 @@ def serve(stage, spawn):
     jobs = [tuple(job) for job in reg["jobs"]]
     pending, completed, failed, blocked = restore(stage, jobs)
     if blocked:
-        save(stage, [], completed, failed, pending, True, True)
+        # restore drops the pending queue when active is non-empty. Rewriting
+        # progress here would erase both the active workers and that queue.
         raise CheckpointActive("checkpoint lists active workers; not spawning")
     refuse_existing_output(stage, pending)
     save(stage, [], completed, failed, pending, bool(completed or failed), False)
@@ -193,6 +213,16 @@ def serve(stage, spawn):
             break
         if active:
             time.sleep(0.01)
+    dump(stage / "STAGE_LEDGER.json", dict(
+        record_class="CONTROLLER",
+        publishable=False,
+        completed_jobs=len(completed),
+        failed_jobs=len(failed),
+        pending_jobs=len(list(pending)),
+        note="exit status is not a call total; row.calls is episode-only and stage_total_accepted is startup plus episode",
+        failed=failed,
+        completed=completed,
+    ))
     if failed:
         raise SystemExit("worker failed")
     return json.loads((stage / "state.json").read_text())
@@ -212,10 +242,6 @@ def popen_spawn(stage, job):
         env={**os.environ, "M47_PRIVATE_EXEC_ROOT": os.environ.get("M47_PRIVATE_EXEC_ROOT", "/home/ubuntu/m47_private_exec")},
     )
     return proc, log, job
-
-
-def approved() -> bool:
-    return os.environ.get(LAUNCH_ENV) == "parent-approved"
 
 
 def main():
