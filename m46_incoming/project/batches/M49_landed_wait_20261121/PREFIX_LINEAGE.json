@@ -1,0 +1,35 @@
+{
+  "1002": {
+    "execution": "M48_RECOVERY/executions/own/dev/RC100_1002_X.json",
+    "same_state_emergency_paid": 685.4916957008995,
+    "nominal_sha256": "ddad358aea47e56faecaf1cbe98b78c90ea35fcb76439d7b80146ff9edb19bd3",
+    "H": 5911.709582085911,
+    "cut": 3452.903818675321,
+    "prefix_segments": 11,
+    "suffix": "paid_reorder/RC100_1002/SELECTED_SUFFIX_SEGMENT.json",
+    "final_cost": 601.3641210199783,
+    "conditional_difference": 84.12757468092127,
+    "new_suffix_cross": false,
+    "full_chain_S_replay": true,
+    "full_chain_X_replay": true,
+    "do_not_count_sortie_truck_as_cross": true
+  },
+  "1001": {
+    "execution": "M48_RECOVERY/executions/own/dev/RC100_1001_X.json",
+    "same_state_emergency_paid": 815.9790073743837,
+    "nominal_sha256": "ddad358aea47e56faecaf1cbe98b78c90ea35fcb76439d7b80146ff9edb19bd3",
+    "H": 5911.709582085911,
+    "cut": 1470.0956844623377,
+    "cut_is": "the first GROUND_FINISH segment, not the later one at 1577.974964",
+    "prefix_segments": 9,
+    "suffix": "paid_reorder/RC100_1001/SELECTED_SUFFIX_SEGMENT.json",
+    "final_cost": 563.5086337141618,
+    "conditional_difference": 252.47037366022198,
+    "prefix_cross": "S_CROSS_RECOVERY:d2:t1->t2@835.9",
+    "prefix_cross_is_before_cut": true,
+    "new_suffix_S_replay": true,
+    "new_suffix_cross": false,
+    "full_chain_S_replay": false,
+    "not_a_new_suffix_x_exclusive": true
+  }
+}

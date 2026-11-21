@@ -1,0 +1,11 @@
+{
+  "function": "tdr.schedule.schedule_plan",
+  "caller": "tdr.recovery._reorder_same_truck",
+  "calls_evaluate_plan": false,
+  "calls_scenario_sampler": false,
+  "appears_in_receipts": false,
+  "what_it_does": "Builds the truck and drone timeline and returns truck_finish. It does not apply the custody gate, the energy reserve gate, the hard horizon gate, or the cost. A ValueError from a committed first stop is discarded and that order is not proposed.",
+  "what_is_paid": "Only the one same-truck order with the strictly shortest scheduled finish of the named truck is passed to evaluate_plan. That call is receipted as RECOVERY_INITIAL_BASE and consumes the init budget. Call 2 of RC100 1001 is that paid call and was rejected with G_CUSTODY.",
+  "feasible_region": "evaluate_plan is unchanged. A shorter schedule is not marked feasible. The filter does veto unpaid reorderings whose scheduled finish is not strictly shorter, so those orders never enter the paid budget.",
+  "budget": "The paid init cap stays 100 and the paid main cap stays 1000. The uncharged schedule calls are outside that ledger. They are not an acceptance and they are not a scenario draw."
+}
