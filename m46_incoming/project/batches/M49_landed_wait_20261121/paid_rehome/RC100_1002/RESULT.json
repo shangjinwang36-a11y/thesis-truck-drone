@@ -1,0 +1,70 @@
+{
+ "seed": 1002,
+ "calls": 2101,
+ "seconds": 4.436100670998712,
+ "init_found": true,
+ "init_used": 1100,
+ "init_limit": 1100,
+ "rescue_used": true,
+ "first_reasons": [
+  "H_EXCEEDED:t7@6244.4>5911.7",
+  "G_CUSTODY:p047@c047 holder=TRUCK:t7 truck=t2",
+  "H_EXCEEDED:t7@6244.4>5911.7",
+  "G_CUSTODY:p047@c047 holder=TRUCK:t7 truck=t2",
+  "H_EXCEEDED:t7@6755.5>5911.7",
+  "G_CUSTODY:p047@c047 holder=TRUCK:t7 truck=t2",
+  "H_EXCEEDED:t7@6607.0>5911.7",
+  "G_CUSTODY:p047@c047 holder=TRUCK:t7 truck=t2"
+ ],
+ "main_used": 1000,
+ "chosen": {
+  "source": "ALNS",
+  "cost": 601.3641210199783,
+  "hard": true,
+  "hard_violations": [],
+  "replay_ok": true,
+  "replay_violations": [],
+  "min_energy": 0.0934893015850944,
+  "invoice": 422.56360845845535,
+  "invoice_matches_hard": false
+ },
+ "ledger": {
+  "accepted_calls": 2101,
+  "denied_calls": 0,
+  "by_reason": {
+   "RECOVERY_INITIAL_BASE": 1100,
+   "ALNS_BASE": 832,
+   "COORDINATE": 144,
+   "REFLY": 24,
+   "DIAGNOSTIC_HARD_SUFFIX": 1
+  },
+  "denied_by_reason": {},
+  "unbudgeted_by_reason": {
+   "DIAGNOSTIC_HARD_SUFFIX": 1
+  },
+  "budgets": [
+   {
+    "accepted_calls": 1100,
+    "used": 1100,
+    "final_limit": 1100,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RECOVERY_INITIAL_BASE": 1100
+    }
+   },
+   {
+    "accepted_calls": 1000,
+    "used": 1000,
+    "final_limit": 1000,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "ALNS_BASE": 832,
+     "COORDINATE": 144,
+     "REFLY": 24
+    }
+   }
+  ]
+ }
+}

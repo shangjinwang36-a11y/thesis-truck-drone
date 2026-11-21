@@ -1,0 +1,71 @@
+{
+  "status": "PREPARED_NOT_LAUNCHED",
+  "driver": "M47_bounded_actual_20261121/fresh_actual.py",
+  "core": "M47_schedule_closed_exchange_core_20261121",
+  "core_freeze_checked_by": "fresh_actual.check_core against EXPERIMENT_CORE_FREEZE.json",
+  "registration_checked_by": "audit_registration.py fingerprint equality of logical_job and canonical_fresh_job",
+  "world_gate": "fresh_actual refuses a missing J2 own/dev witness and never samples a replacement",
+  "post_execution_gate": "audit_source_and_world_identity.py requires each execution's flags and H to match the sealed K1 execution row",
+  "maps": ["C50", "R50", "RC50", "C100", "R100", "RC100"],
+  "seeds": [1001, 1002],
+  "stream": "dev",
+  "hmode": "own",
+  "logical_rows": 72,
+  "variants": {
+    "M47_CANDIDATE": "Fresh M47 S and X nominals. R loads the S nominal.",
+    "M44_CURRENT": "M44 fresh nominals on the same H. Executed by this M47 recovery code, not by replaying an old M44 process."
+  },
+  "roles": {
+    "S": "Nominal S, recovery policy S",
+    "R": "Nominal S clone, recovery policy X, no second nominal search",
+    "X": "Nominal X, recovery policy X"
+  },
+  "historical_not_fresh": [
+    "K1 executions/own/dev/{case}_{seed}_{arm}.json when present: same flags and H check only, named K1, not entered as a fresh job",
+    "M44 and K1 nominal plans are inputs. They are not actual episodes."
+  ],
+  "dedup": "Same complete fingerprint (instance, seed, policy, plan version, H, algorithm vars, physical config, initial state, recovery RNG, core freeze, driver hash, witness hash) shares one canonical fresh job. Different cores or different X plans do not collapse.",
+  "budgets": {
+    "nominal": "Already paid. Not rerun.",
+    "startup_nominal_verify": "One physical call per canonical execution, separate startup ledger",
+    "recovery_init": "100, a separate Budget. Unchanged.",
+    "recovery_main": "1000, the ALNS Budget passed to run_episode. Unchanged and not combined with init.",
+    "recovery_rescue": "If init finds nothing, the original code extends that init budget once by the main limit. This is not an extra search and does not fold init into the 1000.",
+    "wall_limit": null,
+    "scenario_cap": 200
+  },
+  "H": "Per map the nominal file H_s, required equal to M20 preflight S H_s and alg._nominal_reference_H (sealed K1 S). Not X z+1800.",
+  "reported_endpoints": [
+    "paid",
+    "actual_unique_SERVICE_customers",
+    "actual_cross_completed_SERVICE_customers",
+    "actual_cross_completed_SERVICE_flights",
+    "actual_all_cross_recoveries",
+    "truck_km",
+    "driver_s",
+    "recorded_truck_W_s",
+    "drone_WAIT_s",
+    "truck_DRIVE_s",
+    "parts.driver",
+    "parts.distance",
+    "parts.electricity",
+    "parts.overtime",
+    "emergency",
+    "strict_H"
+  ],
+  "comparisons_all_six_maps": [
+    "Within M47 and within M44: S->R, S->X, R->X",
+    "M47 minus M44 for S, R, and X",
+    "M47 minus K1 historical rows for S, R, and X when those rows exist",
+    "Equal-weight six-map stratified paired bootstrap, seed 20261111, 2000 draws, indices 50 and 1950",
+    "Denominators: current fresh S nominal, historical fixed S nominal, and strong K1 S nominal"
+  ],
+  "not_a_service_claim_yet": "Nominal cross sorties are not actual SERVICE.",
+  "handover_versus_air_service": {
+    "handover_s": 20,
+    "meaning": "U action for an abnormal handover",
+    "air_service_s": 60,
+    "meaning": "SERVICE stage of a normal air delivery",
+    "model_changed": false
+  }
+}

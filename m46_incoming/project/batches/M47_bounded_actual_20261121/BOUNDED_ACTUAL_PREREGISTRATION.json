@@ -1,0 +1,42 @@
+{
+  "status": "REGISTERED_NOT_LAUNCHED",
+  "actual_started": false,
+  "registration": "M47_bounded_actual_20261121/FRESH_JOB_REGISTRATION.json",
+  "dedup_audit": "M47_bounded_actual_20261121/audit_registration.py writes DEDUPLICATION_INDEPENDENT_AUDIT.json and performs zero native evaluations",
+  "protocol": "M47_bounded_actual_20261121/PROTOCOL.json",
+  "call_path": {
+    "environment": "M47_PRIVATE_EXEC_ROOT must be the extracted executor-only tree outside the git checkout. The driver and the audits resolve witnesses, M20 preflight plans, and K1 execution rows only through private_root.py.",
+    "preregistered_launcher": "python3 M47_bounded_actual_20261121/run_actual.py",
+    "launcher_reads": "FRESH_JOB_REGISTRATION.json jobs, which are the canonical fresh jobs after fingerprint dedup",
+    "worker": "python3 M47_bounded_actual_20261121/fresh_actual.py worker <logical job json>",
+    "worker_does": "check_core against EXPERIMENT_CORE_FREEZE.json, load the staged nominal, assert H against the private M20 preflight S plan and alg._nominal_reference_H, read the recorded witness through TestWorld, then run_episode",
+    "not_invoked_by_registration": true
+  },
+  "core": "M47_schedule_closed_exchange_core_20261121",
+  "variants": ["M47_CANDIDATE", "M44_CURRENT"],
+  "maps": ["C50", "R50", "RC50", "C100", "R100", "RC100"],
+  "seeds": [1001, 1002],
+  "stream": "dev",
+  "hmode": "own",
+  "arms": ["S", "R", "X"],
+  "logical_jobs": 72,
+  "roles": {
+    "S": "Staged nominal S, recovery policy S",
+    "R": "Same staged nominal S, recovery policy X. No second nominal search.",
+    "X": "Staged nominal X, recovery policy X"
+  },
+  "controls": {
+    "M44_CURRENT": "M44 fresh nominal plans executed by this frozen M47 recovery core. M44 and M46 nominal plans and H are the same; this comparison does not replay an old M44 or M46 process.",
+    "K1": "Historical executions/own/dev rows are a reference for flags and H after a fresh execution exists. They are not fresh jobs and are not members of FRESH_JOB_REGISTRATION jobs."
+  },
+  "budgets": {
+    "init_eval": 100,
+    "main_eval": 1000,
+    "rescue": "one extension of the init budget by main_eval when init finds nothing",
+    "wall": null,
+    "override": null,
+    "scenario_cap": 200,
+    "nominal": "already paid; not rerun"
+  },
+  "not_started": ["actual episodes", "180-job grid", "270701", "seeds 4001-4030"]
+}

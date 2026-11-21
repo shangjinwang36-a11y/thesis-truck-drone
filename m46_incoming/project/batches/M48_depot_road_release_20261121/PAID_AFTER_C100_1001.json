@@ -1,0 +1,114 @@
+{
+ "label": "AFTER",
+ "seed": 1001,
+ "core": "/workspace/m46_incoming/project/batches/M48_depot_road_release_core_20261121",
+ "native_is_diagnostic": true,
+ "fresh_execution": false,
+ "init": {
+  "found": true,
+  "used": 100,
+  "limit": 100,
+  "rescue_used": false,
+  "source": "CATALOG",
+  "first_reasons": [
+   "sortie 64: \u540c\u8f66\u653e\u98de\u8bbf\u95ee\u4e0d\u65e9\u4e8e\u56de\u6536\u8bbf\u95ee(\u65f6\u523b\u6210\u73af)",
+   "SWAP_SPARES:t4:5>4",
+   "SWAP_SPARES:t4:5>4",
+   "sortie 64: \u540c\u8f66\u653e\u98de\u8bbf\u95ee\u4e0d\u65e9\u4e8e\u56de\u6536\u8bbf\u95ee(\u65f6\u523b\u6210\u73af)",
+   "sortie 64: \u540c\u8f66\u653e\u98de\u8bbf\u95ee\u4e0d\u65e9\u4e8e\u56de\u6536\u8bbf\u95ee(\u65f6\u523b\u6210\u73af)",
+   "P_CUSTODY:p091@c023 holder=TRUCK:t1 truck=t2",
+   "SWAP_CANNOT_FIX:d2@1073.8:e=-0.123351<0.050000",
+   "P_CUSTODY:p091@c020 holder=TRUCK:t1 truck=t7"
+  ],
+  "n_reasons": 20,
+  "depot_gate": "DEPOT_PREPARATION_ON_ROAD:t2"
+ },
+ "suffix": {
+  "source": "ALNS",
+  "init_cost": 332.618154024364,
+  "final_cost": 319.81154188595224,
+  "main_used": 1000,
+  "main_limit": 1000,
+  "hard_feasible": true,
+  "hard_violations": [],
+  "depot_gate": null,
+  "ground_required_still_air": null,
+  "replay_ok": true,
+  "replay_violations": [],
+  "min_energy": 0.05140410055660645,
+  "invoice": 319.81154188595224,
+  "invoice_matches_replay": true,
+  "new_air_parcels": [],
+  "u_not_20s": [],
+  "drives": [
+   {
+    "truck": "t1",
+    "from_matches_snapshot": true,
+    "ref": "c024"
+   },
+   {
+    "truck": "t2",
+    "from_matches_snapshot": true,
+    "ref": "c023"
+   },
+   {
+    "truck": "t4",
+    "from_matches_snapshot": true,
+    "ref": "c052"
+   },
+   {
+    "truck": "t6",
+    "from_matches_snapshot": true,
+    "ref": "c063"
+   },
+   {
+    "truck": "t7",
+    "from_matches_snapshot": true,
+    "ref": "c007"
+   }
+  ],
+  "h": 4650.277457563401,
+  "e_min": 0.05
+ },
+ "ledger": {
+  "accepted_calls": 1101,
+  "denied_calls": 0,
+  "by_reason": {
+   "RECOVERY_INITIAL_BASE": 100,
+   "ALNS_BASE": 756,
+   "COORDINATE": 240,
+   "MIP_RETURN": 4,
+   "DIAGNOSTIC_HARD_SUFFIX": 1
+  },
+  "denied_by_reason": {},
+  "unbudgeted_by_reason": {
+   "DIAGNOSTIC_HARD_SUFFIX": 1
+  },
+  "budgets": [
+   {
+    "accepted_calls": 100,
+    "used": 100,
+    "final_limit": 100,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RECOVERY_INITIAL_BASE": 100
+    }
+   },
+   {
+    "accepted_calls": 1000,
+    "used": 1000,
+    "final_limit": 1000,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "ALNS_BASE": 756,
+     "COORDINATE": 240,
+     "MIP_RETURN": 4
+    }
+   }
+  ]
+ },
+ "seconds": 6.132940972000142,
+ "complete_hard_suffix": true
+}

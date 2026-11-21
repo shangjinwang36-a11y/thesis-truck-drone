@@ -1,0 +1,61 @@
+{
+ "fresh_jobs": 4,
+ "reused_finished_m48": 32,
+ "result": "On the four nominals that differ, the sealed M48 recovery reproduces the historical M44 actual trace: segments, observations, and ledger match after removing flags and the truck_done field.",
+ "cells": [
+  {
+   "case": "C100",
+   "seed": 1001,
+   "original_execution_sha256": "6f177db782fb67d50234ba78f9624f8c531e408d2d904a58220a9fd5d12fdcc8",
+   "journal_lines": 17546,
+   "startup": 1,
+   "ledger_accepted": 17545,
+   "paid": 427.99019405165603,
+   "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+   "emergency": true
+  },
+  {
+   "case": "C100",
+   "seed": 1002,
+   "original_execution_sha256": "3020156887b348f92f8e7ea1f4ccd1107de42e4d5c52d1a3d487129ab98e390a",
+   "journal_lines": 14295,
+   "startup": 1,
+   "ledger_accepted": 14294,
+   "paid": 392.6861829405343,
+   "status": "COMPLETED_VERIFIED",
+   "emergency": false
+  },
+  {
+   "case": "RC100",
+   "seed": 1001,
+   "original_execution_sha256": "e6e1313b12a1f47c5ad77f54a5fa2710028a10481d4ce83111615e971f73e704",
+   "journal_lines": 4557,
+   "startup": 1,
+   "ledger_accepted": 4556,
+   "paid": 796.1211691592289,
+   "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+   "emergency": true
+  },
+  {
+   "case": "RC100",
+   "seed": 1002,
+   "original_execution_sha256": "d184e90522a391455460c3c9ba03784124b5324e428de200b718c79c010edfaa",
+   "journal_lines": 13418,
+   "startup": 1,
+   "ledger_accepted": 13417,
+   "paid": 732.0096592354022,
+   "status": "STOPPED_NO_FEASIBLE_SUFFIX",
+   "emergency": true
+  }
+ ],
+ "new_calls": 49812,
+ "startup": 4,
+ "journal_lines": 49816,
+ "controller_stdout": "unknown; not written to a file",
+ "controller_pid": 11275,
+ "started_at": "2026-11-21T10:39:01Z",
+ "completed": 4,
+ "failed": 0,
+ "sealed_m48_not_modified": true,
+ "flags_included": false
+}

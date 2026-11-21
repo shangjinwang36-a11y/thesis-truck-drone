@@ -1,0 +1,31 @@
+{
+ "comparison": "M46_paid_training_robust_joint_core_20261121 -> M47_schedule_closed_exchange_core_20261121",
+ "identical_files": 145,
+ "changed_files": [
+  "EXPERIMENT_CORE_FREEZE.json",
+  "source/proj_r6/src/tdr/complete_joint.py"
+ ],
+ "added_files": [
+  "source/proj_r6/src/tdr/schedule_closed_exchange.py"
+ ],
+ "removed_files": [],
+ "algorithm_delta": [
+  "source/proj_r6/src/tdr/complete_joint.py",
+  "source/proj_r6/src/tdr/schedule_closed_exchange.py"
+ ],
+ "baseline_import_note": "Identical files are the sealed M46 core, copied so this branch can run. They are not algorithm edits.",
+ "hashes": {
+  "EXPERIMENT_CORE_FREEZE.json": {
+   "m46": "7148fc3dda53a11fd288eeb05d5c79d5539f7864703234c6a81f8eaa30523482",
+   "m47": "a509cc36961296e24dec23d212dddbc2dcc07bc08ec16618549ce726897e8f48"
+  },
+  "source/proj_r6/src/tdr/complete_joint.py": {
+   "m46": "67b2d21877db72ea081b5a0d9120af3f0597d368a087c3c75377fbf771265bbb",
+   "m47": "8d801597302b9cfca725aa9b81e70a67df2153a4c0564c06348126fe4cfbf9f3"
+  },
+  "source/proj_r6/src/tdr/schedule_closed_exchange.py": {
+   "m46": null,
+   "m47": "108c55d4e1c6630234e2101598de4c402be1c92dc6bc82553846537d36c48059"
+  }
+ }
+}

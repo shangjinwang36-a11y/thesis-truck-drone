@@ -1,0 +1,42 @@
+{
+  "status": "SUPERSEDED_DO_NOT_LAUNCH",
+  "superseded_by": "M47_bounded_actual_20261121/BOUNDED_ACTUAL_PREREGISTRATION.json",
+  "superseded_because": "This draft named 36 episodes, an M46 control, and init_inside_recovery. The launch contract is 72 logical jobs, M47 candidate versus M44 current on the M47 recovery core, with INIT 100 kept separate from MAIN 1000.",
+  "do_not_start_until_parent_confirms_files": true,
+  "why_drafted": "Fresh nominal is promising on RC100 (one published cross sortie, nominal cost 542.474 versus fresh S 670.123 and sealed M46 X 564.680) and on C100 nominal cost and air (321.946, 82 air) without a surviving cross. No actual SERVICE has been observed.",
+  "not_started": ["actual episodes", "180-job grid", "270701", "seeds 4001-4030"],
+  "bound": {
+    "maps": ["C50", "R50", "RC50", "C100", "R100", "RC100"],
+    "stream": "dev",
+    "seeds_fixed_before_any_outcome": [1001, 1002],
+    "arms": ["S", "R", "X"],
+    "episodes": 36,
+    "why_not_180": "6 maps x 10 dev seeds x 3 arms would be 180. That grid is not authorized by this draft."
+  },
+  "roles": {
+    "S": "Fresh M47 S nominal, which matched strong K1 exactly on plan, cost, and H. Recovery policy S.",
+    "R": "Exact clone of that fresh S nominal. Recovery policy X. No separate nominal optimization and no extra nominal budget.",
+    "X": "Fresh M47 X nominal from the same run. Recovery policy X.",
+    "current_control": "Sealed M46 X nominal, same map, same dev seed, same H.",
+    "strong_K1": "Sealed K1 S nominal and its H_s. Already shown equal to fresh S."
+  },
+  "H": "Per map, the fresh S H_s, which equals sealed K1 S H_s. Not X's own z+1800.",
+  "budgets": {
+    "nominal_already_paid_in_fresh": "S and X each already spent their own <=1000 physical and <=200 scenario. Do not rerun nominal inside the actual batch.",
+    "recovery_per_episode": 1000,
+    "init_inside_recovery": 100,
+    "scenario_cap_not_increased": 200,
+    "wall_limit": null
+  },
+  "worlds": {
+    "rule": "Use only already recorded dev witnesses for seeds 1001 and 1002. Do not sample, do not drop a map after seeing a result, do not open 4001-4030 or 270701.",
+    "missing_from_this_package": [
+      "Recorded dev world flags for case_1001_S and case_1002_S under the historical J2/executions/own/dev layout named by reference_only_actual_harness/M41/fresh_actual.py",
+      "FRESH_JOB_REGISTRATION.json",
+      "DEDUPLICATION_INDEPENDENT_AUDIT.json",
+      "The harness still imports an M41 core path that is not this M47 core"
+    ]
+  },
+  "dedup": "One new execution file per (map, seed, arm). Refuse to overwrite. R is not a second nominal solve. Startup nominal verification is one charged physical call per canonical plan, not per duplicate arm, and is ledged apart from recovery.",
+  "endpoints_not_called": ["reference_only_actual_harness/M41/fresh_actual.py", "run_actual.py"]
+}

@@ -1,0 +1,119 @@
+{
+ "claim_retracted": "An unfinished return does not make a new depot launch legal. The original gate still rejects it, and the scheduler raises before emitting preparation.",
+ "gate_source_matches_m47": true,
+ "gate_sha256": "1ea77cc32bcfc4e7423602eca2d385f9a936d63f4bb5a376c4c82df3f45d8042",
+ "native_search_evaluations": 0,
+ "formal_evaluate_plan_calls": 4,
+ "ledger": {
+  "accepted_calls": 4,
+  "denied_calls": 0,
+  "by_reason": {
+   "RETURN_GATE_AT_DEPOT": 1,
+   "RETURN_GATE_UNFINISHED_RETURN": 1,
+   "RETURN_GATE_ARRIVED_AT_DEPOT": 1,
+   "RETURN_GATE_RETARGET_NEXT_VISIT": 1
+  },
+  "denied_by_reason": {},
+  "unbudgeted_by_reason": {},
+  "budgets": [
+   {
+    "accepted_calls": 1,
+    "used": 1,
+    "final_limit": 1,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RETURN_GATE_AT_DEPOT": 1
+    }
+   },
+   {
+    "accepted_calls": 1,
+    "used": 1,
+    "final_limit": 1,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RETURN_GATE_UNFINISHED_RETURN": 1
+    }
+   },
+   {
+    "accepted_calls": 1,
+    "used": 1,
+    "final_limit": 1,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RETURN_GATE_ARRIVED_AT_DEPOT": 1
+    }
+   },
+   {
+    "accepted_calls": 1,
+    "used": 1,
+    "final_limit": 1,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RETURN_GATE_RETARGET_NEXT_VISIT": 1
+    }
+   }
+  ]
+ },
+ "rows": [
+  {
+   "name": "at_depot_not_in_transit",
+   "formal_evaluations": 1,
+   "feasible": true,
+   "status": "FEASIBLE",
+   "violation": [],
+   "gate": null,
+   "first_drive_from": [
+    10000.0,
+    10000.0
+   ],
+   "first_drive_from_is_depot": true,
+   "prepare_before_drive": false
+  },
+  {
+   "name": "unfinished_return_depot_launch",
+   "formal_evaluations": 1,
+   "schedule_plan_extra_evaluations": 0,
+   "feasible": true,
+   "status": "FEASIBLE",
+   "violation": [],
+   "timeline_emitted": true,
+   "schedule_plan_raised": null,
+   "body_is_depot": false
+  },
+  {
+   "name": "arrived_at_depot_future_launch",
+   "formal_evaluations": 1,
+   "feasible": true,
+   "status": "FEASIBLE",
+   "violation": [],
+   "gate": null,
+   "in_transit": [],
+   "first_drive_from": [
+    10000.0,
+    10000.0
+   ],
+   "first_drive_from_is_depot": true
+  },
+  {
+   "name": "in_transit_retarget_then_formal",
+   "formal_evaluations": 1,
+   "feasible": true,
+   "status": "FEASIBLE",
+   "violation": [],
+   "gate_after_retarget": null,
+   "first_drive_from": [
+    10400.0,
+    10250.0
+   ],
+   "first_drive_matches_snapshot": true,
+   "depot_prepare_while_body_elsewhere": false,
+   "launch_position_is_depot_while_body_elsewhere": false
+  }
+ ],
+ "H": 4180.4961968114485,
+ "not_a_depot_launch_witness": "C50 S nominal has no depot launch, so these 4 calls do not exercise DEPOT_PREPARATION_ON_ROAD. Kept as spent diagnostics, not as the gate result."
+}

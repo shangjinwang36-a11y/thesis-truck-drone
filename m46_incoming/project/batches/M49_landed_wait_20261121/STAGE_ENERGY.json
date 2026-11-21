@@ -1,0 +1,33 @@
+{
+  "source": "schedule_plan reconstruction of the sealed M49 paid_suffix first candidates. Not a new search.",
+  "evaluate_plan_calls": 0,
+  "battery_kwh": 0.5,
+  "e_min": 0.05,
+  "legal_swap_boundary": "One swap before an unstarted launch restores that sortie to 0.5. The same sortie is not swapped again. A started airborne residual cannot take a swap. The reported energy is the running balance at the first stage that ends below 0.05 after that rule.",
+  "seed_1001_d13": {
+    "violation": "SWAP_CANNOT_FIX:d13@2314.3:e=0.032449<0.050000",
+    "sortie": 378,
+    "started": false,
+    "swap_already_applied": true,
+    "energy_after_swap": 0.5,
+    "energy_after_launch_cruise_service_and_return_cruise": 0.3463,
+    "wait_start": 2314.3,
+    "wait_end": 3161.7,
+    "wait_energy": -0.3139,
+    "energy_at_breach": 0.0324,
+    "reading": "The flight after a full swap stays above 0.05. The later truck-wait hover is the stage that crosses the reserve. This is not a single flight segment larger than one battery."
+  },
+  "seed_1002_d14": {
+    "violation": "SWAP_CANNOT_FIX:d14@4785.7:e=-0.386112<0.050000",
+    "sortie": 494,
+    "started": false,
+    "swap_already_applied": true,
+    "energy_after_swap": 0.5,
+    "energy_after_launch_cruise_service_and_return_cruise": 0.0830,
+    "wait_start": 4785.7,
+    "wait_end": 6052.2,
+    "wait_energy": -0.4691,
+    "energy_at_breach": -0.3861,
+    "reading": "Minus 0.386112 is the balance after the wait, not the cruise segment. The cruise ended at 0.083, still above 0.05. The wait of about 1266 seconds then spends 0.469. A second swap is not inserted because this sortie already swapped and is airborne."
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "authorized": false,
+  "do_not_run_until_the_budget_scope_is_reviewed": true,
+  "budget": "BUDGET_REGISTRATION.json",
+  "cells": ["RC100_1002_X", "R100_1002_S"],
+  "visible_inputs": "visible_inputs/INDEX.json",
+  "one_attempt_per_cell": true,
+  "candidate_recovery": "recovery.py",
+  "candidate_benefit_unproven": true,
+  "kept_from_the_shared_repair": ["started-fragment landing", "truck-field contract"],
+  "removed_but_not_established_as_the_cause": ["blanket landed=True on unstarted sorties", "drive-distance reorder"],
+  "model_objective": "unchanged original cost objective and existing H constraint",
+  "developer_screen_not_a_model_constraint": "A later review may compare the adopted makespan with the saved M48 plan. That comparison is not a new hard gate and is not a new objective."
+}

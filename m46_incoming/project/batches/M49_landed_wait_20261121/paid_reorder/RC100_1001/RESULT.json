@@ -1,0 +1,70 @@
+{
+ "seed": 1001,
+ "calls": 1098,
+ "seconds": 16.36402378999992,
+ "init_found": true,
+ "init_used": 97,
+ "init_limit": 100,
+ "rescue_used": false,
+ "first_reasons": [
+  "H_EXCEEDED:t7@6077.2>5911.7",
+  "G_CUSTODY:p034@c034 holder=DRONE:d14 truck=t7",
+  "H_EXCEEDED:t7@6077.2>5911.7",
+  "H_EXCEEDED:t7@6077.2>5911.7",
+  "G_CUSTODY:p034@c034 holder=DRONE:d14 truck=t7",
+  "H_EXCEEDED:t7@6237.8>5911.7",
+  "G_CUSTODY:p034@c034 holder=DRONE:d14 truck=t7",
+  "H_EXCEEDED:t7@6433.2>5911.7"
+ ],
+ "main_used": 1000,
+ "chosen": {
+  "source": "ALNS",
+  "cost": 563.5086337141618,
+  "hard": true,
+  "hard_violations": [],
+  "replay_ok": true,
+  "replay_violations": [],
+  "min_energy": 0.05106712490981952,
+  "invoice": 477.1520056981934,
+  "invoice_matches_hard": false
+ },
+ "ledger": {
+  "accepted_calls": 1098,
+  "denied_calls": 0,
+  "by_reason": {
+   "RECOVERY_INITIAL_BASE": 97,
+   "ALNS_BASE": 856,
+   "COORDINATE": 108,
+   "MIP_RETURN": 36,
+   "DIAGNOSTIC_HARD_SUFFIX": 1
+  },
+  "denied_by_reason": {},
+  "unbudgeted_by_reason": {
+   "DIAGNOSTIC_HARD_SUFFIX": 1
+  },
+  "budgets": [
+   {
+    "accepted_calls": 97,
+    "used": 97,
+    "final_limit": 100,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RECOVERY_INITIAL_BASE": 97
+    }
+   },
+   {
+    "accepted_calls": 1000,
+    "used": 1000,
+    "final_limit": 1000,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "ALNS_BASE": 856,
+     "COORDINATE": 108,
+     "MIP_RETURN": 36
+    }
+   }
+  ]
+ }
+}

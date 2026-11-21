@@ -1,0 +1,94 @@
+{
+ "claim": "The last RC100 X init under the sealed M48 core spends the rescued 1304 evaluations and finds no feasible suffix. Most first failures are SWAP_CANNOT_FIX with energy far below 0.05. No drone in the 1001 snapshot is already below 0.05. This is not a depot-gate failure, and the failed catalog does not by itself prove that no feasible suffix exists.",
+ "native_evaluations_for_this_localization": 0,
+ "sealed_core_unchanged": true,
+ "not_a_fix": true,
+ "seed_1001": {
+  "attempts_before_the_failed_init": 8,
+  "last_used": 1304,
+  "last_limit": 1304,
+  "feasible_candidates": 0,
+  "first_violation": {
+   "SWAP_CANNOT_FIX": 1062,
+   "SAME_TRUCK_CYCLE": 168,
+   "P_CUSTODY": 40,
+   "H_EXCEEDED": 34
+  },
+  "swap_energy": {
+   "n": 1062,
+   "min": -1.489196,
+   "median": -0.119827,
+   "max": 0.049833,
+   "negative": 795,
+   "between_0.03_and_0.05": 141
+  },
+  "snapshot": {
+   "t0": 1470.096,
+   "delivered": 39,
+   "ground_required_count": 36,
+   "in_transit": [
+    "t6",
+    "t7"
+   ],
+   "returning": [],
+   "drones_below_0.05": 0,
+   "lowest_body": "d1 0.0511 on t1"
+  }
+ },
+ "seed_1002": {
+  "attempts_before_the_failed_init": 10,
+  "last_used": 1304,
+  "last_limit": 1304,
+  "feasible_candidates": 0,
+  "first_violation": {
+   "SWAP_CANNOT_FIX": 963,
+   "H_EXCEEDED": 341
+  },
+  "swap_energy": {
+   "n": 963,
+   "min": -1.813066,
+   "median": -0.085295,
+   "max": 0.048785,
+   "negative": 693,
+   "between_0.03_and_0.05": 188
+  }
+ },
+ "saved_files": [
+  {
+   "seed": 1001,
+   "name": "CANDIDATES.jsonl.gz",
+   "bytes": 234131,
+   "sha256": "1fe69b001d4b77a1de346d4865be20b6fcaa33575dae4c023cf6af8e62fa3299"
+  },
+  {
+   "seed": 1001,
+   "name": "RESULT.json",
+   "bytes": 189890,
+   "sha256": "d10d9e787593a4bce0b8fdd48a8a049aec3c47b0c270068aee17e0cc1159a9f2"
+  },
+  {
+   "seed": 1001,
+   "name": "VISIBLE_CONTEXT.pkl",
+   "bytes": 24265,
+   "sha256": "7991dc301fbc41e56270a77c1021f15655e288c1f314a493c34556880475373b"
+  },
+  {
+   "seed": 1002,
+   "name": "CANDIDATES.jsonl.gz",
+   "bytes": 79753,
+   "sha256": "6108bf23d8250906e487bc6380c51a4c352bfd1be6474bbae8fc57aae22b40a1"
+  },
+  {
+   "seed": 1002,
+   "name": "RESULT.json",
+   "bytes": 303356,
+   "sha256": "3732dc60d47836ba8045e7d1ec7a691c51dd10905e8cad29e7758113c63a3b98"
+  },
+  {
+   "seed": 1002,
+   "name": "VISIBLE_CONTEXT.pkl",
+   "bytes": 20721,
+   "sha256": "8dcbc98d80810b4407df872f021ec43f128d4c03712b564aa2e3120be340c45a"
+  }
+ ]
+}

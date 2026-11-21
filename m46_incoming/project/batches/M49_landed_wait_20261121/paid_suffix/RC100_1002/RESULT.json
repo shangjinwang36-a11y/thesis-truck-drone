@@ -1,0 +1,46 @@
+{
+ "seed": 1002,
+ "calls": 1304,
+ "seconds": 2.8560413899995183,
+ "init_found": false,
+ "init_used": 1304,
+ "init_limit": 1304,
+ "rescue_used": true,
+ "first_reasons": [
+  "SWAP_CANNOT_FIX:d14@4785.7:e=-0.386112<0.050000",
+  "SWAP_CANNOT_FIX:d14@4785.7:e=-0.386112<0.050000",
+  "SWAP_CANNOT_FIX:d14@5443.1:e=-0.331912<0.050000",
+  "SWAP_CANNOT_FIX:d14@4785.7:e=-0.520406<0.050000",
+  "SWAP_CANNOT_FIX:d14@5022.1:e=-0.501887<0.050000",
+  "H_EXCEEDED:t6@5979.0>5911.7",
+  "H_EXCEEDED:t6@6034.4>5911.7",
+  "SWAP_CANNOT_FIX:d14@4785.7:e=-0.350430<0.050000"
+ ],
+ "main_used": null,
+ "chosen": null,
+ "ledger": {
+  "accepted_calls": 1304,
+  "denied_calls": 0,
+  "by_reason": {
+   "RECOVERY_INITIAL_BASE": 863,
+   "COMPLETE_TASK_BINDING_SKELETON": 221,
+   "SIMULTANEOUS_BINDING_SKELETON": 220
+  },
+  "denied_by_reason": {},
+  "unbudgeted_by_reason": {},
+  "budgets": [
+   {
+    "accepted_calls": 1304,
+    "used": 1304,
+    "final_limit": 1304,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RECOVERY_INITIAL_BASE": 863,
+     "COMPLETE_TASK_BINDING_SKELETON": 221,
+     "SIMULTANEOUS_BINDING_SKELETON": 220
+    }
+   }
+  ]
+ }
+}

@@ -1,0 +1,46 @@
+{
+ "seed": 1002,
+ "calls": 1304,
+ "seconds": 3.0853000660008547,
+ "init_found": false,
+ "init_used": 1304,
+ "init_limit": 1304,
+ "rescue_used": true,
+ "first_reasons": [
+  "H_EXCEEDED:t7@6244.4>5911.7",
+  "H_EXCEEDED:t7@6612.2>5911.7",
+  "H_EXCEEDED:t7@7030.3>5911.7",
+  "H_EXCEEDED:t7@6244.4>5911.7",
+  "H_EXCEEDED:t7@6612.2>5911.7",
+  "H_EXCEEDED:t7@7030.3>5911.7",
+  "H_EXCEEDED:t7@6755.5>5911.7",
+  "H_EXCEEDED:t7@7269.6>5911.7"
+ ],
+ "main_used": null,
+ "chosen": null,
+ "ledger": {
+  "accepted_calls": 1304,
+  "denied_calls": 0,
+  "by_reason": {
+   "RECOVERY_INITIAL_BASE": 1035,
+   "COMPLETE_TASK_BINDING_SKELETON": 135,
+   "SIMULTANEOUS_BINDING_SKELETON": 134
+  },
+  "denied_by_reason": {},
+  "unbudgeted_by_reason": {},
+  "budgets": [
+   {
+    "accepted_calls": 1304,
+    "used": 1304,
+    "final_limit": 1304,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RECOVERY_INITIAL_BASE": 1035,
+     "COMPLETE_TASK_BINDING_SKELETON": 135,
+     "SIMULTANEOUS_BINDING_SKELETON": 134
+    }
+   }
+  ]
+ }
+}

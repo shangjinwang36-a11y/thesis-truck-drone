@@ -1,0 +1,24 @@
+{
+ "decision": "DROP_AS_COMPLETE_SUFFIX",
+ "kept": "Configured landing now applies to every sortie, S and X, only when land_and_wait is already on.",
+ "pivot": "The first gate moves from the post-swap truck wait to hard H on t7. Drive-only t7 finish is inside H, so the overrun is service and rendezvous time on that skeleton. The init catalog did not find another skeleton inside 1304 calls.",
+ "sealed_2608": "paid_suffix RC100 1001 and 1002, the fragment-only landing run. No feasible cost.",
+ "this_run_calls": 2608,
+ "per_seed": 1304,
+ "main_entered": false,
+ "feasible_suffix_cost": null,
+ "baseline_feasible_suffix_cost": null,
+ "comparison": "Both completed searches have no feasible suffix, so there is no cost delta to report. The first violation changed.",
+ "first_gate_now": {
+  "1001": "H_EXCEEDED:t7@6077.2>5911.7",
+  "1002": "H_EXCEEDED:t7@6244.4>5911.7"
+ },
+ "first_gate_sealed_2608": {
+  "1001": "SWAP_CANNOT_FIX:d13@2314.3:e=0.032449<0.050000",
+  "1002": "SWAP_CANNOT_FIX:d14@4785.7:e=-0.386112<0.050000"
+ },
+ "stage_energy_file": "STAGE_ENERGY.json",
+ "core_freeze_sha256": "be31800074eff2a3fd23b28c76741e6df7944af339b5224f7469d9df7dc9d43c",
+ "fresh_preregistration": false,
+ "m48_untouched": true
+}

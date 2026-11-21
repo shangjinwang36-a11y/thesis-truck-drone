@@ -1,0 +1,113 @@
+{
+ "rows": [
+  {
+   "label": "replay_x_published_RC100",
+   "case": "RC100",
+   "nominal_not_actual_service": true,
+   "verify_plan_ok": true,
+   "verify_plan_violations": [],
+   "replay_ok": true,
+   "replay_violations": [],
+   "replay_delivered_customers": 100,
+   "invoice_matches_replay": true,
+   "invoice": {
+    "driver": 316.97702737091157,
+    "overtime": 0.0,
+    "distance": 218.89976225926463,
+    "electricity": 6.597702588952029
+   },
+   "replay_cost": 542.4744922191283,
+   "published_cost": null,
+   "hard_H": 5911.709582085911,
+   "makespan_s": 5695.041755186607,
+   "not_X_own_H": true,
+   "handover_U_parameter_s": 20,
+   "air_service_parameter_s": 60,
+   "observed_U_action_durations_s": [],
+   "nominal_has_no_abnormal_handover": true,
+   "observed_service_stage_durations_s": [
+    60.0
+   ],
+   "service_matches_air_service_parameter": true,
+   "min_energy_kwh": 0.05352785415739246,
+   "e_min_kwh": 0.05,
+   "energy_at_or_above_floor": true,
+   "swaps": 16.0,
+   "slot_or_channel_violations": [],
+   "custody_violations": [],
+   "robust": {},
+   "cross_sorties": [
+    {
+     "sid": 56,
+     "drone": "d1",
+     "launch_truck": "t1",
+     "rec_truck": "t2",
+     "air_parcels": [
+      "p095",
+      "p057"
+     ],
+     "stage_kinds": [
+      "SWAP",
+      "P",
+      "READY",
+      "L",
+      "CRUISE",
+      "SERVICE",
+      "CRUISE",
+      "SERVICE",
+      "CRUISE",
+      "R"
+     ],
+     "nominal_not_actual_service": true
+    }
+   ],
+   "original_J": 638.7061340598752,
+   "posthoc_scenario_score": 598.7049084377174,
+   "posthoc_scenario_native_calls": 2,
+   "posthoc_physical_calls": 1
+  },
+  {
+   "label": "replay_x_published_C100",
+   "case": "C100",
+   "nominal_not_actual_service": true,
+   "verify_plan_ok": true,
+   "verify_plan_violations": [],
+   "replay_ok": true,
+   "replay_violations": [],
+   "replay_delivered_customers": 100,
+   "invoice_matches_replay": true,
+   "invoice": {
+    "driver": 198.9187201811658,
+    "overtime": 0.0,
+    "distance": 117.82857661992611,
+    "electricity": 5.198869057730702
+   },
+   "replay_cost": 321.9461658588226,
+   "published_cost": null,
+   "hard_H": 4650.277457563401,
+   "makespan_s": 3087.168605501915,
+   "not_X_own_H": true,
+   "handover_U_parameter_s": 20,
+   "air_service_parameter_s": 60,
+   "observed_U_action_durations_s": [],
+   "nominal_has_no_abnormal_handover": true,
+   "observed_service_stage_durations_s": [
+    60.0
+   ],
+   "service_matches_air_service_parameter": true,
+   "min_energy_kwh": 0.05101516884494632,
+   "e_min_kwh": 0.05,
+   "energy_at_or_above_floor": true,
+   "swaps": 11.0,
+   "slot_or_channel_violations": [],
+   "custody_violations": [],
+   "robust": {},
+   "cross_sorties": [],
+   "original_J": 394.8798035545737,
+   "posthoc_scenario_score": 361.85298782844075,
+   "posthoc_scenario_native_calls": 2,
+   "posthoc_physical_calls": 1
+  }
+ ],
+ "not_actual_service": true
+}

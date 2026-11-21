@@ -1,0 +1,41 @@
+{
+ "calls": {
+  "1001": 1098,
+  "1002": 1099,
+  "sum": 2197
+ },
+ "composition": "1001 init 97 + main 1000 + hard 1; 1002 init 98 + main 1000 + hard 1. No rescue.",
+ "1002": {
+  "final_cost": 601.3641210199783,
+  "first_feasible_call": 13,
+  "first_feasible_cost": 601.5840995742682,
+  "full_invoice": 601.3641210199783,
+  "overtime": 0.0,
+  "min_energy_full": 0.053527854157392404,
+  "replay_X": true,
+  "replay_S_full_chain": true,
+  "same_state_emergency": 685.4916957008995,
+  "conditional_difference": 84.12757468092127,
+  "nominal_sha256": "ddad358aea47e56faecaf1cbe98b78c90ea35fcb76439d7b80146ff9edb19bd3",
+  "cut": 3452.903818675321
+ },
+ "1001": {
+  "final_cost": 563.5086337141618,
+  "first_feasible_call": 4,
+  "first_feasible_cost": 564.7497511498077,
+  "full_invoice": 563.5086337141618,
+  "overtime": 0.0,
+  "min_energy_full": 0.05106712490981952,
+  "replay_X": true,
+  "replay_S_suffix_only": true,
+  "replay_S_full_chain": false,
+  "full_chain_S_violation": "S_CROSS_RECOVERY:d2:t1->t2@835.9 is in the executed prefix, before cut 1470.0956844623377. The new suffix has no recovery whose launch truck differs from its actor.",
+  "same_state_emergency": 815.9790073743837,
+  "conditional_difference": 252.47037366022198,
+  "nominal_sha256": "ddad358aea47e56faecaf1cbe98b78c90ea35fcb76439d7b80146ff9edb19bd3",
+  "cut": 1470.0956844623377
+ },
+ "not_actual": true,
+ "not_preregistered": true,
+ "core_freeze_sha256": "6270df9fccb7ad59faa58eedfe4f5d78fb3d4518c780a1f02583e7f499830e77"
+}

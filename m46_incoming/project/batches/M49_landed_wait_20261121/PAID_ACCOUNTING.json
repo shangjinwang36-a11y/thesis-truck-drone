@@ -1,0 +1,19 @@
+{
+ "decision": "NO_FEASIBLE_SUFFIX",
+ "change": "Started fragment sets landed when land_and_wait is already on. Reserve, price, H, and budgets are unchanged.",
+ "native_calls": 2608,
+ "per_seed": 1304,
+ "init_budget_reached": 1304,
+ "main_entered": false,
+ "rescue_included": true,
+ "first_gate": {
+  "1001": "SWAP_CANNOT_FIX:d13@2314.3:e=0.032449<0.050000",
+  "1002": "SWAP_CANNOT_FIX:d14@4785.7:e=-0.386112<0.050000"
+ },
+ "same_first_gate_as_sealed_m48": true,
+ "why": "Both opening failures belong to a different drone from the failed fragment. Landing the fragment does not change that drone's sortie, so the original init catalog still ends at 1304 with no feasible plan and main never starts.",
+ "not_a_proof_of_no_solution": true,
+ "fresh_preregistration": false,
+ "m48_core_unchanged": true,
+ "outside_prior_ledgers": true
+}
