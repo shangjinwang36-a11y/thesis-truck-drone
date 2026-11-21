@@ -31,15 +31,25 @@ def test_started_fragment_lands_only_when_configured():
     assert not plain[0].sorties[opts["frag_sid"]].landed
 
 
-def test_unstarted_sortie_is_not_forced_to_land():
+def test_unstarted_sortie_lands_only_when_configured():
     inst, phys, plan, state, greq, opts = load()
-    sample = next(s for s in plan.sorties.values() if not s.started)
-    made = build_residual_candidate(plan, sample.sid, None, inst, phys, state, greq, "X")
-    if made and sample.sid in made[0].sorties:
-        assert not made[0].sorties[sample.sid].landed
+    made = build_residual_candidate(plan, opts["frag_sid"], None, inst, phys, state, greq, "X")
+    made_s = build_residual_candidate(plan, opts["frag_sid"], None, inst, phys, state, greq, "S")
+    assert made and made_s
+    assert all(s.landed for s in made[0].sorties.values())
+    assert all(s.landed for s in made_s[0].sorties.values())
+    off = replace(phys, land_and_wait=False)
+    before = {sid: sortie.landed for sid, sortie in plan.sorties.items()}
+    plain = build_residual_candidate(plan, opts["frag_sid"], None, inst, off, state, greq, "S")
+    assert plain
+    for sid, sortie in plain[0].sorties.items():
+        if sid in before:
+            assert sortie.landed == before[sid]
+        else:
+            assert not sortie.landed
 
 
 if __name__ == "__main__":
     test_started_fragment_lands_only_when_configured()
-    test_unstarted_sortie_is_not_forced_to_land()
+    test_unstarted_sortie_lands_only_when_configured()
     print("LANDED_FRAGMENT_REGRESSION_PASS", "native_evaluations", 0)

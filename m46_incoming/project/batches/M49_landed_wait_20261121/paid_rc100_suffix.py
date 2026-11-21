@@ -25,7 +25,7 @@ from tdr.schedule import committed_first_stop_violation  # noqa: E402
 from tdr.simulate import collect_segment, derive_rngs  # noqa: E402
 from dataclasses import asdict  # noqa: E402
 
-OUT = Path(__file__).resolve().parent / "paid_suffix" / f"RC100_{SEED}"
+OUT = Path(__file__).resolve().parent / "paid_joint" / f"RC100_{SEED}"
 OUT.mkdir(parents=True, exist_ok=True)
 raw_f = (OUT / "RAW.jsonl").open("w", encoding="utf-8")
 receipt_f = (OUT / "receipts.jsonl").open("w", encoding="utf-8")
@@ -69,7 +69,7 @@ scope = hashlib.sha256((CORE / "EXPERIMENT_CORE_FREEZE.json").read_bytes()).hexd
     core_freeze_sha256=scope,
     plan=plan_to_dict(plan, inst), state=asdict(state),
     ground_required_count=len(greq),
-    this_run_is="M49_paid_suffix_not_an_M48_artifact",
+    this_run_is="M49_joint_chain_landing_after_the_sealed_2608",
 ), indent=1, default=str))
 started = time.perf_counter()
 with audit_evaluations() as audit:
@@ -99,17 +99,28 @@ with audit_evaluations() as audit:
         else:
             chosen_plan, chosen_ev, source = opt.plan, opt.ev, "INITIAL"
         hard = persisting_eval(chosen_plan, inst, phys, state, opts["H"], "DIAGNOSTIC_HARD_SUFFIX")
-        end = max(list(hard.timeline.truck_finish.values()) + [state.t0])
-        suffix = collect_segment(chosen_plan, hard.timeline, inst, phys, state.t0, end, state)
-        (OUT / "SELECTED_PLAN.json").write_text(json.dumps(plan_to_dict(chosen_plan, inst), indent=1))
+        chosen = dict(source=source, cost=chosen_ev.cost, hard=bool(hard.feasible), hard_violations=list(hard.violations[:6]))
+        if hard.timeline is not None:
+            end = max(list(hard.timeline.truck_finish.values()) + [state.t0])
+            suffix = collect_segment(chosen_plan, hard.timeline, inst, phys, state.t0, end, state)
+            (OUT / "SELECTED_PLAN.json").write_text(json.dumps(plan_to_dict(chosen_plan, inst), indent=1))
+            (OUT / "SELECTED_SUFFIX_SEGMENT.json").write_text(json.dumps(suffix, indent=1))
+            from tdr.replay import verify_replay
+            sys.path.insert(0, str(CORE))
+            from bill import bill
+            replay = verify_replay(inst, phys, [suffix], opts["H"], "X")
+            invoice = sum(bill([suffix], phys, opts["H"]).values())
+            chosen.update(
+                replay_ok=bool(replay.ok), replay_violations=list(replay.violations[:6]),
+                min_energy=min(replay.min_energy.values(), default=None),
+                invoice=invoice, invoice_matches_hard=hard.cost is not None and abs(invoice - hard.cost) < 1e-6,
+            )
         (OUT / "SELECTED_EVALUATION.json").write_text(json.dumps(dict(
             source=source, cost=chosen_ev.cost, feasible=chosen_ev.feasible,
             violations=list(chosen_ev.violations), hard_feasible=hard.feasible,
             hard_violations=list(hard.violations), hard_cost=hard.cost,
             depot_gate=committed_first_stop_violation(chosen_plan, state),
         ), indent=1))
-        (OUT / "SELECTED_SUFFIX_SEGMENT.json").write_text(json.dumps(suffix, indent=1))
-        chosen = dict(source=source, cost=chosen_ev.cost, hard=hard.feasible)
 result = dict(
     seed=SEED, calls=call_n["n"], seconds=time.perf_counter() - started,
     init_found=opt is not None, init_used=init_budget.used, init_limit=init_budget.eval_limit,

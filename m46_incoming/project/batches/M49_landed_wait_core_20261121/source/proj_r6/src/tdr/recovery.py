@@ -438,23 +438,30 @@ def _finish_attempts(attempts: list[Plan], inst: Instance, phys: PhysicalConfig,
         else:
             _cleanup(at)
         out.append(at)
-    if strategy != "X" or not out:
-        return out
-    base = out[0].clone()
-    freed = drop_broken_chain_tails(base, state)
-    if not freed:
-        return out
-    mp = state.truck_min_insert or None
-    base, left = repair_ground_only(base, inst, phys, freed, mp, state)
-    if left:
-        base, left = repair_ground_append(base, inst, phys, left, mp, state)
-    if left:
-        return out
-    if protect is not None:
-        _cleanup(base, protect)
-    else:
-        _cleanup(base)
-    out.append(base)
+    if strategy == "X" and out:
+        base = out[0].clone()
+        freed = drop_broken_chain_tails(base, state)
+        if freed:
+            mp = state.truck_min_insert or None
+            base, left = repair_ground_only(base, inst, phys, freed, mp, state)
+            if left:
+                base, left = repair_ground_append(base, inst, phys, left, mp, state)
+            if not left:
+                if protect is not None:
+                    _cleanup(base, protect)
+                else:
+                    _cleanup(base)
+                out.append(base)
+    if phys.land_and_wait:
+        # Configured landing, shared by S and X. It zeros the post-arrival
+        # wait and the recovery hover for every sortie in the candidate.
+        # Flight and service energy, the 0.05 reserve, and greq stay as they
+        # are. The recorded RC100 breach is another drone's unstarted chain:
+        # a legal swap already restored a full battery, and the wait after
+        # that flight is what crosses the reserve.
+        for plan in out:
+            for sortie in plan.sorties.values():
+                sortie.landed = True
     return out
 
 
