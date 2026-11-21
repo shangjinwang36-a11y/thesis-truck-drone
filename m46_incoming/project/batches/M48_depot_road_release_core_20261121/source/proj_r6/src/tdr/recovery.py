@@ -670,7 +670,11 @@ def build_catalog_candidates(cat: "RecoveryCatalog", entry: dict, inst: Instance
 
 
 def _legalize_depot_preparation(cand: Plan, inst, phys, state) -> Plan:
-    """S and X. Retarget a consumed depot launch; ground only if it cannot."""
+    """S and X. Retarget an in-transit depot launch; ground only if no visit remains.
+
+    Does not keep a depot launch on a returning in-transit truck. The original
+    gate still rejects that state, and this function does not relax the gate.
+    """
     from .cut_launch_windows import close as close_launch_window
     from .moves import repair_ground_only
     from .schedule import release_depot_preparation_on_road

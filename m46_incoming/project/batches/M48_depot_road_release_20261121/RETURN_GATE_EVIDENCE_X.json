@@ -1,0 +1,124 @@
+{
+ "claim_retracted": "An unfinished return does not make a new depot launch legal. The original gate still rejects it, and the scheduler raises before emitting preparation.",
+ "gate_source_matches_m47": true,
+ "gate_sha256": "1ea77cc32bcfc4e7423602eca2d385f9a936d63f4bb5a376c4c82df3f45d8042",
+ "native_search_evaluations": 0,
+ "formal_evaluate_plan_calls": 4,
+ "ledger": {
+  "accepted_calls": 4,
+  "denied_calls": 0,
+  "by_reason": {
+   "RETURN_GATE_AT_DEPOT": 1,
+   "RETURN_GATE_UNFINISHED_RETURN": 1,
+   "RETURN_GATE_ARRIVED_AT_DEPOT": 1,
+   "RETURN_GATE_RETARGET_NEXT_VISIT": 1
+  },
+  "denied_by_reason": {},
+  "unbudgeted_by_reason": {},
+  "budgets": [
+   {
+    "accepted_calls": 1,
+    "used": 1,
+    "final_limit": 1,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RETURN_GATE_AT_DEPOT": 1
+    }
+   },
+   {
+    "accepted_calls": 1,
+    "used": 1,
+    "final_limit": 1,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RETURN_GATE_UNFINISHED_RETURN": 1
+    }
+   },
+   {
+    "accepted_calls": 1,
+    "used": 1,
+    "final_limit": 1,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RETURN_GATE_ARRIVED_AT_DEPOT": 1
+    }
+   },
+   {
+    "accepted_calls": 1,
+    "used": 1,
+    "final_limit": 1,
+    "wall_limit": null,
+    "scenario_ledger": false,
+    "reasons": {
+     "RETURN_GATE_RETARGET_NEXT_VISIT": 1
+    }
+   }
+  ]
+ },
+ "rows": [
+  {
+   "name": "at_depot_not_in_transit",
+   "formal_evaluations": 1,
+   "feasible": true,
+   "status": "FEASIBLE",
+   "violation": [],
+   "gate": null,
+   "first_drive_from": [
+    10000.0,
+    10000.0
+   ],
+   "first_drive_from_is_depot": true,
+   "prepare_before_drive": true
+  },
+  {
+   "name": "unfinished_return_depot_launch",
+   "formal_evaluations": 1,
+   "schedule_plan_extra_evaluations": 0,
+   "feasible": false,
+   "status": "INFEASIBLE_RESOURCE",
+   "violation": [
+    "DEPOT_PREPARATION_ON_ROAD:t2"
+   ],
+   "timeline_emitted": false,
+   "schedule_plan_raised": "DEPOT_PREPARATION_ON_ROAD:t2",
+   "body_is_depot": false
+  },
+  {
+   "name": "arrived_at_depot_future_launch",
+   "formal_evaluations": 1,
+   "feasible": true,
+   "status": "FEASIBLE",
+   "violation": [],
+   "gate": null,
+   "in_transit": [],
+   "first_drive_from": [
+    10000.0,
+    10000.0
+   ],
+   "first_drive_from_is_depot": true
+  },
+  {
+   "name": "in_transit_retarget_then_formal",
+   "formal_evaluations": 1,
+   "feasible": false,
+   "status": "ENERGY_INFEASIBLE",
+   "violation": [
+    "SWAP_CANNOT_FIX:d3@1415.2:e=0.043576<0.050000"
+   ],
+   "gate_after_retarget": null,
+   "first_drive_from": [
+    10400.0,
+    10250.0
+   ],
+   "first_drive_matches_snapshot": true,
+   "depot_prepare_while_body_elsewhere": false,
+   "launch_position_is_depot_while_body_elsewhere": false
+  }
+ ],
+ "H": 4180.4961968114485,
+ "prior_s_nominal_calls_not_a_depot_witness": 4,
+ "plan": "C50 X nominal"
+}

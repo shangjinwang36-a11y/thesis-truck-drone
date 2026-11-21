@@ -78,12 +78,15 @@ class StartState:
 
 
 def release_depot_preparation_on_road(plan: Plan, state: StartState) -> list[str]:
-    """Ground a depot launch only when that anchor can no longer be kept.
+    """Ground a depot launch the original gate cannot accept.
 
-    An ordinary depot launch stays while the truck has not left. A truck that
-    is returning keeps a future depot launch. A truck with a remaining visit
-    is retargeted by cut_launch_windows.close and is not grounded here.
-    S and X share this path. No new air sortie is created.
+    The formal gate rejects every unstarted depot launch on an in-transit
+    truck, including a truck whose current drive is the return to the depot.
+    The scheduler does not finish that drive and then prepare at the depot.
+    A depot launch stays only while the truck is not in transit. A remaining
+    visit is retargeted by cut_launch_windows.close before this function.
+    An in-transit truck with no remaining visit, returning or not, releases
+    those parcels to ground. S and X share this path. No new air sortie.
     """
     delivered = set(state.delivered)
     freed: list[str] = []
@@ -91,7 +94,7 @@ def release_depot_preparation_on_road(plan: Plan, state: StartState) -> list[str
         if sortie.started or sortie.launch_vid is not None:
             continue
         truck = sortie.truck
-        if truck not in state.truck_in_transit or truck in state.truck_returning:
+        if truck not in state.truck_in_transit:
             continue
         if plan.routes.get(truck):
             continue

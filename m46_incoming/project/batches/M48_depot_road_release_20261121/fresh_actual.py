@@ -2,6 +2,8 @@ from pathlib import Path
 import sys,os,json,hashlib
 HERE=Path(__file__).resolve().parent
 SOURCE_ROOT=HERE.parent/"M48_depot_road_release_core_20261121"
+M47_BATCH=HERE.parent/"M47_bounded_actual_20261121"
+sys.path.insert(0,str(M47_BATCH))
 sys.path.insert(0,str(SOURCE_ROOT))
 from research import *
 ROOT=HERE
@@ -104,31 +106,9 @@ def shift(job):
         EvaluationAudit.record=original;journal.close();dump(path,dict(pid=os.getpid(),task_finished=True))
 
 def main():
-    import subprocess
-    from concurrent.futures import ThreadPoolExecutor,wait,FIRST_COMPLETED
     if len(sys.argv)>1 and sys.argv[1]=='worker':
         row=shift(tuple(json.loads(sys.argv[2])));print(json.dumps(row),flush=True);return
-    check_core();jobs=[tuple(x)for x in read(HERE/'FRESH_JOB_REGISTRATION.json')['jobs']]
-    state=read(ROOT/'state.json');state.update(phase='M41_bounded_actual_running',pid=os.getpid(),active_processes=[os.getpid()],completed=0,total=len(jobs));dump(ROOT/'state.json',state);dump(HERE.parent.parent/'state.json',state)
-    failures=[];completed=[];todo=iter(jobs)
-    def run(job):
-        tag='_'.join(map(str,job));lp=HERE/'worker_logs'/f'{tag}.log';lp.parent.mkdir(exist_ok=True)
-        with lp.open('x')as f:
-            p=subprocess.Popen([sys.executable,str(Path(__file__).resolve()),'worker',json.dumps(job)],stdout=f,stderr=subprocess.STDOUT)
-            code=p.wait()
-        return job,code,p.pid,str(lp)
-    with ThreadPoolExecutor(max_workers=2)as ex:
-        active={ex.submit(run,next(todo))for _ in range(2)}
-        while active:
-            done,active=wait(active,return_when=FIRST_COMPLETED)
-            for fut in done:
-                job,code,pid,log=fut.result();item=dict(job=job,exit_code=code,pid=pid,log=log)
-                (failures if code else completed).append(item);print('FINISHED',len(completed),len(failures),job,code,flush=True)
-            if not failures:
-                for _ in done:
-                    nxt=next(todo,None)
-                    if nxt is not None:active.add(ex.submit(run,nxt))
-            dump(HERE/'FRESH_PROGRESS.json',dict(completed=completed,failures=failures))
-    state.update(phase='M38_frozen_sixmap_fresh_complete_audit_pending'if not failures else 'M38_frozen_sixmap_fresh_blocked',pid=None,active_processes=[],completed=len(completed),failed=len(failures));dump(ROOT/'state.json',state);dump(HERE.parent.parent/'state.json',state)
-    assert not failures,failures
+    # The fixed controller creates state and runs preflight before any worker.
+    from run_actual import main as control
+    control()
 if __name__=='__main__':main()

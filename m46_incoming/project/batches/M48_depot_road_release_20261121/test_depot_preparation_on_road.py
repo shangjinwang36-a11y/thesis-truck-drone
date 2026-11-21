@@ -43,7 +43,7 @@ def test_consumed_anchor_moves_to_the_next_visit_for_both_nominals():
         assert not any(not s.started and s.launch_vid is None and s.truck == "t2" for s in placed.sorties.values())
 
 
-def test_return_launch_and_ordinary_depot_launch_stay():
+def test_ordinary_depot_stays_and_unfinished_return_does_not():
     inst, phys, _alg = setup("C100", "M48")
     phys.set_active()
     plan = load("M47_CANDIDATE", "C100")
@@ -54,10 +54,13 @@ def test_return_launch_and_ordinary_depot_launch_stay():
     returning = initial_state(inst, phys)
     returning.truck_in_transit.add("t2")
     returning.truck_returning.add("t2")
+    assert committed_first_stop_violation(plan, returning) == "DEPOT_PREPARATION_ON_ROAD:t2"
     kept = plan.clone()
     assert release_depot_preparation_on_road(kept, returning) == []
-    assert any(not s.started and s.launch_vid is None and s.truck == "t2" for s in kept.sorties.values())
-    assert close(plan, returning, "recovery") is None
+    assert close(plan, returning, "recovery") is not None
+    placed = _legalize_depot_preparation(plan.clone(), inst, phys, returning)
+    assert committed_first_stop_violation(placed, returning) is None
+    assert not any(not s.started and s.launch_vid is None and s.truck == "t2" for s in placed.sorties.values())
 
 
 def test_arc_not_yet_launched_and_started_sortie_are_kept():
@@ -87,7 +90,7 @@ def test_arc_not_yet_launched_and_started_sortie_are_kept():
     assert not sample.air or sample.air[0] not in released
 
 
-def test_no_route_and_not_returning_goes_to_ground_without_new_air():
+def test_no_route_goes_to_ground_for_outbound_and_returning():
     inst, phys, _alg = setup("C100", "M48")
     phys.set_active()
     plan = load("M47_CANDIDATE", "C100")
@@ -102,6 +105,15 @@ def test_no_route_and_not_returning_goes_to_ground_without_new_air():
     assert not (air_ids & {p for s in placed.sorties.values() for p in s.air})
     grounded = {p for v in placed.visits.values() for p in v.ground}
     assert air_ids <= grounded
+    back = initial_state(inst, phys)
+    back.truck_in_transit.add("t2")
+    back.truck_returning.add("t2")
+    empty = plan.clone()
+    empty.routes["t2"] = []
+    back_air = set(depot_air(empty, "t2"))
+    grounded_back = _legalize_depot_preparation(empty, inst, phys, back)
+    assert committed_first_stop_violation(grounded_back, back) is None
+    assert not (back_air & {p for s in grounded_back.sorties.values() for p in s.air})
 
 
 def test_handover_actions_are_twenty_seconds():
@@ -124,8 +136,8 @@ def test_handover_actions_are_twenty_seconds():
 
 if __name__ == "__main__":
     test_consumed_anchor_moves_to_the_next_visit_for_both_nominals()
-    test_return_launch_and_ordinary_depot_launch_stay()
+    test_ordinary_depot_stays_and_unfinished_return_does_not()
     test_arc_not_yet_launched_and_started_sortie_are_kept()
-    test_no_route_and_not_returning_goes_to_ground_without_new_air()
+    test_no_route_goes_to_ground_for_outbound_and_returning()
     test_handover_actions_are_twenty_seconds()
     print("DEPOT_ANCHOR_REGRESSION_PASS", "native_evaluations", 0)

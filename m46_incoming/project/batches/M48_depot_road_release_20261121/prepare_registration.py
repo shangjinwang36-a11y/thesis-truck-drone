@@ -26,8 +26,7 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def main():
-    # nominal bytes are frozen; this script only hashes them
+def build_registration():
     nominal_hashes = {}
     for case in CASES:
         for role in "SX":
@@ -38,6 +37,7 @@ def main():
     driver = sha(HERE / "fresh_actual.py")
     jobs = []
     details = []
+    horizons = {}
     for case in CASES:
         for seed in SEEDS:
             world_hash = sha(witness(case, seed))
@@ -54,14 +54,16 @@ def main():
                 fp = fingerprint(scope)
                 job = ["M48_RECOVERY", case, arm, "dev", seed, "own"]
                 jobs.append(job)
+                horizons[f"{case}/{arm}/{seed}"] = raw["H_s"]
                 details.append(dict(logical_job=job, canonical_fresh_job=job, plan_version=version(plan),
                                      H_s=raw["H_s"], world_sha256=world_hash, complete_input_fingerprint=fp))
     assert len(jobs) == 36
-    doc = dict(
+    return dict(
         status="PREREGISTERED_NOT_LAUNCHED",
         jobs=jobs, logical_mapping=details, logical_count=36, unique_fresh_jobs=36,
         control="existing M47 actual on the same nominal bytes and worlds; not re-executed",
         nominal_sha256=nominal_hashes,
+        horizons=horizons,
         driver_sha256=driver,
         core_freeze_sha256=sha(CORE / "EXPERIMENT_CORE_FREEZE.json"),
         init_eval_budget=100, main_eval_budget=1000,
@@ -69,6 +71,10 @@ def main():
         fresh_execution_written=False,
         diagnostic_replay_is_not_a_fresh_row=True,
     )
+
+
+def main():
+    doc = build_registration()
     (HERE / "FRESH_JOB_REGISTRATION.json").write_text(json.dumps(doc, indent=1) + "\n")
     print("M48_PREREGISTERED", 36, "not_launched")
 
