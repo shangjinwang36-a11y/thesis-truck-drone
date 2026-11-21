@@ -1,0 +1,41 @@
+{
+  "question": "Why did the fresh RC100 1002 X episode finish at 777.971 as an emergency after a conditional suffix of 601.364, and why did all 12 S cells move, including R100 1002 S from hard H to emergency?",
+  "method": "Saved M48 and M49 executions and their first-recovery init logs only. No new search, no witness flag list, no seeds 4001-4030.",
+  "same_first_visible_cut": "36/36. Nominal cost and z match, and replan 1 has the same cut time and the same observed parcel.",
+  "conditional_pickle": "The 601.364/563.508 diagnostics optimized a later saved visible snapshot. That snapshot is not the state this fresh episode had reached. The fresh episode had already selected a different plan at replan 1.",
+  "headline_cells": {
+    "RC100_1002_X": {
+      "cut_s": 93.22277937779884,
+      "observed_parcel": "p048",
+      "M48_adopted_cost": 521.1247563165955,
+      "M48_adopted_z": 5347.28203474307,
+      "M49_adopted_cost": 507.49410189777615,
+      "M49_adopted_z": 5756.6160307509745,
+      "M49_main_z_jump": 439.3263762549941,
+      "M49_init_H_then_feasible": 0,
+      "final_paid": 777.9705106520454,
+      "final_emergency": true
+    },
+    "R100_1002_S": {
+      "cut_s": 1135.3432025350114,
+      "observed_parcel": "p023",
+      "M48_adopted_cost": 692.6313216804663,
+      "M48_adopted_z": 4124.904851636158,
+      "M49_adopted_cost": 709.6243896930858,
+      "M49_adopted_z": 4223.704557096339,
+      "M48_init_feasible": 4,
+      "M48_init_energy_reject": 96,
+      "M49_init_feasible": 34,
+      "M49_init_H": 33,
+      "M49_init_custody": 28,
+      "M49_init_H_then_feasible": 0,
+      "M48_final_emergency": false,
+      "M49_final_emergency": true
+    }
+  },
+  "reorder_at_first_recovery": "A feasible evaluation immediately after H_EXCEEDED occurred only for C50 1002 S, R50 1001 S, and RC50 1002 S. It did not occur for RC100 1002 X or R100 1002 S. The geometric reorder is not the first-recovery adopter on those two cells.",
+  "what_changed_before_alns": "On the shared cut, the first catalog evaluation is already slightly cheaper in M49 while makespan is often unchanged. The rest of the 100 init evaluations change character: energy rejects become feasible plans or hard-H and custody rejects. That happens before main ALNS. Both blanket landed=True on every sortie and the truck-field sync are applied to those candidates. The saved logs do not separate those two edits.",
+  "kept": ["started-fragment landed=True", "unstarted truck equals the launch visit truck", "started fragment truck equals the recovery visit, launch_truck preserved"],
+  "dropped": ["drive-distance same-truck reorder inside _first_feasible", "marking every sortie in a catalog candidate landed"],
+  "not_claimed": "This patch is not asserted to restore 32/36 hard H or to beat M48. The paid check below is not authorized yet."
+}
