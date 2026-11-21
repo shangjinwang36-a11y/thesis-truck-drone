@@ -1,0 +1,29 @@
+{
+  "decision": "PARTIAL",
+  "seed_1002": {
+    "calls": 2101,
+    "init_used": 1100,
+    "main_used": 1000,
+    "hard_feasible": true,
+    "full_replay_ok": true,
+    "full_cost": 601.3641210199783,
+    "invoice_parts": {"driver": 349.0219734543964, "overtime": 0.0, "distance": 246.47867274945713, "electricity": 5.863474816124775},
+    "min_energy_full_replay": 0.053527854157392404,
+    "baseline_emergency_paid": 732.0096592354022,
+    "note": "The suffix-only bill is 422.56360845845535 and is not the full conditional cost. Prefix plus suffix bill equals the hard evaluation cost."
+  },
+  "seed_1001": {
+    "calls": 1304,
+    "init_used": 1304,
+    "main_used": null,
+    "feasible_suffix_cost": null,
+    "first_reasons": ["H_EXCEEDED:t7@6077.2>5911.7", "G_CUSTODY:p047@c047 holder=TRUCK:t7 truck=t2"],
+    "distribution": {"H_EXCEEDED": 261, "G_CUSTODY": 63, "P_CUSTODY": 464, "sortie 376": 168, "SWAP_CANNOT_FIX": 348},
+    "limit": "p047 is in the failure lock and is held by t7, so giving its visit to t2 is a custody violation. After removing only the illegal moves, the remaining evaluated skeletons still miss hard H or energy. This search did not prove that no legal suffix exists."
+  },
+  "new_calls": 3405,
+  "separate_from_sealed_fragment_2608": true,
+  "separate_from_joint_landing_2608": true,
+  "fresh_preregistration": false,
+  "core_freeze_sha256": "ad479d32e946e0f8deb9374f830e758b593051abd9b968000a858e0525a200b0"
+}

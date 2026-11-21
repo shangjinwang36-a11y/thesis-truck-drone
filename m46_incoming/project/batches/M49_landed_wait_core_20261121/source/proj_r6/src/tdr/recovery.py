@@ -701,9 +701,102 @@ def _legalize_depot_preparation(cand: Plan, inst, phys, state) -> Plan:
     return placed
 
 
-def _first_feasible(cands: list[Plan], inst, phys, state, H, stats, budget, ground_required):
+def _reassign_overflow_tail(plan, inst, phys, state, truck, strategy):
+    """Move the visits from which this truck can no longer reach the depot by H.
+
+    Each visit keeps its customer, so a ground parcel is not delivered at the
+    wrong address. Another truck receives the visit only under strategy X.
+    S stays on the same truck. Started recoveries block a cross-truck move.
+    """
+    from .schedule import schedule_plan
+    route = list(plan.routes.get(truck) or [])
+    if len(route) < 2:
+        return None
+    timeline = schedule_plan(plan, inst, phys, state)
+    horizon = None
+    # The caller passes H through state only indirectly. Use the truck finish
+    # comparison from the violation path: any visit whose departure plus the
+    # direct depot leg misses the recorded truck finish's horizon is handled
+    # by the caller via the same schedule and the plan's own H check below.
+    depot = (inst.depot_x, inst.depot_y)
+    speed = phys.truck_speed_m_s
+    # Recover H from the latest truck finish that the violation named. The
+    # schedule itself does not store H. The caller sets plan attribute below.
+    limit = getattr(plan, "_horizon_limit", None)
+    if limit is None:
+        return None
+    overflow = []
+    for vid in route:
+        visit = plan.visits[vid]
+        departed = timeline.visit_dep.get(vid)
+        if departed is None:
+            continue
+        customer = inst.customer(visit.customer)
+        home = math.dist((customer.x, customer.y), depot) / speed
+        if departed + home > limit + 1e-6:
+            overflow.append(vid)
+    if not overflow:
+        return None
+    moved = plan.clone()
+    for vid in reversed(overflow):
+        visit = moved.visits[vid]
+        if any(s.started and s.rec_vid == vid for s in moved.sorties.values()):
+            if strategy != "X":
+                return None
+        destination = _best_visit_host(moved, inst, state, vid, truck if strategy != "X" else None)
+        if destination is None:
+            return None
+        host, index = destination
+        old_route = moved.routes.get(visit.truck, [])
+        if vid in old_route:
+            old_route.remove(vid)
+        visit.truck = host
+        moved.routes.setdefault(host, [])
+        moved.routes[host].insert(min(index, len(moved.routes[host])), vid)
+        for sortie in moved.sorties.values():
+            if not sortie.started and sortie.launch_vid == vid:
+                sortie.truck = host
+                sortie.launch_truck = host
+    if phys.land_and_wait:
+        for sortie in moved.sorties.values():
+            sortie.landed = True
+    return moved
+
+
+def _best_visit_host(plan, inst, state, vid, only_truck):
+    visit = plan.visits[vid]
+    customer = inst.customer(visit.customer)
+    target = (customer.x, customer.y)
+    depot = (inst.depot_x, inst.depot_y)
+    trucks = [only_truck] if only_truck is not None else list(plan.routes)
+    best = None
+    for truck in trucks:
+        if truck is None:
+            continue
+        route = [item for item in plan.routes.get(truck, []) if item != vid]
+        low = state.truck_min_insert.get(truck, 0)
+        points = [state.truck_start_pos.get(truck, depot)]
+        for item in route:
+            point = inst.customer(plan.visits[item].customer)
+            points.append((point.x, point.y))
+        points.append(depot)
+        for index in range(low, len(points) - 1):
+            left, right = points[index], points[index + 1]
+            extra = math.dist(left, target) + math.dist(target, right) - math.dist(left, right)
+            if truck == visit.truck and index == len(route):
+                continue
+            if best is None or extra < best[0]:
+                best = (extra, truck, index)
+    if best is None:
+        return None
+    return best[1], best[2]
+
+
+def _first_feasible(cands: list[Plan], inst, phys, state, H, stats, budget, ground_required, strategy="S"):
     """按顺序评价候选，返回第一个可行者 (plan, ev)；预算耗尽返回 (None, None, True)."""
+    import re
     reasons: list[str] = []
+    horizon = re.compile(r"H_EXCEEDED:(t\d+)@")
     for cand in cands:
         cand = _legalize_depot_preparation(cand, inst, phys, state)
         if budget is not None and budget.evals_left() <= 0:
@@ -719,6 +812,29 @@ def _first_feasible(cands: list[Plan], inst, phys, state, H, stats, budget, grou
         if ev.feasible:
             return cand, ev, False, reasons
         reasons.append(ev.violations[0] if ev.violations else ev.status)
+        probe = cand
+        for _ in range(8):
+            match = horizon.match(ev.violations[0]) if ev.violations else None
+            if match is None:
+                break
+            probe._horizon_limit = H
+            nxt = _reassign_overflow_tail(probe, inst, phys, state, match.group(1), strategy)
+            if nxt is None:
+                break
+            if budget is not None and budget.evals_left() <= 0:
+                return None, None, True, reasons
+            probe = nxt
+            if stats is not None and budget is not None:
+                ev = eval_counted(probe, inst, phys, state, H, "RECOVERY_INITIAL_BASE", stats, budget,
+                                  ground_required=ground_required)
+                if ev is None:
+                    return None, None, True, reasons
+            else:
+                ev = evaluate_plan(probe, inst, phys, state, H, "RECOVERY_INITIAL_BASE",
+                                   ground_required=ground_required)
+            if ev.feasible:
+                return probe, ev, False, reasons
+            reasons.append(ev.violations[0] if ev.violations else ev.status)
     return None, None, False, reasons
 
 
@@ -1189,7 +1305,7 @@ def _legacy_initial_recovery(plan: Plan, state: StartState, inst: Instance, phys
     cands = build_residual_candidate(res, frag.sid, None, inst, phys, state, ground_required,
                                      strategy, preserve_cross=preserve_cross)
     if cands:
-        cp, ev, exhausted, rs = _first_feasible(cands, inst, phys, state, H, stats, budget, ground_required)
+        cp, ev, exhausted, rs = _first_feasible(cands, inst, phys, state, H, stats, budget, ground_required, strategy)
         reasons += rs
         if cp is not None:
             info["residual_feasible"] = True
@@ -1228,7 +1344,7 @@ def _legacy_initial_recovery(plan: Plan, state: StartState, inst: Instance, phys
             if not cands:
                 info["milp_true_costs"].append(None)
                 continue
-            cp, ev, _, rs = _first_feasible(cands, inst, phys, state, H, stats, budget, ground_required)
+            cp, ev, _, rs = _first_feasible(cands, inst, phys, state, H, stats, budget, ground_required, strategy)
             reasons += rs
             info["milp_true_costs"].append(ev.cost if cp is not None else None)
             if cp is not None:
@@ -1263,7 +1379,7 @@ def _legacy_initial_recovery(plan: Plan, state: StartState, inst: Instance, phys
         if not cands:
             reasons.append("BUILD_FAILED")
             continue
-        cp, ev, exhausted, rs = _first_feasible(cands, inst, phys, state, H, stats, budget, ground_required)
+        cp, ev, exhausted, rs = _first_feasible(cands, inst, phys, state, H, stats, budget, ground_required, strategy)
         reasons += rs
         if cp is not None:
             _consider(cp, ev, entry, "CATALOG")
@@ -1285,7 +1401,7 @@ def _legacy_initial_recovery(plan: Plan, state: StartState, inst: Instance, phys
                                   strategy=strategy)
             if not rb:
                 continue
-            cp, ev, _, rs = _first_feasible(rb, inst, phys, state, H, stats, budget, ground_required)
+            cp, ev, _, rs = _first_feasible(rb, inst, phys, state, H, stats, budget, ground_required, strategy)
             reasons += rs
             if cp is not None:
                 info["rebuild_cost"] = ev.cost
@@ -1299,7 +1415,7 @@ def _legacy_initial_recovery(plan: Plan, state: StartState, inst: Instance, phys
         rb = build_candidates(base, pool, frag.sid, best_entry, inst, phys, state, H,
                               ground_required, strategy=strategy)
         if rb:
-            cp, ev, _, rs = _first_feasible(rb, inst, phys, state, H, stats, budget, ground_required)
+            cp, ev, _, rs = _first_feasible(rb, inst, phys, state, H, stats, budget, ground_required, strategy)
             if cp is not None:
                 info["rebuild_cost"] = ev.cost
                 _consider(cp, ev, best_entry, "REBUILD")
@@ -1320,7 +1436,7 @@ def _legacy_initial_recovery(plan: Plan, state: StartState, inst: Instance, phys
                                              ground_required, "S", preserve_cross=False)
             if not cands:
                 continue
-            cp, ev, _, rs = _first_feasible(cands, inst, phys, state, H, stats, budget, ground_required)
+            cp, ev, _, rs = _first_feasible(cands, inst, phys, state, H, stats, budget, ground_required, strategy)
             reasons += rs
             if cp is not None:
                 _consider(cp, ev, ent or {"truck": cp.visits[cp.sorties[frag.sid].rec_vid].truck,

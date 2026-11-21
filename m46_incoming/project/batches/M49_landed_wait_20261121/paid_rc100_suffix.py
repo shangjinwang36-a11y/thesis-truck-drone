@@ -25,7 +25,7 @@ from tdr.schedule import committed_first_stop_violation  # noqa: E402
 from tdr.simulate import collect_segment, derive_rngs  # noqa: E402
 from dataclasses import asdict  # noqa: E402
 
-OUT = Path(__file__).resolve().parent / "paid_joint" / f"RC100_{SEED}"
+OUT = Path(__file__).resolve().parent / "paid_rehome" / f"RC100_{SEED}"
 OUT.mkdir(parents=True, exist_ok=True)
 raw_f = (OUT / "RAW.jsonl").open("w", encoding="utf-8")
 receipt_f = (OUT / "receipts.jsonl").open("w", encoding="utf-8")
@@ -69,7 +69,7 @@ scope = hashlib.sha256((CORE / "EXPERIMENT_CORE_FREEZE.json").read_bytes()).hexd
     core_freeze_sha256=scope,
     plan=plan_to_dict(plan, inst), state=asdict(state),
     ground_required_count=len(greq),
-    this_run_is="M49_joint_chain_landing_after_the_sealed_2608",
+    this_run_is="M49_rehome_overflow_visits_keep_customer",
 ), indent=1, default=str))
 started = time.perf_counter()
 with audit_evaluations() as audit:
