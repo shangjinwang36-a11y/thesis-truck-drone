@@ -462,7 +462,24 @@ def _finish_attempts(attempts: list[Plan], inst: Instance, phys: PhysicalConfig,
         for plan in out:
             for sortie in plan.sorties.values():
                 sortie.landed = True
+    for plan in out:
+        _sync_recovery_truck(plan)
     return out
+
+
+def _sync_recovery_truck(plan: Plan) -> None:
+    """The recovery truck is the visit that receives the drone.
+
+    sortie.truck is only a label. After a retarget it can keep an old value
+    while the visit stays on the launch truck. launch_truck is left as it is.
+    """
+    for sortie in plan.sorties.values():
+        visit = plan.visits.get(sortie.rec_vid)
+        if visit is None:
+            continue
+        if sortie.launch_truck is None:
+            sortie.launch_truck = sortie.truck
+        sortie.truck = visit.truck
 
 
 def _assigned(plan: Plan) -> set[str]:
@@ -701,6 +718,70 @@ def _legalize_depot_preparation(cand: Plan, inst, phys, state) -> Plan:
     return placed
 
 
+def _reorder_same_truck(plan, inst, phys, state, truck):
+    """Move overflow visits earlier on the same truck when that shortens its finish.
+
+    S and X share this. The visit's truck does not change, so a parcel held by
+    that truck stays there. A drone's launch must remain before its recovery.
+    The caller pays for the result only when the scheduled finish is strictly
+    shorter. A reorder that does not shorten the truck is not evaluated.
+    """
+    from .schedule import schedule_plan
+    route = list(plan.routes.get(truck) or [])
+    if len(route) < 2:
+        return None
+    try:
+        base = schedule_plan(plan, inst, phys, state).truck_finish.get(truck)
+    except ValueError:
+        return None
+    if base is None:
+        return None
+    fixed = {vid for vid, _customer in state.truck_committed_first.values()}
+    low = state.truck_min_insert.get(truck, 0)
+    best = None
+    for vid in route:
+        if vid in fixed:
+            continue
+        for index in range(low, len(route)):
+            trial = plan.clone()
+            order = list(trial.routes[truck])
+            order.remove(vid)
+            order.insert(min(index, len(order)), vid)
+            if order == list(plan.routes[truck]):
+                continue
+            if not _launch_before_recovery(trial, truck, order):
+                continue
+            trial.routes[truck] = order
+            try:
+                finish = schedule_plan(trial, inst, phys, state).truck_finish.get(truck)
+            except ValueError:
+                continue
+            if finish is None or finish >= base - 1e-6:
+                continue
+            if best is None or finish < best[0]:
+                best = (finish, trial)
+    if best is None:
+        return None
+    chosen = best[1]
+    _sync_recovery_truck(chosen)
+    if phys.land_and_wait:
+        for sortie in chosen.sorties.values():
+            sortie.landed = True
+    return chosen
+
+
+def _launch_before_recovery(plan, truck, order) -> bool:
+    position = {vid: i for i, vid in enumerate(order)}
+    for sortie in plan.sorties.values():
+        if sortie.started or sortie.launch_vid not in position or sortie.rec_vid not in position:
+            continue
+        if plan.visits.get(sortie.launch_vid) and plan.visits[sortie.launch_vid].truck != truck:
+            continue
+        if position[sortie.launch_vid] > position[sortie.rec_vid]:
+            return False
+    return True
+
+
 def _holder_truck(state, parcel: str) -> str | None:
     """原保管规则：卡车上的票只能由该车地送，仓库票不限制，无人机在途的票不能改派地送车。"""
     from .moves import allowed_truck
@@ -883,31 +964,25 @@ def _first_feasible(cands: list[Plan], inst, phys, state, H, stats, budget, grou
         if ev.feasible:
             return cand, ev, False, reasons
         reasons.append(ev.violations[0] if ev.violations else ev.status)
-        probe = cand
-        for _ in range(8):
-            match = horizon.match(ev.violations[0]) if ev.violations else None
-            if match is None:
-                break
-            probe._horizon_limit = H
-            nxt = _advance_late_recovery(probe, inst, phys, state, match.group(1), strategy)
-            if nxt is None:
-                nxt = _reassign_overflow_tail(probe, inst, phys, state, match.group(1), strategy)
-            if nxt is None:
-                break
-            if budget is not None and budget.evals_left() <= 0:
+        match = horizon.match(ev.violations[0]) if ev.violations else None
+        if match is None:
+            continue
+        nxt = _reorder_same_truck(cand, inst, phys, state, match.group(1))
+        if nxt is None:
+            continue
+        if budget is not None and budget.evals_left() <= 0:
+            return None, None, True, reasons
+        if stats is not None and budget is not None:
+            ev = eval_counted(nxt, inst, phys, state, H, "RECOVERY_INITIAL_BASE", stats, budget,
+                              ground_required=ground_required)
+            if ev is None:
                 return None, None, True, reasons
-            probe = nxt
-            if stats is not None and budget is not None:
-                ev = eval_counted(probe, inst, phys, state, H, "RECOVERY_INITIAL_BASE", stats, budget,
-                                  ground_required=ground_required)
-                if ev is None:
-                    return None, None, True, reasons
-            else:
-                ev = evaluate_plan(probe, inst, phys, state, H, "RECOVERY_INITIAL_BASE",
-                                   ground_required=ground_required)
-            if ev.feasible:
-                return probe, ev, False, reasons
-            reasons.append(ev.violations[0] if ev.violations else ev.status)
+        else:
+            ev = evaluate_plan(nxt, inst, phys, state, H, "RECOVERY_INITIAL_BASE",
+                               ground_required=ground_required)
+        if ev.feasible:
+            return nxt, ev, False, reasons
+        reasons.append(ev.violations[0] if ev.violations else ev.status)
     return None, None, False, reasons
 
 

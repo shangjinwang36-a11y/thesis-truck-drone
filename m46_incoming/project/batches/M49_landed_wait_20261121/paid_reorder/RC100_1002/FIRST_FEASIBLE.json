@@ -1,0 +1,230 @@
+{
+ "index": 13,
+ "cost": 601.5840995742682,
+ "status": "FEASIBLE",
+ "plan": {
+  "case_id": "RC100",
+  "routes": {
+   "t1": [],
+   "t2": [
+    124,
+    508
+   ],
+   "t3": [],
+   "t4": [],
+   "t5": [
+    144,
+    519,
+    501
+   ],
+   "t6": [],
+   "t7": [
+    504,
+    520,
+    94,
+    517
+   ],
+   "t8": []
+  },
+  "visits": {
+   "94": {
+    "vid": 94,
+    "truck": "t7",
+    "customer": "c004",
+    "ground": [
+     "p004"
+    ]
+   },
+   "124": {
+    "vid": 124,
+    "truck": "t2",
+    "customer": "c052",
+    "ground": [
+     "p052"
+    ]
+   },
+   "144": {
+    "vid": 144,
+    "truck": "t5",
+    "customer": "c036",
+    "ground": []
+   },
+   "501": {
+    "vid": 501,
+    "truck": "t5",
+    "customer": "c090",
+    "ground": [
+     "p090"
+    ]
+   },
+   "504": {
+    "vid": 504,
+    "truck": "t7",
+    "customer": "c009",
+    "ground": [
+     "p009"
+    ]
+   },
+   "508": {
+    "vid": 508,
+    "truck": "t2",
+    "customer": "c066",
+    "ground": [
+     "p066"
+    ]
+   },
+   "517": {
+    "vid": 517,
+    "truck": "t7",
+    "customer": "c047",
+    "ground": [
+     "p047"
+    ]
+   },
+   "519": {
+    "vid": 519,
+    "truck": "t5",
+    "customer": "c005",
+    "ground": [
+     "p005"
+    ]
+   },
+   "520": {
+    "vid": 520,
+    "truck": "t7",
+    "customer": "c028",
+    "ground": [
+     "p028"
+    ]
+   }
+  },
+  "sorties": {
+   "130": {
+    "sid": 130,
+    "drone": "d13",
+    "truck": "t7",
+    "launch_vid": null,
+    "mode": "AIR",
+    "lam": 0.0,
+    "air": [
+     "p045"
+    ],
+    "rec_vid": 520,
+    "handover": [
+     "p028"
+    ],
+    "started": true,
+    "start_time": 3452.903818675321,
+    "start_pos": [
+     6089.406670666289,
+     19194.292360134405
+    ],
+    "rec_priority": 0,
+    "launch_priority": 0,
+    "launch_truck": "t7",
+    "landed": true
+   },
+   "485": {
+    "sid": 485,
+    "drone": "d10",
+    "truck": "t5",
+    "launch_vid": 144,
+    "mode": "ARC",
+    "lam": 0.0,
+    "air": [
+     "p035"
+    ],
+    "rec_vid": 519,
+    "handover": [],
+    "started": false,
+    "start_time": 0.0,
+    "start_pos": null,
+    "rec_priority": 0,
+    "launch_priority": 0,
+    "launch_truck": "t5",
+    "landed": true
+   },
+   "488": {
+    "sid": 488,
+    "drone": "d3",
+    "truck": "t2",
+    "launch_vid": null,
+    "mode": "AIR",
+    "lam": 0.0,
+    "air": [],
+    "rec_vid": 124,
+    "handover": [],
+    "started": true,
+    "start_time": 3452.903818675321,
+    "start_pos": [
+     2148.468578416572,
+     6125.260349192195
+    ],
+    "rec_priority": 0,
+    "launch_priority": 0,
+    "launch_truck": "t2",
+    "landed": true
+   },
+   "491": {
+    "sid": 491,
+    "drone": "d4",
+    "truck": "t2",
+    "launch_vid": 124,
+    "mode": "ARC",
+    "lam": 0.0,
+    "air": [
+     "p051",
+     "p063"
+    ],
+    "rec_vid": 508,
+    "handover": [],
+    "started": false,
+    "start_time": 0.0,
+    "start_pos": null,
+    "rec_priority": 0,
+    "launch_priority": 0,
+    "launch_truck": "t2",
+    "landed": true
+   },
+   "494": {
+    "sid": 494,
+    "drone": "d14",
+    "truck": "t7",
+    "launch_vid": 504,
+    "mode": "ARC",
+    "lam": 0.25,
+    "air": [
+     "p033"
+    ],
+    "rec_vid": 517,
+    "handover": [],
+    "started": false,
+    "start_time": 0.0,
+    "start_pos": null,
+    "rec_priority": 0,
+    "launch_priority": 0,
+    "launch_truck": "t7",
+    "landed": true
+   }
+  },
+  "drone_sorties": {
+   "d4": [
+    491
+   ],
+   "d13": [
+    130
+   ],
+   "d10": [
+    485
+   ],
+   "d14": [
+    494
+   ],
+   "d3": [
+    488
+   ]
+  },
+  "next_vid": 521,
+  "next_sid": 496
+ }
+}
