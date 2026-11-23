@@ -1,0 +1,47 @@
+{
+  "increment_id": "increment_20261123_091709",
+  "increment_cutoff": "2026-11-23 09:17:09 CST",
+  "max_volume_bytes": 47185920,
+  "volume_count": 2,
+  "volumes": [
+    {
+      "type": "split_object",
+      "sha256": "082b2ae5378a1bc9264e066c67538e67f5522843fbf1f0b75d23d0e12279ac89",
+      "bytes": 53525682,
+      "parts": [
+        {
+          "name": "incr_vol_obj_082b2ae5378a1bc9264e066c67538e67f5522843fbf1f0b75d23d0e12279ac89.part.001",
+          "path": "/workspace/thesis_full_backup_20261121_2058/volumes/increment_20261123_091709/incr_vol_obj_082b2ae5378a1bc9264e066c67538e67f5522843fbf1f0b75d23d0e12279ac89.part.001",
+          "bytes": 47185920,
+          "sha256": "3666c22a98e223ed22054a1e902ad096fbd1d8a673bdb618f922d04b52adfc22",
+          "index": 1
+        },
+        {
+          "name": "incr_vol_obj_082b2ae5378a1bc9264e066c67538e67f5522843fbf1f0b75d23d0e12279ac89.part.002",
+          "path": "/workspace/thesis_full_backup_20261121_2058/volumes/increment_20261123_091709/incr_vol_obj_082b2ae5378a1bc9264e066c67538e67f5522843fbf1f0b75d23d0e12279ac89.part.002",
+          "bytes": 6339762,
+          "sha256": "1728a317c44005479e40940dfd689047cfe048f65390757940211381c61bc318",
+          "index": 2
+        }
+      ],
+      "part_count": 2,
+      "increment": true
+    },
+    {
+      "type": "tar_gz_volume",
+      "name": "incr_vol_0002.tar.gz",
+      "path": "/workspace/thesis_full_backup_20261121_2058/volumes/increment_20261123_091709/incr_vol_0002.tar.gz",
+      "bytes": 1132,
+      "sha256": "d229dce8e785ea4fdb42362963abeaabff01846d508a1358b2032baabcccb0b3",
+      "object_count": 2,
+      "object_bytes": 1283,
+      "objects": [
+        "a97be622c719a902e670969913b78cd799fa76c0b516c05e0fc254ce73f68eba",
+        "f42f4346167ee79164c2ebafb59044f4d4d240a6d866bf1a0e3126fcf510980a"
+      ],
+      "increment": true
+    }
+  ],
+  "new_unique_objects": 3,
+  "note": "Incremental volumes only. v1 and previous increment volume files were not overwritten."
+}

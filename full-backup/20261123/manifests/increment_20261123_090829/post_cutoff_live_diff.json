@@ -1,0 +1,76 @@
+{
+  "compared_at": "2026-11-23 09:14:04 CST",
+  "snapshot_id": "cutoff_20261123_090736",
+  "snapshot_cutoff": "2026-11-23 09:07:36 CST",
+  "snapshot_files": 236102,
+  "snapshot_bytes": 2510122335,
+  "live_files_now": 236286,
+  "live_bytes_now": 2510528459,
+  "only_in_live_new_or_unsnapshotted": 184,
+  "only_in_live_bytes": 406099,
+  "only_in_snapshot_missing_from_live": 0,
+  "size_or_mtime_changed": 1,
+  "changed_bytes_live": 25,
+  "only_in_live_by_top": {
+    "systematic_audit/review_0010": {
+      "files": 184,
+      "bytes": 406099
+    }
+  },
+  "changed_by_top": {
+    "systematic_audit/review_0010": {
+      "files": 1,
+      "bytes": 25
+    }
+  },
+  "only_in_snapshot_by_top": {},
+  "note": "Live M85 continued changing after the read-only snapshot. These differences are NOT in increment_20261123_090829. They must be listed as post-cutoff and included in a follow-on increment or a supplemental snapshot before claiming the upload contains the later live tree. World/holdout contents were not expanded.",
+  "samples": {
+    "only_in_live_review_0010_sample": [
+      "systematic_audit/review_0010/ALL_SIX_CURRENT_CONSUMERS_0010.json",
+      "systematic_audit/review_0010/COVERAGE_MATRIX_DELIVERY_0010.json",
+      "systematic_audit/review_0010/DEFECTS_FINAL_0010.json",
+      "systematic_audit/review_0010/IMMUTABILITY_FINAL_0010.json",
+      "systematic_audit/review_0010/MINIMUM_REMAINING_VALIDATION_0010.json",
+      "systematic_audit/review_0010/REPORT_DELIVERY_0010.md",
+      "systematic_audit/review_0010/SOURCE_FINAL_RECONCILIATION.json",
+      "systematic_audit/review_0010/V7_TO_V8_FINAL.diff",
+      "systematic_audit/review_0010/V7_TO_V8_FINAL_0002.diff",
+      "systematic_audit/review_0010/V7_TO_V8_FINAL_0003.diff",
+      "systematic_audit/review_0010/implementation/check_immutability_0010.py",
+      "systematic_audit/review_0010/implementation/final_source_review_0010.py",
+      "systematic_audit/review_0010/implementation/final_source_review_0010_0002.py",
+      "systematic_audit/review_0010/implementation/final_source_review_0010_0003.py",
+      "systematic_audit/review_0010/implementation/final_source_review_0010_0004.py",
+      "systematic_audit/review_0010/runs/FINAL_SOURCE_REVIEW.log",
+      "systematic_audit/review_0010/runs/FINAL_SOURCE_REVIEW_0002.log",
+      "systematic_audit/review_0010/runs/FINAL_SOURCE_REVIEW_0003.log",
+      "systematic_audit/review_0010/runs/FINAL_SOURCE_REVIEW_0004.log",
+      "systematic_audit/review_0010/runs/IMMUTABILITY.log",
+      "systematic_audit/review_0010/runs/IO_FAULTS/BOUND_READ_CORRUPTION/EXPLORE_LEDGER_FINAL.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/BOUND_READ_CORRUPTION/FRAME_LEDGER_FINAL.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/BOUND_READ_CORRUPTION/LEDGER_FINAL.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/BOUND_READ_CORRUPTION/PAID_RETURN_SUMMARY.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/BOUND_READ_CORRUPTION/RESULT.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/BOUND_READ_CORRUPTION/published/cost.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/BOUND_READ_CORRUPTION/published/nominal_plan.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/BOUND_READ_CORRUPTION/published/verification.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/BOUND_READ_CORRUPTION/published/verification_scheduler.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/CLEANUP_failure_diagnostic_write/EXPLORE_LEDGER_FINAL.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/CLEANUP_failure_diagnostic_write/FRAME_LEDGER_FINAL.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/CLEANUP_failure_diagnostic_write/LEDGER_FINAL.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/CLEANUP_failure_diagnostic_write/PAID_RETURN_SUMMARY.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/CLEANUP_failure_diagnostic_write/published/cost.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/CLEANUP_failure_diagnostic_write/published/nominal_plan.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/CLEANUP_failure_diagnostic_write/published/verification.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/CLEANUP_failure_diagnostic_write/published/verification_scheduler.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/CLEANUP_final_ledger/EXPLORE_LEDGER_FINAL.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/CLEANUP_final_ledger/FINALIZATION_FAILURE.json",
+      "systematic_audit/review_0010/runs/IO_FAULTS/CLEANUP_final_ledger/FRAME_LEDGER_FINAL.json"
+    ],
+    "only_in_live_review_0010_count": 184,
+    "changed_review_0010": [
+      "systematic_audit/review_0010/runs/COLD84_FINAL.log"
+    ]
+  }
+}

@@ -1,0 +1,97 @@
+manifest_checks [{"path": "/workspace/projects/td_cloud_research_20261120/batches/M64_bot_nominal_proxy_control_20261122/FINAL_MANIFEST.json", "expected_sha256": "473623523dfabb991f3b3c29ab5b62b621f6bd5beac06f5103f473404a3db3df", "present": true, "actual_sha256": "473623523dfabb991f3b3c29ab5b62b621f6bd5beac06f5103f473404a3db3df", "match": true, "bytes": 152477}, {"path": "/workspace/projects/td_cloud_research_20261120/batches/M65_bot_risk_compatible_joint_20261122/MANIFEST.json", "expected_sha256": "c445e9493d29e01d34a5fd0510df0d5d4e497ace35440bed1551d126677374e7", "present": true, "actual_sha256": "c445e9493d29e01d34a5fd0510df0d5d4e497ace35440bed1551d126677374e7", "match": true, "bytes": 8080}]
+[supplement] new=0 changed=0 unchanged=1979
+[m58-m65] new=1702 changed=0 unchanged=0
+{
+  "summary": {
+    "original_snapshot_cutoff": "2026-11-21 21:09:58 CST",
+    "previous_increment_id": "increment_20261121_234839",
+    "previous_increment_cutoff": "2026-11-21 23:48:39 CST",
+    "increment_cutoff": "2026-11-22 02:31:49 CST",
+    "increment_id": "increment_20261122_023149",
+    "upload_status": "prepared_not_uploaded",
+    "added_source_files": 1702,
+    "changed_source_files": 0,
+    "unchanged_already_present": 1979,
+    "added_source_bytes": 1164457339,
+    "changed_source_bytes": 0,
+    "new_unique_objects": 475,
+    "new_unique_object_bytes": 1144703359,
+    "increment_volume_records": 5,
+    "increment_volume_bytes": 1095869829,
+    "increment_archive_tests": 19,
+    "increment_archive_failures": 0,
+    "missing_increment_trees": [],
+    "m50_m57_supplement_new": 0,
+    "m50_m57_supplement_changed": 0,
+    "expected_manifest_sha_checks": [
+      {
+        "path": "/workspace/projects/td_cloud_research_20261120/batches/M64_bot_nominal_proxy_control_20261122/FINAL_MANIFEST.json",
+        "expected_sha256": "473623523dfabb991f3b3c29ab5b62b621f6bd5beac06f5103f473404a3db3df",
+        "present": true,
+        "actual_sha256": "473623523dfabb991f3b3c29ab5b62b621f6bd5beac06f5103f473404a3db3df",
+        "match": true,
+        "bytes": 152477
+      },
+      {
+        "path": "/workspace/projects/td_cloud_research_20261120/batches/M65_bot_risk_compatible_joint_20261122/MANIFEST.json",
+        "expected_sha256": "c445e9493d29e01d34a5fd0510df0d5d4e497ace35440bed1551d126677374e7",
+        "present": true,
+        "actual_sha256": "c445e9493d29e01d34a5fd0510df0d5d4e497ace35440bed1551d126677374e7",
+        "match": true,
+        "bytes": 8080
+      }
+    ],
+    "total_source_files": 317979,
+    "total_source_symlinks": 81,
+    "total_source_bytes": 14313154644,
+    "total_unique_objects": 92173,
+    "total_unique_object_bytes": 8092625071,
+    "total_volume_records": 83,
+    "total_volume_bytes": 3557266874,
+    "credential_exclusion_paths": 27,
+    "object_index": {
+      "path": "/workspace/thesis_full_backup_20261121_2058/manifests/object_index.jsonl.gz",
+      "sha256": "7154461f0c5dda6ef1f8168cd08adcfaca7c42c21bb34500bd5c7ffae46c3be3",
+      "bytes": 4083078,
+      "parts": null
+    },
+    "source_map": {
+      "path": "/workspace/thesis_full_backup_20261121_2058/manifests/source_to_object_map.jsonl.gz",
+      "sha256": "6115a831537f17d731cfa4b8a1d87691f02d75d94099303ff56b00e90d65f48b",
+      "bytes": 20525187,
+      "parts": null
+    },
+    "m66_excluded": true
+  },
+  "verify": {
+    "increment_volume_hash_mismatch": [],
+    "increment_missing_volume_files": [],
+    "increment_oversized": [],
+    "increment_upload_units": 25,
+    "new_objects": 475,
+    "new_objects_in_increment_volumes": 475,
+    "new_objects_missing_from_volumes": [],
+    "v1_volumes_left_untouched": true,
+    "previous_increment_volume_dir_exists": true,
+    "expected_manifest_all_match": true
+  },
+  "restore": {
+    "returncode": 0,
+    "stdout": "restored_or_verified=318060 excluded_or_unmapped=0 dest=/workspace/thesis_full_backup_20261121_2058/increments/increment_20261122_023149/verify_dest_unused\n",
+    "stderr": ""
+  },
+  "m66": {
+    "increment_cutoff": "2026-11-22 02:31:49 CST",
+    "present_at_cutoff": true,
+    "hits": [
+      {
+        "path": "/workspace/projects/td_cloud_research_20261120/batches/M66_bot_protected_tail_frame_20261122",
+        "files": 11,
+        "bytes": 527300,
+        "is_dir": true
+      }
+    ],
+    "included": false,
+    "policy": "M66 is in-progress. The entire M66 directory is excluded from this increment, not race-written, and not claimed included. If absent at cutoff, that is recorded; any later appearance is reserved for a future increment."
+  }
+}
