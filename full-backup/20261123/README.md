@@ -29,3 +29,10 @@ python3 restore.py --backup-root . --verify-only --dest /tmp/verify_unused
 - `SOURCE_REPAIR_DELIVERY_0010.json` SHA256 `082b2ae5378a1bc9264e066c67538e67f5522843fbf1f0b75d23d0e12279ac89`.
 
 See `docs/PACKAGE_CUTOFF_AND_PENDING.md` and `docs/README_RESTORE.md`.
+
+## Remote asset names (additive, 2026-11-23)
+
+The official `manifests/upload_unit_index.json` is unchanged, including original SHA256 values.
+Some release assets were stored under their local basenames rather than the planned unique names.
+See `docs/REMOTE_ASSET_NAMES.md` and `manifests/REMOTE_ASSET_NAME_MAP_20261123.json` for the mapping,
+and `tools/download_release_assets.py` to download by actual remote name into the planned `volumes/` layout.
